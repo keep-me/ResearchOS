@@ -72,12 +72,6 @@ def _setup_data_dir(data_dir: Path) -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     (data_dir / "papers").mkdir(exist_ok=True)
     (data_dir / "briefs").mkdir(exist_ok=True)
-
-
-def _default_mineru_dir(data_dir: Path) -> Path:
-    return (data_dir.parent / "MinerU").resolve()
-
-
 def _select_database_file(data_dir: Path) -> Path:
     return default_database_file(data_dir)
 
@@ -90,7 +84,6 @@ def _apply_env_overrides(data_dir: Path, env_file: Path | None) -> None:
     os.environ["DATABASE_URL"] = f"sqlite:///{_select_database_file(data_dir).as_posix()}"
     os.environ["PDF_STORAGE_ROOT"] = str(data_dir / "papers")
     os.environ["BRIEF_OUTPUT_ROOT"] = str(data_dir / "briefs")
-    os.environ["RESEARCHOS_MINERU_DIR"] = str(_default_mineru_dir(data_dir))
 
     if env_file and env_file.is_file():
         os.environ["RESEARCHOS_ENV_FILE"] = str(env_file)
@@ -160,7 +153,6 @@ def main() -> None:
 
     logger.info("ResearchOS Desktop starting on 127.0.0.1:%d", port)
     logger.info("Data dir: %s", data_dir)
-    logger.info("MinerU dir: %s", os.environ.get("RESEARCHOS_MINERU_DIR"))
 
     _start_scheduler()
 
@@ -185,4 +177,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

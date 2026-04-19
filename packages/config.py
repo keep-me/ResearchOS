@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     automation_allowed_roots: str = "/app,/app/data"
     # 图表提取模式: arxiv_source / mineru
     figure_extract_mode: str = "arxiv_source"
+    mineru_backend: str = "api"
+    mineru_api_base_url: str = "https://mineru.net"
+    mineru_api_token: str | None = None
+    mineru_api_model_version: str = "vlm"
+    mineru_api_poll_interval_seconds: float = 3.0
+    mineru_api_timeout_seconds: int = 300
+    mineru_api_upload_timeout_seconds: int = 600
     agent_max_tool_steps: int = 20
     agent_compaction_auto: bool = True
     agent_compaction_reserved_tokens: int = 20000

@@ -654,8 +654,8 @@ def extract_paper_figures_payload(
     else:
         selected_mode = "arxiv_source"
     if selected_mode == "mineru":
-        kickoff_message = "启动 MinerU 本地 OCR 图表提取..."
-        pulse_message = "正在通过本地 MinerU pipeline 解析 PDF 图表..."
+        kickoff_message = "启动 MinerU API 图表提取..."
+        pulse_message = "正在通过 MinerU API 解析 PDF 图表..."
     else:
         kickoff_message = "启动图表提取..."
         pulse_message = "正在提取 arXiv 图片；若原图不可用且 OCR 已就绪，将回退到 OCR 图像候选并补充表格..."

@@ -86,12 +86,8 @@ src-tauri/binaries/
 deploy/
 
 # MinerU local runtime
-MinerU/cache/
-MinerU/models/
 MinerU/runtime/
-MinerU/mineru.local.json
 packages/MinerU/runtime/
-packages/MinerU/mineru.local.json
 
 # Local project/runtime artifacts
 projects/

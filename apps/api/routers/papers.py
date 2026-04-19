@@ -1541,24 +1541,9 @@ def process_paper_ocr_async(
             paper = repo.get_by_id(paper_id)
             pdf_path = _ensure_paper_pdf(session, repo, paper, paper_id)
 
-        _progress("检查 MinerU 运行环境...", 12, 100)
-        prepare_stop_event, prepare_pulse_thread = _start_pulse(
-            "正在检查 / 下载 MinerU pipeline 模型...",
-            start=18,
-            end=40,
-            step=2,
-            interval=1.6,
-        )
-        try:
-            MinerUOcrRuntime.prepare_runtime(progress_callback=_progress)
-        finally:
-            if prepare_stop_event is not None:
-                prepare_stop_event.set()
-            if prepare_pulse_thread is not None:
-                prepare_pulse_thread.join(timeout=0.5)
-
-        _progress("启动 MinerU 本地 OCR 处理...", 42, 100)
-        stop_event, pulse_thread = _start_pulse("正在运行 MinerU pipeline，生成 Markdown / 图表结构...", start=48, end=86)
+        _progress("检查 MinerU API 配置...", 12, 100)
+        _progress("启动 MinerU API OCR 处理...", 42, 100)
+        stop_event, pulse_thread = _start_pulse("正在调用 MinerU API，生成 Markdown / 图表结构...", start=48, end=86)
         try:
             bundle = MinerUOcrRuntime.ensure_bundle(paper_id, pdf_path, force=effective_force)
         finally:
@@ -2072,4 +2057,3 @@ def retry_paper_analysis(
     body: dict | None = None,
 ) -> dict:
     return analyze_paper_rounds(paper_id, body=body)
-
