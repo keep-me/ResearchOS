@@ -456,8 +456,8 @@ export default function Sidebar() {
 
         <div className={cn("shrink-0 border-b border-border px-2 pb-2", effectiveCollapsed && "px-1.5", isMobileViewport && "px-2 pb-1.5")}>
           {!isMobileViewport ? <SectionLabel collapsed={effectiveCollapsed}>导航</SectionLabel> : null}
-          <nav className={cn("space-y-0.5", isMobileViewport && "overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}>
-            <div className={cn(isMobileViewport ? "flex min-w-max items-center gap-1" : "space-y-0.5")}>
+          <nav className="space-y-0.5">
+            <div className={cn(isMobileViewport ? "grid grid-cols-3 gap-1" : "space-y-0.5")}>
             {shellNavSections.map((section) => section.items.filter((item) => item.to !== "/settings")).flat().map((item) => {
               const active = isNavRouteActive(item.to);
               return (
@@ -476,7 +476,7 @@ export default function Sidebar() {
                   className={cn(
                     "group relative flex items-center rounded-md text-[13px] text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active",
                     isMobileViewport
-                      ? "min-h-9 min-w-9 justify-center px-2 py-2"
+                      ? "min-h-10 justify-center px-2 py-2"
                       : effectiveCollapsed
                         ? "justify-center px-0 py-2.5"
                         : "gap-2 px-3 py-2.5",
