@@ -7,26 +7,6 @@
 - Wiki / Brief / 写作辅助
 - 项目工作流与任务追踪
 
-## 界面预览
-
-### 1) Agent 与论文工作台
-
-| Agent | 论文列表 | 论文详情 |
-|---|---|---|
-| ![Agent](scripts/screenshots/full/01-01-agent-home.png) | ![Papers](scripts/screenshots/full/03-03-papers-list.png) | ![Paper Detail](scripts/screenshots/full/06-06-paper-detail.png) |
-
-### 2) 图谱 / Wiki / Brief
-
-| 引用图谱 | Wiki | Daily Brief |
-|---|---|---|
-| ![Graph](scripts/screenshots/full/08-09-graph.png) | ![Wiki](scripts/screenshots/full/11-12-wiki.png) | ![Brief](scripts/screenshots/full/12-13-brief.png) |
-
-### 3) 项目与设置
-
-| Dashboard | Settings | PDF 阅读 |
-|---|---|---|
-| ![Dashboard](scripts/screenshots/full/13-14-dashboard.png) | ![Settings](scripts/screenshots/full/14-15-settings.png) | ![PDF Reader](scripts/screenshots/full/21-pdf-reader.png) |
-
 ## 技术栈
 
 - Backend: Python 3.11+, FastAPI, SQLAlchemy, Alembic
