@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Testing & Linting
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+test-results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Environment
+.env
+
+# AI agent config (local only)
+.claude/
+CLAUDE.md
+.claw/sessions/
+.sandbox-home/
+.sandbox-tmp/
+.cursor/
+.opencode/plans/
+config.json
+
+# Data (runtime generated)
+data/
+reference/
+tmp/
+paper.db
+backups/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Package manager
+package-lock.json
+frontend/package-lock.json
+
+# Egg info
+researchos.egg-info/
+
+# Logs / runtime output
+logs/*
+!logs/.gitkeep
+*.log
+*.err.log
+*.out.log
+.tmp_repause*/
+.tmp/
+.tmp-edge-agent/
+tmp-*.png
+tmp_*.png
+tmp-opencode-demo.*
+opencode-demo-*.png
+opencode-desktop-demo.png
+ed0810d5-9c05-4085-b4fd-5f245631dbfa.png
+
+# Tauri / Desktop build
+src-tauri/target/
+src-tauri/target-hidden/
+src-tauri/binaries/
+*.dmg
+*.app
+
+# Docker deploy data (runtime)
+deploy/
+
+# MinerU local runtime
+MinerU/cache/
+MinerU/models/
+MinerU/runtime/
+MinerU/mineru.local.json
+packages/MinerU/runtime/
+packages/MinerU/mineru.local.json
+
+# Local project/runtime artifacts
+projects/

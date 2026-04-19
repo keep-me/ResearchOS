@@ -1,0 +1,812 @@
+"""
+学术写作助手服务 - 封装高质量写作 Prompt 模板
+Prompt 模板来源：https://github.com/Leey21/awesome-ai-research-writing
+@author Bamzc
+"""
+from __future__ import annotations
+
+import httpx
+import logging
+from dataclasses import dataclass
+from enum import Enum
+from urllib.parse import quote, urlparse
+
+from packages.config import get_settings
+from packages.integrations.llm_client import LLMClient, LLMResult
+
+logger = logging.getLogger(__name__)
+
+_GEMINI_IMAGE_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+_GEMINI_IMAGE_DEFAULT_MODEL = "gemini-2.5-flash-image"
+_SUPPORTED_IMAGE_ASPECT_RATIOS = {"1:1", "4:3", "3:4", "16:9", "9:16"}
+
+
+class WritingAction(str, Enum):
+    ZH_TO_EN = "zh_to_en"
+    EN_TO_ZH = "en_to_zh"
+    ZH_POLISH = "zh_polish"
+    EN_POLISH = "en_polish"
+    COMPRESS = "compress"
+    EXPAND = "expand"
+    LOGIC_CHECK = "logic_check"
+    DEAI = "deai"
+    FIG_CAPTION = "fig_caption"
+    TABLE_CAPTION = "table_caption"
+    EXPERIMENT_ANALYSIS = "experiment_analysis"
+    REVIEWER = "reviewer"
+    CHART_RECOMMEND = "chart_recommend"
+    OCR_EXTRACT = "ocr_extract"
+    IMAGE_GENERATE = "image_generate"
+
+
+VISION_ACTIONS: set[WritingAction] = {
+    WritingAction.FIG_CAPTION,
+    WritingAction.TABLE_CAPTION,
+    WritingAction.EXPERIMENT_ANALYSIS,
+    WritingAction.CHART_RECOMMEND,
+    WritingAction.REVIEWER,
+    WritingAction.OCR_EXTRACT,
+}
+
+
+@dataclass
+class WritingTemplate:
+    action: WritingAction
+    label: str
+    description: str
+    icon: str
+    placeholder: str
+    supports_image: bool = False
+
+
+WRITING_TEMPLATES: list[WritingTemplate] = [
+    WritingTemplate(
+        action=WritingAction.ZH_TO_EN,
+        label="中转英",
+        description="将中文草稿翻译并润色为英文学术论文片段",
+        icon="Languages",
+        placeholder="在此处粘贴你的中文草稿...",
+    ),
+    WritingTemplate(
+        action=WritingAction.EN_TO_ZH,
+        label="英转中",
+        description="将英文 LaTeX 代码片段翻译为流畅易读的中文文本",
+        icon="BookOpen",
+        placeholder="在此处粘贴你的英文 LaTeX 代码...",
+    ),
+    WritingTemplate(
+        action=WritingAction.ZH_POLISH,
+        label="中文润色",
+        description="将口语化草稿重写为逻辑严密、符合学术规范的中文段落",
+        icon="PenLine",
+        placeholder="在此处粘贴你的中文草稿、零散想法或要点...",
+    ),
+    WritingTemplate(
+        action=WritingAction.EN_POLISH,
+        label="英文润色",
+        description="深度润色英文论文，提升学术严谨性与可读性",
+        icon="Sparkles",
+        placeholder="在此处粘贴你的英文 LaTeX 代码...",
+    ),
+    WritingTemplate(
+        action=WritingAction.COMPRESS,
+        label="缩写",
+        description="在不损失信息量的前提下微幅缩减文本长度",
+        icon="Minimize2",
+        placeholder="在此处粘贴你的英文 LaTeX 代码...",
+    ),
+    WritingTemplate(
+        action=WritingAction.EXPAND,
+        label="扩写",
+        description="通过深挖内容深度和增强逻辑连接微幅扩写文本",
+        icon="Maximize2",
+        placeholder="在此处粘贴你的英文 LaTeX 代码...",
+    ),
+    WritingTemplate(
+        action=WritingAction.LOGIC_CHECK,
+        label="逻辑检查",
+        description="终稿校对：一致性与逻辑核对，只报致命错误",
+        icon="ShieldCheck",
+        placeholder="在此处粘贴你的英文 LaTeX 代码...",
+    ),
+    WritingTemplate(
+        action=WritingAction.DEAI,
+        label="去 AI 味",
+        description="将 AI 生成的机械化文本重写为自然学术表达",
+        icon="Eraser",
+        placeholder="在此处粘贴你的英文 LaTeX 代码...",
+    ),
+    WritingTemplate(
+        action=WritingAction.FIG_CAPTION,
+        label="图标题",
+        description="上传论文图片或描述，生成顶会规范英文图标题",
+        icon="Image",
+        placeholder="上传图片后可补充描述，或直接输入中文描述...",
+        supports_image=True,
+    ),
+    WritingTemplate(
+        action=WritingAction.TABLE_CAPTION,
+        label="表标题",
+        description="上传表格截图或描述，生成顶会规范英文表标题",
+        icon="Table",
+        placeholder="上传表格截图后可补充描述，或直接输入中文描述...",
+        supports_image=True,
+    ),
+    WritingTemplate(
+        action=WritingAction.EXPERIMENT_ANALYSIS,
+        label="实验分析",
+        description="上传实验表格/图表截图，挖掘数据特征和趋势",
+        icon="BarChart3",
+        placeholder="上传实验截图后可补充说明，或直接粘贴数据...",
+        supports_image=True,
+    ),
+    WritingTemplate(
+        action=WritingAction.REVIEWER,
+        label="审稿视角",
+        description="上传论文页面截图或粘贴内容，以审稿人视角审视",
+        icon="Eye",
+        placeholder="上传论文截图后可指定审查重点，或直接粘贴内容...",
+        supports_image=True,
+    ),
+    WritingTemplate(
+        action=WritingAction.CHART_RECOMMEND,
+        label="图表推荐",
+        description="上传数据截图或描述，推荐最佳可视化方案",
+        icon="PieChart",
+        placeholder="上传数据截图后简述想强调的结论，或直接粘贴数据...",
+        supports_image=True,
+    ),
+    WritingTemplate(
+        action=WritingAction.OCR_EXTRACT,
+        label="OCR 提取",
+        description="上传图片提取文字，支持论文、公式、表格截图",
+        icon="ScanText",
+        placeholder="上传图片后可指定提取格式（如 LaTeX / Markdown / 纯文本）...",
+        supports_image=True,
+    ),
+    WritingTemplate(
+        action=WritingAction.IMAGE_GENERATE,
+        label="AI 绘图",
+        description="基于 Gemini Nano Banana 生成论文示意图、方法总览图或图形摘要",
+        icon="ImagePlus",
+        placeholder="例如：画一张论文方法总览图，左侧输入文档，中央双编码器检索，右侧生成器输出答案，白底高对比、适合 NeurIPS 论文插图。",
+        supports_image=True,
+    ),
+]
+
+TEMPLATE_MAP: dict[WritingAction, WritingTemplate] = {
+    t.action: t for t in WRITING_TEMPLATES
+}
+
+# Prompt 模板构建函数
+
+def _build_zh_to_en(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位兼具顶尖科研写作专家与资深会议审稿人（ICML/ICLR 等）双重身份的助手。"
+        "你的学术品味极高，对逻辑漏洞和语言瑕疵零容忍。\n\n"
+        "# Task\n"
+        "请处理我提供的【中文草稿】，将其翻译并润色为【英文学术论文片段】。\n\n"
+        "# Constraints\n"
+        "1. 视觉与排版：尽量不要使用加粗、斜体或引号。保持 LaTeX 源码的纯净。\n"
+        "2. 风格与逻辑：逻辑严谨，用词准确，表达凝练连贯，使用常见单词。"
+        "不要使用破折号（—），拒绝使用\\item列表，去除\u201cAI味\u201d。\n"
+        "3. 时态规范：统一使用一般现在时描述方法和结论。\n"
+        "4. 输出格式：\n"
+        "   - Part 1 [LaTeX]：翻译后的英文内容（LaTeX 格式），转义特殊字符。\n"
+        "   - Part 2 [Translation]：对应的中文直译。\n\n"
+        "# Execution Protocol\n"
+        "输出前自我审查：检查是否存在过度排版、逻辑跳跃或未翻译的中文。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_en_to_zh(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位资深的计算机科学领域的学术翻译官。\n\n"
+        "# Task\n"
+        "请将我提供的【英文 LaTeX 代码片段】翻译为流畅、易读的【中文文本】。\n\n"
+        "# Constraints\n"
+        "1. 语法清洗：删除 \\cite{}/\\ref{}/\\label{} 等索引命令。"
+        "提取 \\textbf{text} 等修饰性命令内的文本。"
+        "将 LaTeX 数学公式转化为自然语言描述。\n"
+        "2. 翻译原则：严格直译，保持句式结构与英文一致，不要润色或重写。\n"
+        "3. 输出格式：只输出翻译后的纯中文文本段落，不要包含任何 LaTeX 代码。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_zh_polish(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位资深的中文学术期刊编辑，同时也是顶尖会议的中文审稿人。\n\n"
+        "# Task\n"
+        "请阅读我提供的【中文草稿】，将其重写为逻辑连贯、符合中文学术规范的【论文正文段落】。\n\n"
+        "# Constraints\n"
+        "1. 格式与排版（Word 适配）：输出纯净的文本，严禁使用 Markdown 加粗、斜体。"
+        "标点规范：严格使用中文全角标点符号。\n"
+        "2. 逻辑与结构：不要机械逐句润色，先识别逻辑主线，将松散句子重新串联。"
+        "遵循\u201c一个段落一个核心观点\u201d原则。\n"
+        "3. 语言风格：极度正式，客观中立，保留关键技术名词。\n"
+        "4. 输出格式：\n"
+        "   - Part 1 [Refined Text]：重写后的中文段落。\n"
+        "   - Part 2 [Logic flow]：简要说明重构思路。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_en_polish(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位计算机科学领域的资深学术编辑，专注于提升顶级会议投稿论文的语言质量。\n\n"
+        "# Task\n"
+        "请对我提供的【英文 LaTeX 代码片段】进行深度润色与重写，"
+        "使其达到零错误的最高出版水准。\n\n"
+        "# Constraints\n"
+        "1. 学术规范：调整句式结构适配顶会写作规范，彻底修正所有语法错误。\n"
+        "2. 词汇控制：使用标准学术书面语，禁止缩写形式（it's→it is），"
+        "使用简洁易理解的词汇，避免名词所有格形式。\n"
+        "3. 内容保持：不要展开领域缩写，保留 LaTeX 命令，保留已有格式。\n"
+        "4. 结构要求：严禁列表化，保持完整段落。\n"
+        "5. 输出格式：\n"
+        "   - Part 1 [LaTeX]：润色后的英文 LaTeX 代码。\n"
+        "   - Part 2 [Translation]：中文直译。\n"
+        "   - Part 3 [Modification Log]：中文说明主要润色点。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_compress(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位专注于简洁性的顶级学术编辑。\n\n"
+        "# Task\n"
+        "请将我提供的【英文 LaTeX 代码片段】进行微幅缩减（减少约 5-15 个单词）。\n\n"
+        "# Constraints\n"
+        "1. 严禁大删大改，必须保留所有核心信息和技术细节。\n"
+        "2. 缩减手段：句法压缩，剔除冗余填充词（如 in order to → to）。\n"
+        "3. 保持 LaTeX 源码纯净，不要使用加粗斜体引号，不用破折号，不用列表。\n"
+        "4. 输出格式：\n"
+        "   - Part 1 [LaTeX]：缩减后的英文 LaTeX 代码。\n"
+        "   - Part 2 [Translation]：中文直译。\n"
+        "   - Part 3 [Modification Log]：中文说明调整。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_expand(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位专注于逻辑流畅度的顶级学术编辑。\n\n"
+        "# Task\n"
+        "请将我提供的【英文 LaTeX 代码片段】进行微幅扩写（增加约 5-15 个单词）。\n\n"
+        "# Constraints\n"
+        "1. 严禁恶意注水，不要添加无意义的形容词。\n"
+        "2. 扩写手段：深度挖掘隐含结论/因果关系，增加必要连接词，表达升级。\n"
+        "3. 保持 LaTeX 源码纯净，不要使用加粗斜体引号，不用破折号，不用列表。\n"
+        "4. 输出格式：\n"
+        "   - Part 1 [LaTeX]：扩写后的英文 LaTeX 代码。\n"
+        "   - Part 2 [Translation]：中文直译。\n"
+        "   - Part 3 [Modification Log]：中文说明调整。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_logic_check(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位负责论文终稿校对的学术助手。\n\n"
+        "# Task\n"
+        "请对我提供的【英文 LaTeX 代码片段】进行最后的一致性与逻辑核对。\n\n"
+        "# Constraints\n"
+        "1. 审查阈值：预设草稿已经过多轮修改，质量较高。"
+        "仅在遇到致命逻辑断层、术语混乱或严重语法错误时才提出意见。\n"
+        "2. 审查维度：致命逻辑矛盾、术语一致性、严重语病（Chinglish）。\n"
+        "3. 输出格式：无问题则输出 [检测通过，无实质性问题]。"
+        "有问题则用中文分点简要指出。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_deai(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位计算机科学领域的资深学术编辑，专注于提升论文的自然度。\n\n"
+        "# Task\n"
+        "请对我提供的【英文 LaTeX 代码片段】进行\u201c去 AI 化\u201d重写。\n\n"
+        "# Constraints\n"
+        "1. 词汇规范化：优先使用朴实精准的学术词汇。"
+        "避免：leverage, delve into, tapestry, underscore, unveil 等被滥用的词。\n"
+        "2. 结构自然化：严禁列表格式，移除机械连接词，减少破折号。\n"
+        "3. 排版规范：禁用强调格式（加粗/斜体）。\n"
+        "4. 修改阈值：如果原文已足够自然，保留原文。\n"
+        "5. 输出格式：\n"
+        "   - Part 1 [LaTeX]：重写后的代码。\n"
+        "   - Part 2 [Translation]：中文直译。\n"
+        "   - Part 3 [Modification Log]：调整说明或\u201c[检测通过]\u201d。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_fig_caption(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位经验丰富的学术编辑，擅长撰写精准规范的论文插图标题。\n\n"
+        "# Task\n"
+        "请将我提供的【中文描述】转化为符合顶级会议规范的【英文图标题】。\n\n"
+        "# Constraints\n"
+        "1. 名词性短语用 Title Case，完整句子用 Sentence case。\n"
+        "2. 极简原则：去除冗余开头，直接描述图表内容。\n"
+        "3. 只输出英文标题文本本身，不要包含 Figure 1: 前缀。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_table_caption(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位经验丰富的学术编辑，擅长撰写精准规范的论文表格标题。\n\n"
+        "# Task\n"
+        "请将我提供的【中文描述】转化为符合顶级会议规范的【英文表标题】。\n\n"
+        "# Constraints\n"
+        "1. 名词性短语用 Title Case，完整句子用 Sentence case。\n"
+        "2. 常用句式：Comparison with, Ablation study on, Results on。\n"
+        "3. 只输出英文标题文本本身，不要包含 Table 1: 前缀。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_experiment_analysis(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位具有敏锐洞察力的资深数据科学家。\n\n"
+        "# Task\n"
+        "请仔细阅读我提供的【实验数据】，挖掘关键特征和趋势，"
+        "整理为符合顶级会议标准的 LaTeX 分析段落。\n\n"
+        "# Constraints\n"
+        "1. 数据真实性：所有结论必须严格基于输入数据，严禁编造。\n"
+        "2. 分析深度：拒绝简单报账式描述，重点比较和趋势分析。\n"
+        "3. 排版格式：严禁加粗斜体，使用 \\paragraph{核心结论} + 分析文本。\n"
+        "4. 输出格式：\n"
+        "   - Part 1 [LaTeX]：分析后的 LaTeX 代码。\n"
+        "   - Part 2 [Translation]：中文直译。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_reviewer(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位以严苛著称的资深学术审稿人，熟悉计算机科学顶级会议评审标准。\n\n"
+        "# Task\n"
+        "请深入分析我提供的【论文内容】，撰写一份严厉但有建设性的审稿报告。\n\n"
+        "# Constraints\n"
+        "1. 默认态度：抱着拒稿的预设心态审查，除非论文亮点足以说服你。\n"
+        "2. 拒绝客套，直接切入核心缺陷。\n"
+        "3. 输出格式：\n"
+        "   - Part 1 [Review Report]（中文）：\n"
+        "     * Summary: 一句话总结\n"
+        "     * Strengths: 1-2 点真正有价值的贡献\n"
+        "     * Weaknesses (Critical): 3-5 个致命问题\n"
+        "     * Rating: 1-10分\n"
+        "   - Part 2 [Strategic Advice]：中文改稿建议和行动指南。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_chart_recommend(text: str) -> str:
+    return (
+        "# Role\n"
+        "你是一位就职于顶级科学期刊的资深数据可视化专家。\n\n"
+        "# Task\n"
+        "请分析我提供的实验数据或实验目的，推荐 1-2 种最佳绘图方案。\n\n"
+        "# Constraints\n"
+        "1. 优先从学术标准图表中选择（柱状图、折线图、热力图、雷达图、"
+        "散点图、ROC曲线、箱线图、小提琴图等）。\n"
+        "2. 若数据组间差异巨大，建议补救方案（断裂轴、对数坐标、归一化）。\n"
+        "3. 输出结构：推荐方案 → 核心理由 → 视觉设计规范。\n"
+        "4. 用中文回答。\n\n"
+        f"# Input\n{text}"
+    )
+
+
+def _build_ocr_extract(text: str) -> str:
+    fmt_hint = text.strip() if text.strip() else "保持原始格式"
+    return (
+        "# Role\n"
+        "你是一位精通学术文献的 OCR 专家。\n\n"
+        "# Task\n"
+        "请仔细识别图片中的所有文字内容，包括公式、表格、代码等。\n\n"
+        "# Constraints\n"
+        "1. 数学公式用 LaTeX 语法输出。\n"
+        "2. 表格用 Markdown 表格格式输出。\n"
+        "3. 保持原文的结构和层次。\n"
+        "4. 如果有手写内容，尽力识别并标注不确定之处。\n"
+        f"5. 用户格式要求：{fmt_hint}\n\n"
+        "请直接输出识别结果。"
+    )
+
+
+_PROMPT_BUILDERS: dict[WritingAction, callable] = {
+    WritingAction.ZH_TO_EN: _build_zh_to_en,
+    WritingAction.EN_TO_ZH: _build_en_to_zh,
+    WritingAction.ZH_POLISH: _build_zh_polish,
+    WritingAction.EN_POLISH: _build_en_polish,
+    WritingAction.COMPRESS: _build_compress,
+    WritingAction.EXPAND: _build_expand,
+    WritingAction.LOGIC_CHECK: _build_logic_check,
+    WritingAction.DEAI: _build_deai,
+    WritingAction.FIG_CAPTION: _build_fig_caption,
+    WritingAction.TABLE_CAPTION: _build_table_caption,
+    WritingAction.EXPERIMENT_ANALYSIS: _build_experiment_analysis,
+    WritingAction.REVIEWER: _build_reviewer,
+    WritingAction.CHART_RECOMMEND: _build_chart_recommend,
+    WritingAction.OCR_EXTRACT: _build_ocr_extract,
+}
+
+
+def _clean_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
+def _normalize_image_provider(value: str | None) -> str | None:
+    raw = (_clean_optional_text(value) or "").lower()
+    aliases = {
+        "gemini": "gemini",
+        "google": "gemini",
+        "googleai": "gemini",
+        "vertex": "gemini",
+        "vertex_ai": "gemini",
+    }
+    return aliases.get(raw, raw or None)
+
+
+def _normalize_image_base_url(base_url: str | None) -> str | None:
+    raw = _clean_optional_text(base_url)
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if not parsed.scheme or not parsed.netloc:
+        return raw.rstrip("/")
+    path = parsed.path.rstrip("/")
+    lowered = path.lower()
+    models_index = lowered.find("/models/")
+    if models_index >= 0:
+        path = path[:models_index]
+        lowered = path.lower()
+    if lowered.endswith("/openai"):
+        path = path[:-7]
+    return parsed._replace(path=path, params="", query="", fragment="").geturl().rstrip("/")
+
+
+def _build_paper_figure_prompt(prompt: str, *, has_reference: bool) -> str:
+    base = (
+        "Create a publication-ready academic figure for a machine learning paper. "
+        "The output must look like a clean conference figure rather than a poster, webpage, or marketing illustration. "
+        "Use a white or near-white background, high contrast, flat vector-like shapes, restrained color usage, and a layout that remains readable after being inserted into a PDF. "
+        "Prefer boxes, arrows, stage groupings, model blocks, data flow hints, and compact legends. "
+        "Avoid photorealism, 3D rendering, glossy effects, fake UI chrome, watermarks, signatures, and decorative clutter. "
+        "If text is necessary, keep it short and legible. "
+        "The figure should be suitable for NeurIPS, ICML, ICLR, ACL, or AAAI style papers."
+    )
+    if has_reference:
+        base += (
+            " Use the uploaded reference image as a structural or stylistic cue, "
+            "but redraw it into a cleaner academic figure with consistent layout and spacing."
+        )
+    return f"{base}\n\nUser request:\n{prompt.strip()}"
+
+
+@dataclass
+class WritingImageConfig:
+    provider: str
+    api_key: str
+    base_url: str
+    model: str
+
+
+class WritingService:
+    """学术写作助手服务"""
+
+    def __init__(self) -> None:
+        self.llm = LLMClient()
+        self.settings = get_settings()
+
+    def _resolve_image_generation_config(self) -> WritingImageConfig:
+        active = None
+        try:
+            from packages.storage.db import session_scope
+            from packages.storage.repositories import LLMConfigRepository
+
+            with session_scope() as session:
+                active = LLMConfigRepository(session).get_active()
+        except Exception:
+            logger.debug("Failed to resolve active LLM config for image generation", exc_info=True)
+
+        active_provider = _normalize_image_provider(getattr(active, "provider", None)) if active else None
+        active_api_key = _clean_optional_text(getattr(active, "api_key", None)) if active else None
+        active_api_base_url = _clean_optional_text(getattr(active, "api_base_url", None)) if active else None
+
+        configured_provider = _normalize_image_provider(getattr(active, "image_provider", None)) if active else None
+        configured_api_key = _clean_optional_text(getattr(active, "image_api_key", None)) if active else None
+        configured_api_base_url = _clean_optional_text(getattr(active, "image_api_base_url", None)) if active else None
+        configured_model = _clean_optional_text(getattr(active, "model_image", None)) if active else None
+
+        settings_provider = _normalize_image_provider(self.settings.image_provider)
+        settings_api_key = _clean_optional_text(self.settings.image_api_key) or _clean_optional_text(self.settings.gemini_api_key)
+        settings_api_base_url = _clean_optional_text(self.settings.image_api_base_url)
+        settings_model = _clean_optional_text(self.settings.image_model)
+
+        provider = configured_provider or settings_provider
+        if provider is None and (configured_api_key or settings_api_key or configured_api_base_url or settings_api_base_url):
+            provider = "gemini"
+        if provider is None and active_provider == "gemini":
+            provider = "gemini"
+        if provider != "gemini":
+            raise ValueError("当前未配置 Gemini 图像生成通道，请先在设置页配置绘图 API。")
+
+        api_key = configured_api_key or settings_api_key
+        if not api_key and active_provider == "gemini":
+            api_key = active_api_key
+        if not api_key:
+            raise ValueError("缺少 Gemini 图像生成 API Key，请先在设置页配置绘图 API。")
+
+        base_url = configured_api_base_url or settings_api_base_url
+        if not base_url and active_provider == "gemini":
+            base_url = active_api_base_url
+        base_url = _normalize_image_base_url(base_url) or _GEMINI_IMAGE_DEFAULT_BASE_URL
+
+        model = configured_model or settings_model or _GEMINI_IMAGE_DEFAULT_MODEL
+        return WritingImageConfig(
+            provider="gemini",
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+        )
+
+    @staticmethod
+    def list_templates() -> list[dict]:
+        """返回所有写作模板信息"""
+        return [
+            {
+                "action": t.action.value,
+                "label": t.label,
+                "description": t.description,
+                "icon": t.icon,
+                "placeholder": t.placeholder,
+                "supports_image": t.supports_image,
+            }
+            for t in WRITING_TEMPLATES
+        ]
+
+    def process(
+        self,
+        action: str,
+        text: str,
+        *,
+        max_tokens: int = 4096,
+    ) -> dict:
+        """执行写作操作"""
+        try:
+            writing_action = WritingAction(action)
+        except ValueError:
+            raise ValueError(f"未知的写作操作: {action}")
+
+        builder = _PROMPT_BUILDERS.get(writing_action)
+        if not builder:
+            raise ValueError(f"写作操作 {action} 没有对应的 Prompt 构建器")
+
+        prompt = builder(text)
+        result: LLMResult = self.llm.summarize_text(
+            prompt, stage="writing", max_tokens=max_tokens,
+        )
+        self.llm.trace_result(
+            result,
+            stage="writing",
+            prompt_digest=f"{action}:{text[:80]}",
+        )
+
+        template = TEMPLATE_MAP[writing_action]
+        return {
+            "action": action,
+            "label": template.label,
+            "content": result.content,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "total_cost_usd": result.total_cost_usd,
+        }
+
+    def process_with_image(
+        self,
+        action: str,
+        text: str,
+        image_base64: str,
+        *,
+        max_tokens: int = 4096,
+    ) -> dict:
+        """多模态写作操作（图片 + 文本）"""
+        try:
+            writing_action = WritingAction(action)
+        except ValueError:
+            raise ValueError(f"未知的写作操作: {action}")
+
+        if writing_action not in VISION_ACTIONS:
+            raise ValueError(f"写作操作 {action} 不支持图片输入")
+
+        builder = _PROMPT_BUILDERS.get(writing_action)
+        if not builder:
+            raise ValueError(f"写作操作 {action} 没有对应的 Prompt 构建器")
+
+        prompt = builder(text)
+        result: LLMResult = self.llm.vision_analyze(
+            image_base64=image_base64,
+            prompt=prompt,
+            stage="writing_vision",
+            max_tokens=max_tokens,
+        )
+        self.llm.trace_result(
+            result,
+            stage="writing_vision",
+            prompt_digest=f"{action}:image+{text[:60]}",
+        )
+
+        template = TEMPLATE_MAP[writing_action]
+        return {
+            "action": action,
+            "label": template.label,
+            "content": result.content,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "total_cost_usd": result.total_cost_usd,
+        }
+
+    def refine(
+        self,
+        messages: list[dict],
+        *,
+        max_tokens: int = 4096,
+    ) -> dict:
+        """基于对话历史进行多轮微调"""
+        if not messages:
+            raise ValueError("消息列表不能为空")
+
+        parts: list[str] = [
+            "你是一位资深的学术写作助手。以下是此前的对话记录，"
+            "请根据用户的最新指令，在之前结果的基础上继续优化。\n"
+            "请只输出优化后的完整内容，不要输出额外解释（除非用户明确要求）。\n\n"
+        ]
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "user":
+                parts.append(f"### 用户\n{content}\n")
+            else:
+                parts.append(f"### 助手\n{content}\n")
+
+        prompt = "\n".join(parts)
+        result: LLMResult = self.llm.summarize_text(
+            prompt, stage="writing", max_tokens=max_tokens,
+        )
+
+        last_user = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user = msg.get("content", "")
+                break
+
+        self.llm.trace_result(
+            result,
+            stage="writing_refine",
+            prompt_digest=f"refine:{last_user[:80]}",
+        )
+
+        return {
+            "content": result.content,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "total_cost_usd": result.total_cost_usd,
+        }
+
+    def generate_image(
+        self,
+        prompt: str,
+        *,
+        image_base64: str | None = None,
+        aspect_ratio: str = "4:3",
+        timeout_seconds: float = 120.0,
+    ) -> dict:
+        cleaned_prompt = str(prompt or "").strip()
+        if not cleaned_prompt:
+            raise ValueError("绘图提示词不能为空")
+
+        normalized_aspect_ratio = str(aspect_ratio or "4:3").strip() or "4:3"
+        if normalized_aspect_ratio not in _SUPPORTED_IMAGE_ASPECT_RATIOS:
+            raise ValueError(f"不支持的画布比例: {normalized_aspect_ratio}")
+
+        cfg = self._resolve_image_generation_config()
+        contents = [
+            {
+                "parts": [
+                    {
+                        "text": _build_paper_figure_prompt(
+                            cleaned_prompt,
+                            has_reference=bool(_clean_optional_text(image_base64)),
+                        )
+                    }
+                ]
+            }
+        ]
+        if _clean_optional_text(image_base64):
+            contents[0]["parts"].append(
+                {
+                    "inlineData": {
+                        "mimeType": "image/png",
+                        "data": str(image_base64).strip(),
+                    }
+                }
+            )
+
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "imageConfig": {
+                    "aspectRatio": normalized_aspect_ratio,
+                }
+            },
+        }
+
+        url = f"{cfg.base_url.rstrip('/')}/models/{quote(cfg.model, safe='')}:generateContent"
+        try:
+            with httpx.Client(timeout=timeout_seconds) as client:
+                response = client.post(
+                    url,
+                    headers={"x-goog-api-key": cfg.api_key},
+                    json=payload,
+                )
+                response.raise_for_status()
+                result = response.json()
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text[:500] if exc.response is not None else str(exc)
+            raise ValueError(f"Gemini 图像生成失败：{detail}") from exc
+        except httpx.HTTPError as exc:
+            raise ValueError(f"Gemini 图像生成请求失败：{exc}") from exc
+
+        image_result: str | None = None
+        mime_type = "image/png"
+        text_parts: list[str] = []
+        for candidate in result.get("candidates", []) or []:
+            content = candidate.get("content") or {}
+            for part in content.get("parts", []) or []:
+                inline_data = part.get("inlineData") or {}
+                data = inline_data.get("data")
+                if data and not image_result:
+                    image_result = str(data)
+                    mime_type = str(inline_data.get("mimeType") or mime_type)
+                if part.get("text"):
+                    text_parts.append(str(part.get("text") or "").strip())
+            if image_result:
+                break
+
+        if not image_result:
+            raise ValueError("Gemini 图像生成未返回图片，请调整提示词后重试。")
+
+        usage = result.get("usageMetadata") or {}
+        return {
+            "action": WritingAction.IMAGE_GENERATE.value,
+            "label": TEMPLATE_MAP[WritingAction.IMAGE_GENERATE].label,
+            "kind": "image",
+            "content": "\n\n".join(part for part in text_parts if part) or "已生成论文配图，可继续微调提示词或参考图。",
+            "image_base64": image_result,
+            "mime_type": mime_type,
+            "provider": cfg.provider,
+            "model": cfg.model,
+            "aspect_ratio": normalized_aspect_ratio,
+            "input_tokens": usage.get("promptTokenCount"),
+            "output_tokens": usage.get("candidatesTokenCount"),
+            "total_cost_usd": None,
+        }

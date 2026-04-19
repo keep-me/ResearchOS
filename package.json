@@ -1,0 +1,21 @@
+{
+  "name": "researchos",
+  "version": "1.0.0",
+  "description": "ResearchOS is an AI-native research workflow backend with:",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test:aris",
+    "test:aris": "pwsh -NoLogo -File scripts/run-aris-smoke.ps1 -PytestOnly",
+    "smoke:aris": "pwsh -NoLogo -File scripts/run-aris-smoke.ps1",
+    "smoke:aris:quick": "pwsh -NoLogo -File scripts/run-aris-smoke.ps1 -SmokeOnly"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "claude-skills-frontend": "^1.4.0",
+    "playwright": "^1.58.2"
+  }
+}

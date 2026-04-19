@@ -1,0 +1,124 @@
+# ResearchOS Docker Compose
+# Ports:
+# - Frontend: 3002
+# - Backend API: 8002
+# Usage:
+#   1) cp .env.example .env
+#   2) docker compose up -d --build
+#   3) Open http://localhost:3002
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-researchos-backend:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args:
+        BASE_REGISTRY: ${BASE_REGISTRY:-docker.io}
+        APT_MIRROR: ${APT_MIRROR:-}
+    container_name: researchos-backend
+    ports:
+      - "8002:8000"
+    volumes:
+      - pm_data:/app/data
+      - pm_logs:/app/logs
+      - ./apps:/app/apps:ro
+      - ./packages:/app/packages:ro
+      - ./scripts:/app/scripts:ro
+      - ./infra:/app/infra:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - pm_pip_cache:/.pip-cache
+    env_file:
+      - ./.env
+    environment:
+      - APP_ENV=production
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - SITE_URL=${SITE_URL:-http://localhost:3002}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3002,http://127.0.0.1:3002}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  worker:
+    image: ${BACKEND_IMAGE:-researchos-backend:latest}
+    container_name: researchos-worker
+    command: python -m apps.worker.main
+    volumes:
+      - pm_data:/app/data
+      - pm_logs:/app/logs
+      - ./apps:/app/apps:ro
+      - ./packages:/app/packages:ro
+      - ./scripts:/app/scripts:ro
+      - ./infra:/app/infra:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - pm_pip_cache:/.pip-cache
+    env_file:
+      - ./.env
+    environment:
+      - APP_ENV=production
+      - SITE_URL=${SITE_URL:-http://localhost:3002}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/data/worker_heartbeat"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BASE_REGISTRY: ${BASE_REGISTRY:-docker.io}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    container_name: researchos-frontend
+    ports:
+      - "3002:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+volumes:
+  pm_data:
+    name: researchos_data
+  pm_logs:
+    name: researchos_logs
+  pm_pip_cache:

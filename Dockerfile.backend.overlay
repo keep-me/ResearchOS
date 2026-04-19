@@ -1,0 +1,13 @@
+ARG BASE_IMAGE=python:3.11-slim
+FROM ${BASE_IMAGE}
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+COPY packages/ packages/
+COPY apps/ apps/
+COPY scripts/ scripts/
+COPY alembic.ini ./
+COPY infra/migrations/ infra/migrations/
+
+RUN python scripts/local_bootstrap.py || true

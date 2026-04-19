@@ -1,0 +1,17 @@
+{
+  "name": "ResearchOS",
+  "short_name": "ResearchOS",
+  "description": "面向长期研究工作流的论文采集、分析、问答与写作平台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF9F6",
+  "theme_color": "#245C54",
+  "icons": [
+    {
+      "src": "/research-os-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

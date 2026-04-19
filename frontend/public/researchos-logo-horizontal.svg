@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" width="320" height="64">
+  <defs>
+    <style>
+      .line {
+        fill: none;
+        stroke: #245C54;
+        stroke-width: 6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .text {
+        font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        fill: #1A1612;
+        letter-spacing: -0.5px;
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(12, 12) scale(0.48)">
+    <rect x="18" y="18" width="64" height="64" rx="24" class="line" />
+    <path d="M38 32h12c10 0 16 6 16 15s-6 15-16 15H38V32Z" class="line" />
+    <path d="M50 62 68 80" class="line" />
+    <path d="M56 18v64" class="line" opacity="0.72" />
+  </g>
+
+  <text x="82" y="42" class="text">ResearchOS</text>
+</svg>
