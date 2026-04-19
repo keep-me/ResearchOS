@@ -355,7 +355,7 @@ function EmptyHint({ text }: { text: string }) {
 function DirectionGrid({ directions, compact = false }: { directions: ArxivTrendDirection[]; compact?: boolean }) {
   if (!directions.length) return <EmptyHint text="arXiv CS 方向暂时不可用。" />;
   return (
-    <div className={cn("grid grid-cols-2 gap-2", compact ? "" : "md:grid-cols-2")}>
+    <div className={cn("grid grid-cols-1 gap-2 sm:grid-cols-2", compact ? "" : "md:grid-cols-2")}>
       {directions.map((item, index) => {
         const accent = dataAccent(index);
         return (

@@ -660,7 +660,7 @@ function PaperWikiView({
             title="引用关系"
             description={`${graph.nodes?.length || 0} 个节点 · ${graph.edge_count || 0} 条边`}
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
             <div className="rounded-lg bg-primary/5 p-4 text-center">
               <p className="text-2xl font-bold text-primary">{graph.ancestors?.length || 0}</p>
               <p className="mt-1 text-xs text-ink-tertiary">引用的论文</p>

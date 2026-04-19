@@ -153,15 +153,15 @@ function TokenOverviewStrip({
   return (
     <div className="glass-card glass-card-soft rounded-[26px] p-4">
       <div className="grid gap-4 xl:grid-cols-[1fr_112px_1.6fr] xl:items-center">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-2">
           <TokenStat label="7 天 Token" value={formatTokens(totalTokens)} />
           <TokenStat label="估算费用" value={formatCost(metrics?.total_cost_usd)} />
           <TokenStat label="调用次数" value={String(metrics?.calls || 0)} />
           <TokenStat label="输入 / 输出" value={`${formatTokens(metrics?.input_tokens)} / ${formatTokens(metrics?.output_tokens)}`} />
         </div>
 
-        <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full p-2.5" style={{ background: buildConicGradient(categories) }}>
-          <div className="flex h-[76px] w-[76px] flex-col items-center justify-center rounded-full border border-border bg-page text-center shadow-sm">
+        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full p-2 sm:h-28 sm:w-28 sm:p-2.5" style={{ background: buildConicGradient(categories) }}>
+          <div className="flex h-[68px] w-[68px] flex-col items-center justify-center rounded-full border border-border bg-page text-center shadow-sm sm:h-[76px] sm:w-[76px]">
             <PieChart className="h-4 w-4 text-primary" />
             <strong className="mt-1 text-sm font-semibold text-ink">{formatTokens(totalTokens)}</strong>
           </div>

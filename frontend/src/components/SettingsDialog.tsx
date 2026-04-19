@@ -172,10 +172,13 @@ export function SettingsDialog({ onClose, embedded = false }: { onClose?: () => 
 
   const content = (
     <div
-      className={cn("flex gap-4", embedded ? "min-h-[calc(100dvh-11.5rem)]" : "")}
-      style={embedded ? undefined : { height: "720px", maxHeight: "82vh" }}
+      className={cn(
+        "flex flex-col gap-4 lg:flex-row",
+        embedded ? "min-h-0 lg:min-h-[calc(100dvh-11.5rem)]" : "",
+      )}
+      style={embedded ? undefined : { height: "min(720px, 82vh)" }}
     >
-        <aside className="flex w-[248px] shrink-0 flex-col rounded-xl border border-border bg-sidebar p-4">
+        <aside className="flex w-full shrink-0 flex-col rounded-xl border border-border bg-sidebar p-3 sm:p-4 lg:w-[248px]">
           <div className="mb-4">
             <Input
               value={query}
@@ -185,39 +188,44 @@ export function SettingsDialog({ onClose, embedded = false }: { onClose?: () => 
             />
             <Search className="pointer-events-none relative -mt-8 ml-3 h-4 w-4 text-ink-tertiary" />
           </div>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 space-y-3 overflow-visible lg:space-y-4 lg:overflow-y-auto lg:pr-1">
             {filteredGroups.map((group) => (
               <div key={group.id}>
-                <div className="space-y-1">
-                  {group.items.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveSection(item.id)}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors duration-150",
-                        activeSection === item.id
-                          ? "border-border bg-active text-ink"
-                          : "border-transparent text-ink-secondary hover:bg-hover hover:text-ink",
-                      )}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      <span className="font-medium">{item.label}</span>
-                    </button>
-                  ))}
+                <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary lg:px-0">
+                  {group.label}
+                </div>
+                <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:overflow-visible lg:pb-0">
+                  <div className="flex min-w-max gap-2 lg:min-w-0 lg:flex-col lg:gap-1">
+                    {group.items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveSection(item.id)}
+                        className={cn(
+                          "flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors duration-150 lg:w-full",
+                          activeSection === item.id
+                            ? "border-border bg-active text-ink"
+                            : "border-transparent text-ink-secondary hover:bg-hover hover:text-ink",
+                        )}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="whitespace-nowrap font-medium">{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface p-5">
+        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface p-4 sm:p-5">
           <div className="mb-4 border-b border-border pb-4">
-            <h3 className="text-xl font-semibold text-ink">
+            <h3 className="text-lg font-semibold text-ink sm:text-xl">
               {SECTION_META[activeSection].title}
             </h3>
           </div>
 
-          <div className="h-[calc(100%-64px)] overflow-y-auto pr-1">
+          <div className="overflow-visible lg:h-[calc(100%-64px)] lg:overflow-y-auto lg:pr-1">
             {activeSection === "models" && <LLMTab />}
             {activeSection === "assistant" && <AssistantSettingsSection />}
             {activeSection === "workspace" && <WorkspaceSettingsSection />}
@@ -229,7 +237,7 @@ export function SettingsDialog({ onClose, embedded = false }: { onClose?: () => 
   );
 
   if (embedded) {
-    return <div className="rounded-xl border border-border bg-surface p-4 lg:p-5">{content}</div>;
+    return <div className="rounded-[24px] border border-border bg-surface p-3 sm:p-4 lg:p-5">{content}</div>;
   }
 
   return (
@@ -497,7 +505,7 @@ function WorkspaceSettingsSection() {
         title="SSH 服务器"
         description="研究助手和项目工作区复用同一套服务器 profile，不再单独维护第二套远程凭据。"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button size="sm" variant="secondary" onClick={() => { resetDraft(); setShowServerModal(true); }}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               新增服务器
@@ -537,10 +545,10 @@ function WorkspaceSettingsSection() {
                       <div className="mt-2 text-[11px] text-ink-tertiary">{server.message}</div>
                     ) : null}
                   </div>
-                  <div className="text-right text-xs text-ink-tertiary">
+                  <div className="w-full text-left text-xs text-ink-tertiary sm:w-auto sm:text-right">
                     <div>{server.username ? `用户：${server.username}` : "无需认证"}</div>
                     <div>{server.workspace_root || "未设置默认工作区目录"}</div>
-                    <div className="mt-2 flex justify-end gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2 sm:justify-end">
                       <Button size="sm" variant="secondary" onClick={() => handleEditServer(server)}>
                         编辑
                       </Button>
@@ -660,7 +668,7 @@ function WorkspaceSettingsSection() {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <Button size="sm" variant="secondary" onClick={closeServerModal} disabled={saving || testing}>
             取消
           </Button>
@@ -937,7 +945,7 @@ function AcpSettingsSection() {
           title="ACP 智能体桥接"
           description="ACP 用来把外部智能体接入 ResearchOS 的 Custom ACP 后端，让它复用项目上下文、工作区和权限确认机制。"
           action={(
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Button
                 size="sm"
                 variant="secondary"
@@ -1343,7 +1351,7 @@ function McpSettingsSection() {
         title="MCP 工具集成"
         description="ResearchOS 内置工具会在对话时自动提供给当前助手；这里额外管理扩展 MCP 配置。"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               size="sm"
               variant="secondary"
@@ -1810,7 +1818,7 @@ function SettingsFormCard({
             ) : null}
           </div>
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
+        {action ? <div className="w-full sm:w-auto sm:shrink-0">{action}</div> : null}
       </div>
       <div className="mt-3 space-y-3">{children}</div>
     </section>
@@ -1855,7 +1863,7 @@ function ProviderSelectionGrid({
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 md:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         {presetOptions.map((preset) => {
           const selected = preset.id === value;
           return (
@@ -2825,8 +2833,8 @@ function AddConfigInline({
           </SettingsFormCard>
         </>
       ) : null}
-      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-border/70 pt-3">
-        <label className="mr-auto flex items-center gap-2 text-[11px] text-ink-tertiary">
+      <div className="mt-2 flex flex-col gap-2 border-t border-border/70 pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+        <label className="flex items-center gap-2 text-[11px] text-ink-tertiary sm:mr-auto">
           <input
             type="checkbox"
             checked={activateAfterCreate}
@@ -3126,7 +3134,7 @@ function EditConfigInline({
           </SettingsFormCard>
         </>
       ) : null}
-      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-border/70 pt-3">
+      <div className="mt-2 flex flex-col gap-2 border-t border-border/70 pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
         <Button variant="ghost" size="sm" onClick={onCancel}>
           取消
         </Button>
@@ -3161,7 +3169,7 @@ function MiniInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="theme-input w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 font-mono text-xs text-ink placeholder:text-ink-placeholder outline-none focus:border-primary"
+        className="theme-input min-h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm text-ink placeholder:text-ink-placeholder outline-none focus:border-primary"
       />
     </div>
   );
@@ -3315,7 +3323,7 @@ function StorageSettingsSection() {
           <div>
             <h3 className="text-sm font-semibold text-ink">默认项目根目录</h3>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               size="sm"
               variant="secondary"
@@ -3341,7 +3349,7 @@ function StorageSettingsSection() {
             </Button>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr),auto]">
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr),auto]">
             <Input
               label="默认目录"
               value={defaultRootDraft}
