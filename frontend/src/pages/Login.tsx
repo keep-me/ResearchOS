@@ -38,22 +38,22 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#fbfaf7_0%,#f5f2eb_100%)] px-4 py-10">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#fbfaf7_0%,#f5f2eb_100%)] px-3 py-6 sm:px-4 sm:py-10">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196,102,60,0.12),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(217,119,6,0.10),transparent_18%)]" />
-      <div className="relative grid w-full max-w-6xl overflow-hidden rounded-[36px] border border-border/70 bg-white/92 shadow-[0_40px_120px_-56px_rgba(15,23,35,0.22)] backdrop-blur-2xl lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="border-b border-border/70 p-7 lg:border-b-0 lg:border-r lg:p-10">
+      <div className="relative grid w-full max-w-6xl overflow-hidden rounded-[28px] border border-border/70 bg-white/92 shadow-[0_40px_120px_-56px_rgba(15,23,35,0.22)] backdrop-blur-2xl sm:rounded-[36px] lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="border-b border-border/70 p-5 sm:p-7 lg:border-b-0 lg:border-r lg:p-10">
           <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-border/70 bg-primary/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary">
             <Sparkles className="h-4 w-4 text-primary" />
             ResearchOS
           </div>
 
-          <h1 className="max-w-xl text-4xl font-extrabold tracking-[-0.06em] text-ink">
+          <h1 className="max-w-xl text-3xl font-extrabold tracking-[-0.06em] text-ink sm:text-4xl">
             把论文采集、分析、写作和沉淀放在同一个研究桌面里。
           </h1>
         </div>
 
-        <div className="p-7 lg:p-10">
-          <div className="rounded-[32px] border border-border/70 bg-white p-6 shadow-[0_28px_70px_-42px_rgba(15,23,35,0.24)]">
+        <div className="p-5 sm:p-7 lg:p-10">
+          <div className="rounded-[24px] border border-border/70 bg-white p-5 shadow-[0_28px_70px_-42px_rgba(15,23,35,0.24)] sm:rounded-[32px] sm:p-6">
             <div className="mb-8">
               <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-[20px] bg-primary/10">
                 <Lock className="h-7 w-7 text-primary" />

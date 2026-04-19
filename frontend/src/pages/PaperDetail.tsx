@@ -1971,11 +1971,11 @@ export default function PaperDetail() {
       {/* ========== quick actions + tabs + reports ========== */}
       <div className="space-y-3">
         {/* Action cards */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 xl:grid-cols-3">
           <button
             onClick={() => void handleOpenPdf()}
             disabled={!canPreparePdf || pdfPreparing}
-            className="order-1 flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition-colors duration-150 hover:bg-hover disabled:opacity-50"
+            className="order-1 flex min-h-[72px] items-center gap-3 rounded-xl border border-border bg-white p-3.5 text-left transition-colors duration-150 hover:bg-hover disabled:opacity-50 sm:p-4"
             title={!canPreparePdf ? (pdfDownloadNote || "当前论文没有可用 PDF 来源") : hasRealArxiv ? "自动下载并打开本地 PDF" : "自动从开放来源下载并打开 PDF"}
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1988,7 +1988,7 @@ export default function PaperDetail() {
           <button
             onClick={handleAnalyzeRounds}
             disabled={analysisLoading}
-            className="order-5 flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition-colors duration-150 hover:bg-hover disabled:opacity-60"
+            className="order-5 flex min-h-[72px] items-center gap-3 rounded-xl border border-border bg-white p-3.5 text-left transition-colors duration-150 hover:bg-hover disabled:opacity-60 sm:p-4"
             title="生成鸟瞰扫描、内容理解、深度分析和最终结构化笔记"
           >
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${hasAnalysis ? "bg-success/10 text-success" : "bg-emerald-500/10 text-emerald-500"}`}>
@@ -2002,7 +2002,7 @@ export default function PaperDetail() {
             onClick={handleReasoning}
             disabled={reasoningLoading || !paper.pdf_path}
             title={!paper.pdf_path ? "需要先下载 PDF，才能分析推理链" : ""}
-            className="order-4 flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition-colors duration-150 hover:bg-hover disabled:opacity-60"
+            className="order-4 flex min-h-[72px] items-center gap-3 rounded-xl border border-border bg-white p-3.5 text-left transition-colors duration-150 hover:bg-hover disabled:opacity-60 sm:p-4"
           >
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${hasReasoning ? "bg-success/10 text-success" : !paper.pdf_path ? "bg-ink-tertiary/10 text-ink-tertiary" : "bg-purple-500/10 text-purple-500"}`}>
               {reasoningLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : hasReasoning ? <Check className="h-5 w-5" /> : <Brain className="h-5 w-5" />}
@@ -2014,7 +2014,7 @@ export default function PaperDetail() {
           <button
             onClick={handleSkim}
             disabled={skimLoading}
-            className="order-2 flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition-colors duration-150 hover:bg-hover disabled:opacity-60"
+            className="order-2 flex min-h-[72px] items-center gap-3 rounded-xl border border-border bg-white p-3.5 text-left transition-colors duration-150 hover:bg-hover disabled:opacity-60 sm:p-4"
           >
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${hasSkim ? "bg-success/10 text-success" : "bg-amber-500/10 text-amber-500"}`}>
               {skimLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : hasSkim ? <Check className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -2026,7 +2026,7 @@ export default function PaperDetail() {
           <button
             onClick={handleDeep}
             disabled={deepLoading || !paper.pdf_path}
-            className="order-3 flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition-colors duration-150 hover:bg-hover disabled:opacity-60"
+            className="order-3 flex min-h-[72px] items-center gap-3 rounded-xl border border-border bg-white p-3.5 text-left transition-colors duration-150 hover:bg-hover disabled:opacity-60 sm:p-4"
             title={!paper.pdf_path ? "需要先下载 PDF" : ""}
           >
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${hasDeep ? "bg-success/10 text-success" : !paper.pdf_path ? "bg-ink-tertiary/10 text-ink-tertiary" : "bg-indigo-500/10 text-indigo-500"}`}>
@@ -2040,7 +2040,7 @@ export default function PaperDetail() {
             onClick={handleEmbed}
             disabled={embedLoading}
             title={embedDone ? "重新生成向量并覆盖旧结果" : ""}
-            className={`order-6 flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition-colors duration-150 disabled:opacity-50 ${
+            className={`order-6 flex min-h-[72px] items-center gap-3 rounded-xl border border-border bg-white p-3.5 text-left transition-colors duration-150 disabled:opacity-50 sm:p-4 ${
               embedUsesFallback
                 ? "border-warning/40 bg-warning-light/20 text-warning hover:bg-warning-light/30"
                 : "hover:bg-hover"
@@ -2056,8 +2056,8 @@ export default function PaperDetail() {
         </div>
 
         {/* Inline actions */}
-        <div className="flex flex-wrap gap-2">
-          <label className="inline-flex items-center gap-1.5 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary">
+        <div className="grid gap-2 sm:flex sm:flex-wrap">
+          <label className="inline-flex min-h-11 items-center justify-between gap-2 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary sm:min-h-0 sm:justify-start">
             分析详略
             <select
               value={paperAnalysisDetailLevel}
@@ -2069,7 +2069,7 @@ export default function PaperDetail() {
               <option value="high">高</option>
             </select>
           </label>
-          <label className="inline-flex items-center gap-1.5 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary">
+          <label className="inline-flex min-h-11 items-center justify-between gap-2 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary sm:min-h-0 sm:justify-start">
             分析来源
             <select
               value={processingSource}
@@ -2080,7 +2080,7 @@ export default function PaperDetail() {
               <option value="markdown">Markdown</option>
             </select>
           </label>
-          <label className="inline-flex items-center gap-1.5 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary">
+          <label className="inline-flex min-h-11 items-center justify-between gap-2 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary sm:min-h-0 sm:justify-start">
             证据模式
             <select
               value={paperEvidenceMode}
@@ -2095,7 +2095,7 @@ export default function PaperDetail() {
             onClick={() => void handleProcessOcr(shouldForceOcr)}
             disabled={ocrProcessing || !canPreparePdf}
             title={!canPreparePdf ? (pdfDownloadNote || "当前论文没有可用 PDF 来源") : shouldForceOcr ? "重新执行 OCR 处理并更新 Markdown" : "执行 OCR 预处理；若缺少模型会自动下载到 MinerU 目录"}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink disabled:opacity-50 sm:min-h-0"
           >
             {ocrProcessing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2348,7 +2348,7 @@ export default function PaperDetail() {
                       ? `已提取 ${figures.length} 项，可手动勾选后分析或删除不需要的候选`
                       : "优先提取 arXiv 源图；若源图不足，会补充 OCR 结构化结果"}
                     action={paper.pdf_path ? (
-                      <div className="flex flex-wrap items-center justify-end gap-2">
+                      <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
                         <Button size="sm" variant="secondary" onClick={handleExtractFigures} disabled={figuresAnalyzing}>
                           {figures.length > 0 ? "重新提取候选" : "提取候选图表"}
                         </Button>
@@ -2380,7 +2380,7 @@ export default function PaperDetail() {
                   />
                   {figures.length > 0 ? (
                     <div className="space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-page px-3 py-2 text-xs text-ink-secondary">
+                      <div className="flex flex-col gap-2 rounded-xl border border-border bg-page px-3 py-2 text-xs text-ink-secondary sm:flex-row sm:items-center sm:justify-between">
                         <span>已选 {selectedFigureIds.size} / {selectableFigureIds.length} 项</span>
                         {selectedFigureIds.size > 0 && (
                           <button

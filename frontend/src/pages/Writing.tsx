@@ -237,10 +237,10 @@ export default function Writing() {
   const refineConversation = refineMsgs.slice(2);
 
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="animate-fade-in space-y-5 sm:space-y-6">
       {/* 页面头 */}
-      <div className="page-hero rounded-2xl p-6">
-        <div className="flex items-center justify-between">
+      <div className="page-hero rounded-2xl p-4 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-primary/10 p-2.5">
               <PenTool className="h-5 w-5 text-primary" />
@@ -264,7 +264,7 @@ export default function Writing() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:gap-6">
         {/* 左侧：模板选择 */}
         <div className="lg:col-span-3">
           <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">

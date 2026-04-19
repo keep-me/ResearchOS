@@ -851,8 +851,8 @@ export default function Collect() {
   }, [loadTopics, toast]);
 
   return (
-    <div className="animate-fade-in space-y-6 pb-8">
-      <section className="flex flex-col gap-3 rounded-[24px] border border-border/70 bg-surface/88 px-5 py-4 shadow-[0_20px_48px_-40px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+    <div className="animate-fade-in space-y-5 pb-8 sm:space-y-6">
+      <section className="flex flex-col gap-3 rounded-[22px] border border-border/70 bg-surface/88 px-4 py-4 shadow-[0_20px_48px_-40px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:rounded-[24px] sm:px-5">
         <div className="flex items-center gap-3">
           <div className="inline-flex rounded-2xl bg-primary/10 p-2.5 text-primary">
             <Download className="h-4 w-4" />
@@ -877,8 +877,8 @@ export default function Collect() {
         </div>
       )}
 
-      <section className="rounded-[28px] border border-border bg-surface p-6 shadow-sm">
-        <div className="mb-5 flex items-center justify-between gap-3">
+      <section className="rounded-[24px] border border-border bg-surface p-4 shadow-sm sm:rounded-[28px] sm:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3 sm:mb-5">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-primary" />
             <h2 className="text-lg font-semibold text-ink">检索与订阅</h2>
@@ -902,7 +902,7 @@ export default function Collect() {
             />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <FieldBlock label="搜索字段" icon={<Hash className="h-3.5 w-3.5" />}>
               <select value={searchField} onChange={(event) => setSearchField(event.target.value as TopicSearchField)} className="form-input">
                 {SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -957,7 +957,7 @@ export default function Collect() {
             </FieldBlock>
 
             <FieldBlock label="收录日期范围" icon={<Calendar className="h-3.5 w-3.5" />}>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="form-input" />
                 <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="form-input" />
               </div>
@@ -1002,8 +1002,8 @@ export default function Collect() {
           />
 
           {showSubscriptionForm && (
-            <div className="rounded-[24px] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-5 shadow-[0_18px_38px_-30px_rgba(15,23,35,0.28)]">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="rounded-[22px] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-4 shadow-[0_18px_38px_-30px_rgba(15,23,35,0.28)] sm:rounded-[24px] sm:p-5">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-ink">{editingSubscriptionId ? "编辑订阅" : "保存为自动订阅"}</h3>
                 </div>
@@ -1012,7 +1012,7 @@ export default function Collect() {
                 </button>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <FieldBlock label="订阅名称">
                   <input
                     value={subscriptionForm.name}
@@ -1101,9 +1101,9 @@ export default function Collect() {
         )}
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_1fr] xl:gap-6">
         <div className="space-y-6">
-          <section className="rounded-[28px] border border-border bg-surface p-6 shadow-sm">
+          <section className="rounded-[24px] border border-border bg-surface p-4 shadow-sm sm:rounded-[28px] sm:p-6">
             <div className="mb-4 flex items-center gap-3">
               <div className="rounded-2xl bg-primary/10 p-3 text-primary"><Hash className="h-4 w-4" /></div>
               <div>
@@ -1113,7 +1113,7 @@ export default function Collect() {
 
             <div className="space-y-4">
               <textarea value={arxivIdText} onChange={(event) => setArxivIdText(event.target.value)} placeholder={"2403.01234\n2401.00001v2\ncs/9901001"} className="min-h-[132px] w-full rounded-2xl border border-border bg-page px-4 py-3 text-sm text-ink outline-none transition focus:border-primary/30 focus:ring-4 focus:ring-primary/10" />
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3">
                 <FieldBlock label="归档到文件夹" icon={<Folder className="h-3.5 w-3.5" />}>
                   <select value={arxivIdFolderId} onChange={(event) => setArxivIdFolderId(event.target.value)} className="form-input">
                     <option value="">主论文库</option>
@@ -1132,7 +1132,7 @@ export default function Collect() {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-border bg-surface p-6 shadow-sm">
+          <section className="rounded-[24px] border border-border bg-surface p-4 shadow-sm sm:rounded-[28px] sm:p-6">
             <div className="mb-4 flex items-center gap-3">
               <div className="rounded-2xl bg-primary/10 p-3 text-primary"><Upload className="h-4 w-4" /></div>
               <div>
@@ -1174,7 +1174,7 @@ export default function Collect() {
                   </div>
                 </div>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <FieldBlock label="标题（单文件时可选）"><input value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} placeholder={uploadFiles.length > 1 ? "批量入库时将自动识别标题" : "仅单文件时覆盖自动识别标题"} disabled={uploadFiles.length > 1} className="form-input disabled:cursor-not-allowed disabled:bg-page/70 disabled:text-ink-tertiary" /></FieldBlock>
                 <FieldBlock label="arXiv ID（单文件时可选）"><input value={uploadArxivId} onChange={(event) => setUploadArxivId(event.target.value)} placeholder={uploadFiles.length > 1 ? "批量模式不可填" : "输入 arXiv ID"} disabled={uploadFiles.length > 1} className="form-input disabled:cursor-not-allowed disabled:bg-page/70 disabled:text-ink-tertiary" /></FieldBlock>
               </div>

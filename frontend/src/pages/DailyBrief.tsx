@@ -145,8 +145,8 @@ export default function DailyBrief() {
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      <div className="page-hero flex flex-col gap-5 rounded-[34px] p-6 lg:flex-row lg:items-start lg:justify-between lg:p-7">
+    <div className="animate-fade-in space-y-5 sm:space-y-6">
+      <div className="page-hero flex flex-col gap-4 rounded-[28px] p-4 sm:gap-5 sm:p-6 lg:flex-row lg:items-start lg:justify-between lg:rounded-[34px] lg:p-7">
         <div className="flex items-start gap-4">
           <div className="glass-segment flex h-14 w-14 items-center justify-center rounded-[22px]">
             <Newspaper className="h-6 w-6 text-primary" />
@@ -181,7 +181,7 @@ export default function DailyBrief() {
       </div>
 
       {showGenPanel && (
-        <div className="glass-card glass-card-strong rounded-[30px] p-5 lg:p-6">
+        <div className="glass-card glass-card-strong rounded-[24px] p-4 sm:rounded-[30px] sm:p-5 lg:p-6">
           <div className="flex flex-col gap-5">
             <div className="flex items-start gap-3">
               <div className="glass-segment flex h-10 w-10 items-center justify-center rounded-[18px]">
@@ -255,7 +255,7 @@ export default function DailyBrief() {
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)] xl:gap-5">
         <aside className="glass-card glass-card-strong flex min-h-[620px] flex-col overflow-hidden rounded-[30px]">
           <div className="border-b border-border/70 p-4">
             <div className="flex items-center justify-between gap-3">

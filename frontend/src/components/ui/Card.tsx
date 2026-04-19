@@ -31,13 +31,14 @@ interface CardHeaderProps {
   action?: ReactNode;
 }
 
-export function CardHeader({ title, action }: CardHeaderProps) {
+export function CardHeader({ title, description, action }: CardHeaderProps) {
   return (
-    <div className="mb-4 flex items-start justify-between">
-      <div>
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 flex-1">
         <h3 className="text-base font-semibold text-ink">{title}</h3>
+        {description ? <p className="mt-1 text-sm leading-6 text-ink-secondary">{description}</p> : null}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="min-w-0 sm:shrink-0">{action}</div>}
     </div>
   );
 }

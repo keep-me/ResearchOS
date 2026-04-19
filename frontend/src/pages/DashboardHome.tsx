@@ -166,7 +166,7 @@ export default function DashboardHome() {
   }, [currentConversation, handleOpenConversation, navigate]);
 
   return (
-    <div className="animate-fade-in space-y-5 pb-10">
+    <div className="animate-fade-in space-y-4 pb-8 sm:space-y-5 sm:pb-10">
       <section className="page-hero rounded-[28px] p-4 sm:p-5 lg:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-4">
@@ -225,8 +225,8 @@ export default function DashboardHome() {
             <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-ink">arXiv CS 今日趋势</h2>
             <p className="mt-1 text-xs text-ink-secondary">{arxivTrend?.window_label || "等待 arXiv 同步"}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-page px-3 text-sm font-semibold text-ink">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+            <span className="inline-flex h-10 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-page px-3 text-sm font-semibold text-ink sm:flex-none">
               <FileStack className="h-4 w-4 text-primary" />
               {arxivSubmissionCount !== null ? `${formatCount(arxivSubmissionCount)} 篇论文` : "等待统计"}
             </span>
@@ -281,7 +281,7 @@ export default function DashboardHome() {
 
         <Card className="rounded-[26px] p-4 sm:p-5">
           <SectionHeader title="本库研究资产" />
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <MiniMetric label="图谱节点" value={formatCount(snapshot.graph?.total_papers)} sub="已收录" icon={<GitBranch className="h-4 w-4" />} />
             <MiniMetric label="引用边" value={formatCount(snapshot.graph?.total_edges)} sub={`密度 ${(graphDensity * 100).toFixed(2)}%`} icon={<BarChart3 className="h-4 w-4" />} />
             <MiniMetric label="近 7 天摄入" value={formatCount(snapshot.today?.week_new)} sub="本库新增" icon={<Layers3 className="h-4 w-4" />} />
@@ -305,7 +305,7 @@ export default function DashboardHome() {
         </Card>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {MODULE_LINKS.map((item) => (
           <button key={item.to} type="button" onClick={() => navigate(item.to)} className="module-link-card">
             <div className="feature-icon !h-10 !w-10">

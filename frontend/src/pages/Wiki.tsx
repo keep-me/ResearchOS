@@ -221,9 +221,9 @@ export default function Wiki() {
   const hasContent = !!(topicContent || paperContent || selectedContent);
 
   return (
-    <div className="animate-fade-in space-y-7">
+    <div className="animate-fade-in space-y-5 sm:space-y-7">
       {/* 页面头 */}
-      <div className="page-hero rounded-[34px] p-6 lg:p-7">
+      <div className="page-hero rounded-[28px] p-4 sm:p-6 lg:rounded-[34px] lg:p-7">
         <div className="flex items-center gap-3">
           <div className="glass-segment flex h-12 w-12 items-center justify-center rounded-[20px]">
             <GraduationCap className="h-5 w-5 text-primary" />
@@ -243,8 +243,8 @@ export default function Wiki() {
       }} />
 
       {/* 搜索 */}
-      <div className="glass-card glass-card-soft rounded-[30px] p-6">
-        <div className="flex gap-3">
+      <div className="glass-card glass-card-soft rounded-[24px] p-4 sm:rounded-[30px] sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-tertiary" />
             {activeTab === "topic" ? (
@@ -321,7 +321,7 @@ export default function Wiki() {
       )}
 
       {/* 主体：左侧历史 + 右侧内容 */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:gap-6">
         {/* 左侧历史 */}
         <div className="lg:col-span-1">
           <Card>

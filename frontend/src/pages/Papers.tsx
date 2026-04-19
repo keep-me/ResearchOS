@@ -689,9 +689,9 @@ export default function Papers() {
 
   return (
     <div className="animate-fade-in">
-      <main className="flex flex-1 flex-col overflow-visible rounded-[28px] border border-border/80 bg-surface">
+      <main className="flex flex-1 flex-col overflow-visible rounded-[24px] border border-border/80 bg-surface sm:rounded-[28px]">
         {/* 头部 */}
-        <div className="flex flex-col gap-3 border-b border-border/75 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-3 border-b border-border/75 px-4 py-4 sm:px-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-lg font-bold text-ink">{activeFolderName}</h1>
@@ -723,7 +723,7 @@ export default function Papers() {
         </div>
 
         {/* 搜索 + 排序筛选 */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-border-light/80 px-5 py-3">
+        <div className="flex flex-col gap-2 border-b border-border-light/80 px-4 py-3 sm:px-5 lg:flex-row lg:flex-wrap lg:items-center">
           <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-tertiary" />
             <input
@@ -737,7 +737,7 @@ export default function Papers() {
 
           {/* 排序筛选控件 */}
           {selected.size === 0 && (
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
               {/* 状态筛选 */}
               <div className="flex items-center rounded-[18px] border border-border bg-page p-0.5">
                 {([
@@ -827,7 +827,7 @@ export default function Papers() {
           )}
         </div>
 
-        <div className="border-b border-border-light px-5 py-4">
+        <div className="border-b border-border-light px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-[16px] border border-border bg-page text-primary">
               <FolderSearch className="h-4 w-4" />
@@ -885,7 +885,7 @@ export default function Papers() {
         </div>
 
         {actionsList.length > 0 && (
-          <div className="border-b border-border-light px-5 py-4">
+          <div className="border-b border-border-light px-4 py-4 sm:px-5">
             <button
               onClick={() => setActionSectionOpen(!actionSectionOpen)}
               className="flex w-full items-center gap-3 text-left"
@@ -961,7 +961,7 @@ export default function Papers() {
           </div>
         )}
 
-        <div className="border-b border-border-light px-5 py-4">
+        <div className="border-b border-border-light px-4 py-4 sm:px-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-[16px] border border-border bg-page text-primary">
@@ -1112,7 +1112,7 @@ export default function Papers() {
 
         {/* ========== 分页 ========== */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border px-5 py-3">
+          <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-center sm:px-5 sm:text-left md:flex-row md:items-center md:justify-between">
             <span className="text-xs text-ink-tertiary">
               共 {total} 篇，第 {page}/{totalPages} 页
             </span>

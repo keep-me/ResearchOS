@@ -45,7 +45,7 @@ function LayoutShell() {
       ) : (
         <main className="min-h-dvh overflow-y-auto overflow-x-hidden bg-page pt-14 lg:ml-[var(--shell-sidebar-width)] lg:pt-0">
           <div className={cn(
-            "mx-auto min-w-0 px-4 py-4 md:px-6 lg:px-8",
+            "mx-auto min-w-0 px-3 py-3 sm:px-4 sm:py-4 md:px-6 lg:px-8",
             isWorkbenchWide ? "max-w-[1720px]" : "max-w-6xl",
           )}>
             <div className={isWorkbenchWide

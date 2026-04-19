@@ -28,9 +28,9 @@ export default function GraphExplorer() {
   }));
 
   return (
-    <div className="animate-fade-in space-y-7">
+    <div className="animate-fade-in space-y-5 sm:space-y-7">
       {/* 页面头 */}
-      <div className="page-hero rounded-[34px] p-6 lg:p-7">
+      <div className="page-hero rounded-[28px] p-4 sm:p-6 lg:rounded-[34px] lg:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4">
             <div className="glass-segment flex h-12 w-12 items-center justify-center rounded-[20px]">

@@ -967,13 +967,13 @@ export default function Projects() {
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-[320px,minmax(0,1fr)]">
+      <div className="grid gap-5 xl:grid-cols-[320px,minmax(0,1fr)] xl:gap-6">
         <aside className="space-y-5">
           <section
             data-testid="projects-list-panel"
-            className="rounded-[28px] border border-border/70 bg-surface/92 p-4 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.24)] backdrop-blur-xl"
+            className="rounded-[24px] border border-border/70 bg-surface/92 p-4 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.24)] backdrop-blur-xl sm:rounded-[28px]"
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">项目工作区</div>
                 <div className="mt-1 text-lg font-semibold tracking-[-0.04em] text-ink">项目列表</div>
@@ -1054,7 +1054,7 @@ export default function Projects() {
           {selectedProject ? (
             <section
               data-testid="project-companion-card"
-              className="rounded-[28px] border border-border/70 bg-surface/92 p-4 shadow-[0_28px_56px_-42px_rgba(15,23,35,0.24)] backdrop-blur-xl lg:p-5"
+              className="rounded-[24px] border border-border/70 bg-surface/92 p-4 shadow-[0_28px_56px_-42px_rgba(15,23,35,0.24)] backdrop-blur-xl sm:rounded-[28px] lg:p-5"
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -1088,7 +1088,7 @@ export default function Projects() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-2 md:grid-cols-3">
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 {projectStats.map((item) => (
                   <div key={item.label} className="rounded-[20px] border border-border/60 bg-page/72 px-3.5 py-3">
                     <div className="text-[11px] uppercase tracking-[0.12em] text-ink-tertiary">{item.label}</div>
@@ -1100,8 +1100,8 @@ export default function Projects() {
           ) : null}
 
           {selectedProject && runs.length > 0 ? (
-            <section className="rounded-[28px] border border-border/70 bg-surface/88 p-4 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.18)] backdrop-blur-xl">
-              <div className="flex items-center justify-between gap-3">
+            <section className="rounded-[24px] border border-border/70 bg-surface/88 p-4 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.18)] backdrop-blur-xl sm:rounded-[28px]">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm font-semibold text-ink">运行列表</div>
                 <div className="text-xs text-ink-tertiary">{runs.length} 条记录</div>
               </div>

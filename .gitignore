@@ -31,12 +31,15 @@ test-results/
 .env
 
 # AI agent config (local only)
+.codex/
+.github/
 .claude/
 CLAUDE.md
 .claw/sessions/
 .sandbox-home/
 .sandbox-tmp/
 .cursor/
+.opencode/
 .opencode/plans/
 config.json
 
@@ -91,3 +94,5 @@ packages/MinerU/runtime/
 
 # Local project/runtime artifacts
 projects/
+class/
+docs/

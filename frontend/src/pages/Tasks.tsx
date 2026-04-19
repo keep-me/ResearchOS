@@ -491,8 +491,8 @@ export default function TasksPage() {
   }, [resolveTaskWorkspace, toast]);
 
   return (
-    <div className="animate-fade-in space-y-7">
-      <div className="page-hero flex flex-col gap-5 rounded-[34px] p-6 lg:flex-row lg:items-center lg:justify-between lg:p-7">
+    <div className="animate-fade-in space-y-5 sm:space-y-7">
+      <div className="page-hero flex flex-col gap-4 rounded-[28px] p-4 sm:gap-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between lg:rounded-[34px] lg:p-7">
         <div className="flex items-center gap-3">
           <div className="glass-segment flex h-12 w-12 items-center justify-center rounded-[20px]">
             <ListTodo className="h-5 w-5 text-primary" />
@@ -508,22 +508,22 @@ export default function TasksPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="metric-tile rounded-[30px] p-5">
+      <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+        <div className="metric-tile rounded-[24px] p-4 sm:rounded-[30px] sm:p-5">
           <div className="flex items-center gap-2 text-ink-secondary">
             <Activity className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">运行中</span>
           </div>
           <p className="mt-3 text-3xl font-bold text-ink">{counts.running}</p>
         </div>
-        <div className="metric-tile rounded-[30px] p-5">
+        <div className="metric-tile rounded-[24px] p-4 sm:rounded-[30px] sm:p-5">
           <div className="flex items-center gap-2 text-ink-secondary">
             <CheckCircle2 className="h-4 w-4 text-success" />
             <span className="text-sm font-medium">已完成</span>
           </div>
           <p className="mt-3 text-3xl font-bold text-ink">{counts.completed}</p>
         </div>
-        <div className="metric-tile rounded-[30px] p-5">
+        <div className="metric-tile rounded-[24px] p-4 sm:rounded-[30px] sm:p-5">
           <div className="flex items-center gap-2 text-ink-secondary">
             <XCircle className="h-4 w-4 text-error" />
             <span className="text-sm font-medium">失败</span>
@@ -534,12 +534,12 @@ export default function TasksPage() {
 
       <TokenOverviewStrip categories={tokenCategories} totalTokens={totalWindowTokens} metrics={costMetrics} />
 
-      <div className="glass-segment flex flex-wrap gap-1.5 rounded-[26px] p-1.5">
+      <div className="glass-segment flex flex-wrap gap-1.5 rounded-[22px] p-1.5 sm:rounded-[26px]">
         {FILTERS.map((item) => (
           <button
             key={item.key}
             onClick={() => setFilter(item.key)}
-            className={`flex min-w-[96px] flex-1 items-center justify-center gap-1.5 rounded-[18px] py-2.5 text-xs font-medium transition-all ${
+            className={`flex min-w-[72px] flex-1 items-center justify-center gap-1.5 rounded-[16px] px-2 py-2.5 text-[11px] font-medium transition-all sm:min-w-[96px] sm:rounded-[18px] sm:text-xs ${
               filter === item.key
                 ? "border border-border bg-page text-ink"
                 : "text-ink-secondary hover:bg-surface/72 hover:text-ink"
@@ -570,7 +570,7 @@ export default function TasksPage() {
                 ? "任务记录"
                 : "暂无记录";
             return (
-            <section key={task.task_id} className="glass-card glass-card-soft rounded-[30px] p-5">
+            <section key={task.task_id} className="glass-card glass-card-soft rounded-[24px] p-4 sm:rounded-[30px] sm:p-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
