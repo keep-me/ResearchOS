@@ -48,7 +48,7 @@ export function Drawer({
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
-      <div className="absolute inset-y-0 right-0 flex max-w-full pl-6 sm:pl-10">
+      <div className="absolute inset-y-0 right-0 flex max-w-full pl-2 sm:pl-6">
         <div
           className={cn(
             "flex h-full w-screen flex-col border-l border-border bg-sidebar shadow-sm",
@@ -56,8 +56,8 @@ export function Drawer({
             className,
           )}
         >
-          <div className="flex items-center justify-between gap-4 border-b border-border bg-white px-5 py-4">
-            <h2 className="text-base font-semibold text-ink">{title}</h2>
+          <div className="flex items-start justify-between gap-3 border-b border-border bg-white px-4 py-3 sm:items-center sm:gap-4 sm:px-5 sm:py-4">
+            <h2 className="pr-2 text-base font-semibold text-ink">{title}</h2>
             <button
               type="button"
               aria-label="关闭抽屉"
@@ -67,7 +67,7 @@ export function Drawer({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4 md:px-5 md:py-5">
             {children}
           </div>
         </div>

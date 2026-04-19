@@ -1685,7 +1685,7 @@ export default function Projects() {
               />
             </>
           )}
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="secondary" onClick={() => setProjectModalOpen(false)} disabled={savingProject}>取消</Button>
             <Button
               loading={savingProject}

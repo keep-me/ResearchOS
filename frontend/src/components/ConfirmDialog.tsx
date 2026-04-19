@@ -54,10 +54,10 @@ export default function ConfirmDialog({
   return (
     <div
       ref={backdropRef}
-      className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/40 px-3 py-4"
       onClick={(e) => e.target === backdropRef.current && onCancel()}
     >
-      <div className="animate-fade-in w-full max-w-sm rounded-xl border border-border bg-white p-6 shadow-lg">
+      <div className="animate-fade-in w-full max-w-sm rounded-xl border border-border bg-white p-4 shadow-lg sm:p-6">
         <div className="mb-4 flex items-start gap-3">
           {isDanger && (
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-error/10">
@@ -70,18 +70,18 @@ export default function ConfirmDialog({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             onClick={onCancel}
             disabled={loading}
-            className="rounded-md border border-border bg-white px-4 py-2 text-sm font-medium text-ink-secondary transition-colors duration-150 hover:bg-hover disabled:opacity-50"
+            className="rounded-md border border-border bg-white px-4 py-2.5 text-sm font-medium text-ink-secondary transition-colors duration-150 hover:bg-hover disabled:opacity-50"
           >
             {cancelLabel}
           </button>
           <button
             onClick={handleConfirm}
             disabled={loading}
-            className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors duration-150 disabled:opacity-50 ${
+            className={`flex items-center justify-center gap-1.5 rounded-md px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 disabled:opacity-50 ${
               isDanger
                 ? "bg-error hover:bg-error/90"
                 : "bg-primary hover:bg-primary-hover"

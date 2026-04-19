@@ -2652,7 +2652,7 @@ function PaperMetadataEditorModal({
           </div>
         </label>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
             取消
           </Button>
@@ -2763,7 +2763,7 @@ function PaperSourceEditorModal({
           <p className="text-sm font-medium text-ink">{paper.title}</p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           <label className="space-y-1.5">
             <span className="text-xs font-medium text-ink-secondary">论文源链接</span>
             <input

@@ -3766,7 +3766,7 @@ export default function Agent() {
         maxWidth="xl"
       >
         <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
             <label className="flex items-center gap-3 rounded-2xl border border-border/70 bg-white/82 px-4 py-3">
               <Search className="h-4 w-4 text-primary" />
               <input
@@ -3903,7 +3903,7 @@ export default function Agent() {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-page/45 px-4 py-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-page/45 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div className="min-w-0 text-sm text-ink-secondary">
               {selectedPaperIds.length > 0 ? (
                 <>
@@ -3916,7 +3916,7 @@ export default function Agent() {
                 "未选择论文"
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <button
                 type="button"
                 onClick={() => {

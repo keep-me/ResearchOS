@@ -63,19 +63,19 @@ export function Modal({
         )}
         onClick={onClose}
       />
-      <div className="relative z-10 flex min-h-full items-start justify-center px-4 py-6 sm:px-6 sm:py-8">
+      <div className="relative z-10 flex min-h-full items-start justify-center px-2 py-3 sm:px-4 sm:py-6">
         <div
           className={cn(
-            "my-auto w-full max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface p-6 shadow-[0_24px_64px_-32px_rgba(0,0,0,0.55)] animate-glass-enter sm:max-h-[calc(100dvh-4rem)]",
+            "my-auto w-full max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface p-4 shadow-[0_24px_64px_-32px_rgba(0,0,0,0.55)] animate-glass-enter sm:max-h-[calc(100dvh-3rem)] sm:p-6",
             maxWidthStyles[maxWidth],
             className
           )}
         >
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-ink">{title}</h2>
+          <div className="mb-4 flex items-start justify-between gap-3 sm:mb-5 sm:items-center sm:gap-4">
+            <h2 className="pr-2 text-base font-semibold text-ink sm:text-lg">{title}</h2>
             <button
               onClick={onClose}
-              className="rounded-md p-2 text-ink-tertiary transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active"
+              className="shrink-0 rounded-md p-2 text-ink-tertiary transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active"
             >
               <X className="h-5 w-5" />
             </button>

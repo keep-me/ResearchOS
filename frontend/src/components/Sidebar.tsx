@@ -374,11 +374,11 @@ export default function Sidebar() {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar transition-transform duration-150 lg:w-[var(--shell-sidebar-width)]",
+          "fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-64 flex-col overflow-hidden border-r border-border bg-sidebar overscroll-contain transition-transform duration-150 lg:w-[var(--shell-sidebar-width)]",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
-        <div className={cn("flex items-center gap-2 border-b border-border px-3 py-3", desktopCollapsed && "justify-center px-2")}>
+        <div className={cn("shrink-0 flex items-center gap-2 border-b border-border px-3 py-3", desktopCollapsed && "justify-center px-2")}>
           <Link
             to="/"
             onClick={() => setMobileOpen(false)}
@@ -413,7 +413,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <div className={cn("border-b border-border px-2 pb-3", desktopCollapsed && "px-1.5")}>
+        <div className={cn("shrink-0 border-b border-border px-2 pb-3", desktopCollapsed && "px-1.5")}>
           <SectionLabel collapsed={desktopCollapsed}>导航</SectionLabel>
           <nav className="space-y-0.5">
             {shellNavSections.map((section) => section.items.filter((item) => item.to !== "/settings")).flat().map((item) => {
@@ -447,7 +447,7 @@ export default function Sidebar() {
         </div>
 
         {!desktopCollapsed ? (
-          <div className="flex min-h-0 flex-1 flex-col px-2 py-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-3">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-[11px] font-medium tracking-[0.02em] text-ink-tertiary">历史</p>
               <div className="flex items-center gap-1">
@@ -470,7 +470,7 @@ export default function Sidebar() {
               </div>
             </div>
 
-            <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))]">
               {loadingRoots ? (
                 <div className="flex items-center gap-2 rounded-md px-2 py-3 text-xs text-ink-tertiary">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -612,7 +612,7 @@ export default function Sidebar() {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 py-3">
+          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overscroll-contain px-1.5 py-3 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))]">
             <button
               type="button"
               onClick={openCreateWorkspaceDialog}
@@ -662,7 +662,7 @@ export default function Sidebar() {
           </div>
         )}
 
-        <div className={cn("border-t border-border px-2 py-3", desktopCollapsed && "px-1.5")}>
+        <div className={cn("shrink-0 border-t border-border px-2 py-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))]", desktopCollapsed && "px-1.5")}>
           <div className={cn("mb-3", desktopCollapsed && "flex justify-center")}>
             <VisualStyleSwitcher collapsed={desktopCollapsed} />
           </div>
