@@ -402,10 +402,12 @@ class ArxivClient:
         if target.exists() and target.stat().st_size > 0:
             return str(target)
 
-        url = f"https://arxiv.org/e-print/{clean_id}"
+        # `/src/<id>` is more stable than `/e-print/<id>` for source bundle downloads
+        # and still returns the source tarball / gzip payload we need here.
+        url = f"https://arxiv.org/src/{clean_id}"
         response = self.client.get(
             url,
-            timeout=90,
+            timeout=45,
             headers={"User-Agent": "ResearchOS/1.0"},
         )
         response.raise_for_status()

@@ -327,6 +327,36 @@ function getProcessingSourceLabel(source: PaperContentSource): string {
   return source === "markdown" ? "Markdown" : "PDF";
 }
 
+function compactPlainText(value: string | null | undefined): string {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function stripMarkdownTable(value: string | null | undefined): string {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("|"))
+    .join(" ");
+}
+
+function buildFigureCandidateSummary(figure: FigureAnalysisItem, candidateSourceLabel: string): string {
+  const caption = compactPlainText(figure.caption);
+  if (caption) {
+    return caption.length > 180 ? `${caption.slice(0, 180).trim()}...` : caption;
+  }
+
+  const text = compactPlainText(stripMarkdownTable(figure.ocr_markdown));
+  if (text) {
+    return text.length > 180 ? `${text.slice(0, 180).trim()}...` : text;
+  }
+
+  const source = candidateSourceLabel || "当前提取链路";
+  if (figure.image_type === "table") {
+    return `${source}已识别到表格候选，可勾选后再做图表分析。`;
+  }
+  return `${source}已识别到图表候选，可勾选后再做图表分析。`;
+}
+
 function normalizeSavedPaperContentSource(value: unknown): PaperContentSource | null {
   const raw = String(value || "").trim().toLowerCase();
   if (["markdown", "md", "ocr", "mineru"].includes(raw)) return "markdown";
@@ -916,6 +946,7 @@ const SKIM_STAGES = ["提取论文信息...", "总结核心问题...", "提炼�
 const DEEP_STAGES = ["解析论文结构...", "阅读方法细节...", "整理实验结论...", "生成报告..."];
 const FIGURE_STAGES = ["准备 PDF 文件...", "提取图表与表格...", "保存提取结果..."];
 const OCR_STAGES = ["准备 PDF 文件...", "检查 / 下载 MinerU 模型...", "运行 MinerU 本地 OCR...", "读取 Markdown 结果..."];
+const PDF_STAGES = ["检查本地 PDF...", "解析论文来源...", "下载并准备 PDF...", "打开阅读器..."];
 
 function PipelineProgress({
   type,
@@ -923,7 +954,7 @@ function PipelineProgress({
   messageOverride,
   progressOverride,
 }: {
-  type: "skim" | "deep" | "figure" | "reasoning" | "embed" | "ocr";
+  type: "skim" | "deep" | "figure" | "reasoning" | "embed" | "ocr" | "pdf";
   onCancel?: () => void;
   messageOverride?: string;
   progressOverride?: number | null;
@@ -936,6 +967,7 @@ function PipelineProgress({
     type === "deep" ? DEEP_STAGES :
     type === "figure" ? FIGURE_STAGES :
     type === "ocr" ? OCR_STAGES :
+    type === "pdf" ? PDF_STAGES :
     type === "reasoning" ? ["提取关键证据...", "分析方法链路...", "评估实验设计...", "生成推理报告..."] :
     ["生成论文向量..."];
 
@@ -944,6 +976,7 @@ function PipelineProgress({
     type === "deep" ? "30-60 秒" :
     type === "figure" ? "1-5 分钟（取决于页数）" :
     type === "ocr" ? "1-5 分钟（取决于页数）" :
+    type === "pdf" ? "10-60 秒" :
     type === "reasoning" ? "20-40 秒" : "5-10 秒";
 
   useEffect(() => {
@@ -1049,6 +1082,10 @@ export default function PaperDetail() {
   const [embedTaskId, setEmbedTaskId] = useState<string | null>(null);
   const [embedTaskMessage, setEmbedTaskMessage] = useState("");
   const [embedTaskProgress, setEmbedTaskProgress] = useState<number | null>(null);
+  const [pdfPreparing, setPdfPreparing] = useState(false);
+  const [pdfTaskId, setPdfTaskId] = useState<string | null>(null);
+  const [pdfTaskMessage, setPdfTaskMessage] = useState("");
+  const [pdfTaskProgress, setPdfTaskProgress] = useState<number | null>(null);
   const [embedDone, setEmbedDone] = useState<boolean | null>(null);
   const [similarLoading, setSimilarLoading] = useState(false);
   const similarFetchKeyRef = useRef("");
@@ -1057,6 +1094,7 @@ export default function PaperDetail() {
   const [figuresAnalyzing, setFiguresAnalyzing] = useState(false);
   const [processingSource, setProcessingSource] = useState<PaperContentSource>("pdf");
   const [selectedFigureIds, setSelectedFigureIds] = useState<Set<string>>(new Set());
+  const [figureTaskId, setFigureTaskId] = useState<string | null>(null);
   const [figureTaskMessage, setFigureTaskMessage] = useState("");
   const [figureTaskProgress, setFigureTaskProgress] = useState<number | null>(null);
   const [ocrProcessing, setOcrProcessing] = useState(false);
@@ -1253,6 +1291,54 @@ export default function PaperDetail() {
     }
   }, []);
 
+  const handleOpenPdf = async () => {
+    if (!id || !paper) return;
+    if (paper.pdf_path) {
+      setReaderOpen(true);
+      return;
+    }
+    setPdfPreparing(true);
+    setPdfTaskMessage("创建 PDF 下载任务...");
+    setPdfTaskProgress(1);
+    try {
+      const kickoff = await paperApi.downloadPdfAsync(id);
+      if (!kickoff.task_id) throw new Error("PDF 下载任务启动失败");
+      setPdfTaskId(kickoff.task_id);
+      const payload = await pollTaskResult<{ status?: string; pdf_path?: string }>(kickoff.task_id, {
+        timeoutMessage: "PDF 下载超时，请到任务后台继续查看进度",
+        onStatus: (status) => {
+          if (typeof status.progress_pct === "number") {
+            setPdfTaskProgress(Math.max(0, Math.min(100, status.progress_pct)));
+          }
+          if (status.message) setPdfTaskMessage(status.message);
+        },
+        fallbackResult: async () => {
+          const latest = await refreshPaperDetail();
+          return {
+            status: latest?.pdf_path ? "downloaded" : "",
+            pdf_path: latest?.pdf_path || "",
+          };
+        },
+      });
+      setPdfTaskProgress(100);
+      setPdfTaskMessage("PDF 已就绪");
+      const updated = await refreshPaperDetail();
+      if (updated?.pdf_path || payload?.pdf_path) {
+        setReaderOpen(true);
+        toast("success", `PDF ${payload?.status === "exists" ? "已存在，已直接打开" : "下载完成"}`);
+      } else {
+        throw new Error("PDF 已处理完成，但未找到本地文件");
+      }
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : "PDF 下载失败");
+    } finally {
+      setPdfPreparing(false);
+      setPdfTaskId(null);
+      setPdfTaskMessage("");
+      setPdfTaskProgress(null);
+    }
+  };
+
   const handleProcessOcr = async (force = false) => {
     if (!id) return;
     setOcrProcessing(true);
@@ -1438,6 +1524,7 @@ export default function PaperDetail() {
       if (!kickoff.task_id) {
         throw new Error("图表提取任务启动失败");
       }
+      setFigureTaskId(kickoff.task_id);
       const payload = await pollTaskResult<{ items?: FigureAnalysisItem[] }>(kickoff.task_id, {
         timeoutMessage: "图表提取超时，请到任务后台继续查看进度",
         onStatus: (status) => {
@@ -1478,6 +1565,7 @@ export default function PaperDetail() {
       toast("error", err instanceof Error ? err.message : "图表候选提取失败");
     } finally {
       setFiguresAnalyzing(false);
+      setFigureTaskId(null);
       setFigureTaskMessage("");
       setFigureTaskProgress(null);
     }
@@ -1491,11 +1579,26 @@ export default function PaperDetail() {
       return;
     }
     setFiguresAnalyzing(true);
-    setFigureTaskMessage(`AI 正在分析 ${figureIds.length} 个图表...`);
-    setFigureTaskProgress(null);
+    setFigureTaskMessage(`创建图表分析任务（${figureIds.length} 项）...`);
+    setFigureTaskProgress(1);
     setReportTab("figures");
     try {
-      const res = await paperApi.analyzeSelectedFigures(id, figureIds);
+      const kickoff = await paperApi.analyzeSelectedFiguresAsync(id, figureIds);
+      if (!kickoff.task_id) throw new Error("图表分析任务启动失败");
+      setFigureTaskId(kickoff.task_id);
+      const res = await pollTaskResult<{ items?: FigureAnalysisItem[] }>(kickoff.task_id, {
+        timeoutMessage: "图表分析超时，请到任务后台继续查看进度",
+        onStatus: (status) => {
+          if (typeof status.progress_pct === "number") {
+            setFigureTaskProgress(Math.max(0, Math.min(100, status.progress_pct)));
+          }
+          if (status.message) setFigureTaskMessage(status.message);
+        },
+        fallbackResult: async () => {
+          const latest = await paperApi.getFigures(id);
+          return { items: Array.isArray(latest.items) ? latest.items : [] };
+        },
+      });
       const items = Array.isArray(res.items) ? res.items : [];
       setFigures(items);
       setSelectedFigureIds(new Set());
@@ -1504,6 +1607,7 @@ export default function PaperDetail() {
       toast("error", err instanceof Error ? err.message : "图表分析失败");
     } finally {
       setFiguresAnalyzing(false);
+      setFigureTaskId(null);
       setFigureTaskMessage("");
       setFigureTaskProgress(null);
     }
@@ -1869,28 +1973,13 @@ export default function PaperDetail() {
         {/* Action cards */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <button
-            onClick={async () => {
-              if (!id) return;
-              try {
-                if (!paper.pdf_path) {
-                  toast("info", "正在准备 PDF...");
-                  const res = await paperApi.downloadPdf(id);
-                  toast("success", `PDF ${res.status === "exists" ? "已存在，已直接打开" : "下载完成"}`);
-                }
-                const updated = await refreshPaperDetail();
-                if (updated?.pdf_path || paper.pdf_path) {
-                  setReaderOpen(true);
-                }
-              } catch (e) {
-                toast("error", e instanceof Error ? e.message : "PDF 下载失败");
-              }
-            }}
-            disabled={!canPreparePdf}
+            onClick={() => void handleOpenPdf()}
+            disabled={!canPreparePdf || pdfPreparing}
             className="order-1 flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition-colors duration-150 hover:bg-hover disabled:opacity-50"
             title={!canPreparePdf ? (pdfDownloadNote || "当前论文没有可用 PDF 来源") : hasRealArxiv ? "自动下载并打开本地 PDF" : "自动从开放来源下载并打开 PDF"}
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <FileSearch className="h-5 w-5" />
+              {pdfPreparing ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileSearch className="h-5 w-5" />}
             </div>
             <div className="text-left">
               <p className="text-sm font-semibold text-ink">阅读 PDF</p>
@@ -2035,6 +2124,20 @@ export default function PaperDetail() {
           } : undefined}
         />
       )}
+      {pdfPreparing && (
+        <PipelineProgress
+          type="pdf"
+          messageOverride={pdfTaskMessage || undefined}
+          progressOverride={pdfTaskProgress}
+          onCancel={pdfTaskId ? () => {
+            void tasksApi.cancel(pdfTaskId).then(() => {
+              toast("info", "已发送 PDF 下载终止请求");
+            }).catch((err) => {
+              toast("error", err instanceof Error ? err.message : "终止 PDF 下载失败");
+            });
+          } : undefined}
+        />
+      )}
       {deepLoading && (
         <PipelineProgress
           type="deep"
@@ -2068,6 +2171,13 @@ export default function PaperDetail() {
           type="figure"
           messageOverride={figureTaskMessage || undefined}
           progressOverride={figureTaskProgress}
+          onCancel={figureTaskId ? () => {
+            void tasksApi.cancel(figureTaskId).then(() => {
+              toast("info", "已发送图表任务终止请求");
+            }).catch((err) => {
+              toast("error", err instanceof Error ? err.message : "终止图表任务失败");
+            });
+          } : undefined}
         />
       )}
       {ocrProcessing && (
@@ -2236,7 +2346,7 @@ export default function PaperDetail() {
                     title="图表候选"
                     description={figures.length > 0
                       ? `已提取 ${figures.length} 项，可手动勾选后分析或删除不需要的候选`
-                      : "先提取 arXiv 图片；若 OCR 已就绪，会自动补充 Markdown 表格，再手动决定哪些值得分析"}
+                      : "优先提取 arXiv 源图；若源图不足，会补充 OCR 结构化结果"}
                     action={paper.pdf_path ? (
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <Button size="sm" variant="secondary" onClick={handleExtractFigures} disabled={figuresAnalyzing}>
@@ -3372,9 +3482,16 @@ function FigureCard({
   const [lightbox, setLightbox] = useState(false);
   const imgUrl = resolveFigurePreviewUrl(paperId, figure);
   const analysisText = String(figure.analysis_markdown || (figure.analyzed ? figure.description : "") || "").trim();
-  const candidateText = String(figure.ocr_markdown || "").trim();
-  const candidatePreview = candidateText.length > 1600 ? `${candidateText.slice(0, 1600).trim()}...` : candidateText;
   const analyzed = !!figure.analyzed || !!analysisText;
+  const candidateSourceLabel = (() => {
+    const raw = String(figure.candidate_source || "").trim().toLowerCase();
+    if (!raw) return "";
+    if (raw === "arxiv_source") return "arXiv 源图";
+    if (raw === "mineru_structured") return "MinerU 结构化";
+    if (raw === "mineru_asset") return "MinerU 图片";
+    return raw;
+  })();
+  const candidateSummary = buildFigureCandidateSummary(figure, candidateSourceLabel);
 
   return (
     <>
@@ -3407,6 +3524,11 @@ function FigureCard({
                 <span className="text-[10px] text-ink-tertiary">
                   第 {figure.page_number} 页
                 </span>
+                {candidateSourceLabel && (
+                  <span className="text-[10px] text-ink-tertiary">
+                    · {candidateSourceLabel}
+                  </span>
+                )}
               </div>
               {figure.caption && <p className="mt-0.5 truncate text-xs font-medium text-ink">{figure.caption}</p>}
             </div>
@@ -3445,18 +3567,14 @@ function FigureCard({
             {/* AI description */}
             <div className="border-t border-border/50 px-4 py-3">
               <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-primary/70">
-                <Sparkles className="h-3 w-3" /> {analyzed ? "解析结果" : candidatePreview ? "提取信息" : "待分析"}
+                <Sparkles className="h-3 w-3" /> {analyzed ? "解析结果" : candidateSummary ? "候选摘要" : "待分析"}
               </div>
               {analyzed ? (
                 <FigureAnalysisView description={analysisText} />
-              ) : candidatePreview ? (
+              ) : candidateSummary ? (
                 <div className="rounded-xl border border-border bg-page px-3 py-2.5">
-                  <p className="mb-1 text-[11px] font-semibold text-ink">提取信息</p>
-                  <div className="prose prose-sm max-w-none text-ink-secondary dark:prose-invert">
-                    <Suspense fallback={<div className="h-8 animate-pulse rounded bg-surface" />}>
-                      <Markdown>{candidatePreview}</Markdown>
-                    </Suspense>
-                  </div>
+                  <p className="mb-1 text-[11px] font-semibold text-ink">候选摘要</p>
+                  <p className="text-sm text-ink-secondary">{candidateSummary}</p>
                 </div>
               ) : (
                 <p className="text-sm text-ink-tertiary">

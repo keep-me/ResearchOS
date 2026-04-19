@@ -464,6 +464,11 @@ export const paperApi = {
       `/papers/${id}/figures/analyze`,
       { figure_ids: figureIds },
     ),
+  analyzeSelectedFiguresAsync: (id: string, figureIds: string[]) =>
+    post<{ task_id: string; status: string; message?: string }>(
+      `/papers/${id}/figures/analyze-async`,
+      { figure_ids: figureIds },
+    ),
   deleteFigure: (id: string, figureId: string) =>
     del<{ paper_id: string; deleted: string; count: number; items: FigureAnalysisItem[] }>(
       `/papers/${id}/figures/${figureId}`,
@@ -522,6 +527,8 @@ export const paperApi = {
   },
   downloadPdf: (id: string) =>
     post<{ status: string; pdf_path: string }>(`/papers/${id}/download-pdf`),
+  downloadPdfAsync: (id: string) =>
+    post<{ task_id: string; status: string; message?: string }>(`/papers/${id}/download-pdf-async`),
   updateSource: (
     id: string,
     body: {

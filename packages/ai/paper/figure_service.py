@@ -322,6 +322,7 @@ class FigureService:
                     pdf_path=pdf_path,
                     max_figures=max_figures,
                     seen_hashes=seen_hashes,
+                    allow_generate=True,
                 )
 
             ocr_tables = self._extract_via_mineru_tables(
@@ -329,6 +330,7 @@ class FigureService:
                 pdf_path=pdf_path,
                 max_figures=max_figures,
                 seen_hashes=seen_hashes,
+                allow_generate=not source_figures,
             )
             combined_figures = source_figures or ocr_fallback_figures
             combined = [*combined_figures, *ocr_tables]
@@ -502,8 +504,13 @@ class FigureService:
         pdf_path: str,
         max_figures: int,
         seen_hashes: set[str],
+        allow_generate: bool = False,
     ) -> list[ExtractedFigure]:
-        bundle = MinerUOcrRuntime.get_cached_bundle(paper_id, pdf_path)
+        bundle = (
+            MinerUOcrRuntime.ensure_bundle(paper_id, pdf_path, force=False)
+            if allow_generate
+            else MinerUOcrRuntime.get_cached_bundle(paper_id, pdf_path)
+        )
         if bundle is None:
             return []
 
@@ -525,8 +532,13 @@ class FigureService:
         pdf_path: str,
         max_figures: int,
         seen_hashes: set[str],
+        allow_generate: bool = False,
     ) -> list[ExtractedFigure]:
-        bundle = MinerUOcrRuntime.get_cached_bundle(paper_id, pdf_path)
+        bundle = (
+            MinerUOcrRuntime.ensure_bundle(paper_id, pdf_path, force=False)
+            if allow_generate
+            else MinerUOcrRuntime.get_cached_bundle(paper_id, pdf_path)
+        )
         if bundle is None:
             return []
 

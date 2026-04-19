@@ -1200,6 +1200,60 @@ def download_paper_pdf(paper_id: UUID) -> dict:
             raise HTTPException(status_code=500, detail=f"Failed to prepare PDF: {exc}") from exc
 
 
+@router.post("/papers/{paper_id}/download-pdf-async")
+def download_paper_pdf_async(paper_id: UUID) -> dict:
+    """Prepare a paper PDF in background and return task id."""
+
+    with session_scope() as session:
+        repo = _paper_data(session).papers
+        try:
+            paper = repo.get_by_id(paper_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        title = str(getattr(paper, "title", "") or "").strip()
+
+    task_title = f"下载 PDF: {(title[:36] + '...') if len(title) > 36 else title}" if title else f"下载 PDF: {str(paper_id)[:8]}"
+
+    def _run_task(progress_callback: Callable[[str, int, int], None] | None = None) -> dict:
+        def _progress(message: str, current: int, total: int = 100) -> None:
+            if progress_callback is not None:
+                progress_callback(message, current, total)
+
+        _progress("检查本地 PDF...", 5, 100)
+        with session_scope() as session:
+            repo = _paper_data(session).papers
+            try:
+                paper = repo.get_by_id(paper_id)
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
+
+            existing_path = _resolve_stored_pdf_path(getattr(paper, "pdf_path", None))
+            if existing_path and existing_path.exists():
+                _progress("本地 PDF 已存在", 100, 100)
+                return {"status": "exists", "pdf_path": str(existing_path)}
+
+            _progress("解析论文来源...", 20, 100)
+            _progress("准备并下载 PDF...", 55, 100)
+            try:
+                pdf_path = _ensure_paper_pdf(session, repo, paper, paper_id)
+            except HTTPException as exc:
+                raise RuntimeError(str(exc.detail or exc)) from exc
+            except Exception as exc:
+                raise RuntimeError(f"Failed to prepare PDF: {exc}") from exc
+
+        _progress("PDF 已就绪", 100, 100)
+        return {"status": "downloaded", "pdf_path": pdf_path}
+
+    task_id = global_tracker.submit(
+        task_type="paper_pdf",
+        title=task_title,
+        fn=_run_task,
+        total=100,
+        metadata={"source": "paper", "source_id": str(paper_id), "paper_id": str(paper_id)},
+    )
+    return {"task_id": task_id, "status": "running", "message": "PDF 下载任务已启动"}
+
+
 @router.get("/papers/{paper_id}/pdf")
 def serve_paper_pdf(paper_id: UUID) -> FileResponse:
     """Serve a paper PDF from local storage, arXiv, or an external open-access source."""
@@ -1789,6 +1843,98 @@ def analyze_paper_figures(
     items = _attach_figure_image_urls(paper_id, FigureService.get_paper_analyses(paper_id))
     _cache_paper_figures_items(paper_id, items)
     return {"paper_id": str(paper_id), "count": len(items), "items": items}
+
+
+@router.post("/papers/{paper_id}/figures/analyze-async")
+def analyze_paper_figures_async(
+    paper_id: UUID,
+    max_figures: int = Query(default=10, ge=1, le=30),
+    body: PaperFigureAnalyzeReq | None = None,
+) -> dict:
+    """Analyze selected figure candidates in background and return task id."""
+    _invalidate_paper_figures_cache(paper_id)
+
+    with session_scope() as session:
+        repo = _paper_data(session).papers
+        try:
+            paper = repo.get_by_id(paper_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        title = str(getattr(paper, "title", "") or "").strip()
+
+    selected_ids = [
+        str(figure_id).strip()
+        for figure_id in (body.figure_ids if body else [])
+        if str(figure_id).strip()
+    ]
+    task_title = (
+        f"图表分析: {(title[:28] + '...') if len(title) > 28 else title}"
+        if title else f"图表分析: {str(paper_id)[:8]}"
+    )
+
+    def _run_task(progress_callback: Callable[[str, int, int], None] | None = None) -> dict:
+        def _progress(message: str, current: int, total: int = 100) -> None:
+            if progress_callback is not None:
+                progress_callback(message, current, total)
+
+        from packages.ai.paper.figure_service import FigureService
+
+        svc = FigureService()
+        _progress("准备图表候选...", 8, 100)
+        try:
+            if selected_ids:
+                _progress(f"分析 {len(selected_ids)} 个已选图表...", 30, 100)
+                svc.analyze_selected_figures(paper_id, selected_ids)
+            else:
+                source_arxiv_id: str | None = None
+                with session_scope() as session:
+                    repo = _paper_data(session).papers
+                    try:
+                        paper = repo.get_by_id(paper_id)
+                    except ValueError as exc:
+                        raise RuntimeError(str(exc)) from exc
+                    _progress("准备 PDF 文件...", 22, 100)
+                    try:
+                        pdf_path = _ensure_paper_pdf(session, repo, paper, paper_id)
+                    except HTTPException as exc:
+                        raise RuntimeError(str(exc.detail or exc)) from exc
+                    except Exception as exc:
+                        raise RuntimeError(f"Failed to prepare PDF: {exc}") from exc
+                    source_arxiv_id = paper.arxiv_id if _has_real_arxiv_id(getattr(paper, "arxiv_id", None)) else None
+
+                _progress("分析图表内容...", 58, 100)
+                svc.analyze_paper_figures(
+                    paper_id,
+                    pdf_path,
+                    max_figures,
+                    arxiv_id=source_arxiv_id,
+                )
+        except FileNotFoundError as exc:
+            raise RuntimeError(str(exc)) from exc
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"Failed to analyze figures: {exc}") from exc
+
+        _progress("保存图表分析结果...", 92, 100)
+        items = _attach_figure_image_urls(paper_id, FigureService.get_paper_analyses(paper_id))
+        _cache_paper_figures_items(paper_id, items)
+        _progress("图表分析完成", 100, 100)
+        return {"paper_id": str(paper_id), "count": len(items), "items": items}
+
+    task_id = global_tracker.submit(
+        task_type="figure_analyze",
+        title=task_title,
+        fn=_run_task,
+        total=100,
+        metadata={
+            "source": "paper",
+            "source_id": str(paper_id),
+            "paper_id": str(paper_id),
+            "figure_count": len(selected_ids) if selected_ids else max_figures,
+        },
+    )
+    return {"task_id": task_id, "status": "running", "message": "图表分析任务已启动"}
 
 
 @router.delete("/papers/{paper_id}/figures/{figure_id}")
