@@ -419,16 +419,16 @@ export default function Sidebar() {
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
-        <div className={cn("shrink-0 flex items-center gap-2 border-b border-border px-3 py-3", effectiveCollapsed && "justify-center px-2")}>
+        <div className={cn("shrink-0 flex items-center gap-2 border-b border-border px-3 py-2.5 sm:py-3", effectiveCollapsed && "justify-center px-2")}>
           <Link
             to="/"
             onClick={() => setMobileOpen(false)}
             className={cn("flex min-w-0 items-center gap-2.5", effectiveCollapsed && "justify-center")}
           >
-            <LogoIcon className="h-7 w-7 text-primary" />
+            <LogoIcon className="h-6 w-6 text-primary sm:h-7 sm:w-7" />
             {!effectiveCollapsed ? (
               <div className="min-w-0">
-                <div className="truncate text-[14px] font-semibold text-ink">ResearchOS</div>
+                <div className="truncate text-[13px] font-semibold text-ink sm:text-[14px]">ResearchOS</div>
               </div>
             ) : null}
           </Link>
@@ -454,9 +454,10 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <div className={cn("shrink-0 border-b border-border px-2 pb-3", effectiveCollapsed && "px-1.5")}>
-          <SectionLabel collapsed={effectiveCollapsed}>导航</SectionLabel>
-          <nav className="space-y-0.5">
+        <div className={cn("shrink-0 border-b border-border px-2 pb-2", effectiveCollapsed && "px-1.5", isMobileViewport && "px-2 pb-1.5")}>
+          {!isMobileViewport ? <SectionLabel collapsed={effectiveCollapsed}>导航</SectionLabel> : null}
+          <nav className={cn("space-y-0.5", isMobileViewport && "overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}>
+            <div className={cn(isMobileViewport ? "flex min-w-max items-center gap-1" : "space-y-0.5")}>
             {shellNavSections.map((section) => section.items.filter((item) => item.to !== "/settings")).flat().map((item) => {
               const active = isNavRouteActive(item.to);
               return (
@@ -474,21 +475,26 @@ export default function Sidebar() {
                   title={item.label}
                   className={cn(
                     "group relative flex items-center rounded-md text-[13px] text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active",
-                    effectiveCollapsed ? "justify-center px-0 py-2.5" : "gap-2 px-3 py-2.5",
+                    isMobileViewport
+                      ? "min-h-9 min-w-9 justify-center px-2 py-2"
+                      : effectiveCollapsed
+                        ? "justify-center px-0 py-2.5"
+                        : "gap-2 px-3 py-2.5",
                     active && "bg-active text-ink",
                   )}
                 >
                   {active ? <span className={cn("absolute bottom-1.5 left-1 top-1.5 w-0.5 rounded-full bg-primary", effectiveCollapsed && "left-0.5")} /> : null}
                   <item.icon className="h-4 w-4 shrink-0" />
-                  {!effectiveCollapsed ? <span className="min-w-0 truncate">{item.label}</span> : null}
+                  {!effectiveCollapsed && !isMobileViewport ? <span className="min-w-0 truncate">{item.label}</span> : null}
                 </NavLink>
               );
             })}
+            </div>
           </nav>
         </div>
 
         {!effectiveCollapsed ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-2.5 sm:py-3">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-[11px] font-medium tracking-[0.02em] text-ink-tertiary">历史</p>
               <div className="flex items-center gap-1">
@@ -511,7 +517,7 @@ export default function Sidebar() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))] [webkit-overflow-scrolling:touch]">
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain pr-1 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))] [webkit-overflow-scrolling:touch]">
               {loadingRoots ? (
                 <div className="flex items-center gap-2 rounded-md px-2 py-3 text-xs text-ink-tertiary">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
