@@ -425,6 +425,9 @@ def search_external_literature(body: ExternalLiteratureSearchReq) -> dict:
         venue_type=body.venue_type,
         venue_names=body.venue_names,
         from_year=body.from_year,
+        sort_mode=body.sort_mode,
+        date_from=body.date_from,
+        date_to=body.date_to,
     )
     if not result.success:
         raise HTTPException(status_code=400, detail=result.summary)
@@ -617,5 +620,3 @@ def ingest_references_status(task_id: str) -> dict:
     if not task:
         raise HTTPException(404, "Task not found")
     return task
-
-

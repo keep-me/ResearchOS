@@ -37,6 +37,7 @@ FROM deps AS builder
 WORKDIR /app
 COPY . ./
 
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # ============================================================

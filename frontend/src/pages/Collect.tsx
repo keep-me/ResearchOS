@@ -363,6 +363,14 @@ export default function Collect() {
   const folderTopics = useMemo(() => topics.filter((item) => item.kind === "folder"), [topics]);
   const subscriptionTopics = useMemo(() => topics.filter((item) => item.kind === "subscription"), [topics]);
   const effectiveSearchFromYear = useMemo(() => resolveSearchFromYear(searchFromYear, dateFrom), [searchFromYear, dateFrom]);
+  const arxivVenueFiltersDisabled = collectionSource === "arxiv";
+
+  useEffect(() => {
+    if (!arxivVenueFiltersDisabled) return;
+    setVenueTier("all");
+    setVenueType("all");
+    setVenueNameInput("");
+  }, [arxivVenueFiltersDisabled]);
 
   const stats = useMemo(() => ({
     folders: folderTopics.length,
@@ -914,13 +922,23 @@ export default function Collect() {
             </FieldBlock>
 
             <FieldBlock label="质量层级" icon={<Sparkles className="h-3.5 w-3.5" />}>
-              <select value={venueTier} onChange={(event) => setVenueTier(event.target.value as LiteratureVenueTier)} className="form-input">
+              <select
+                value={venueTier}
+                onChange={(event) => setVenueTier(event.target.value as LiteratureVenueTier)}
+                className="form-input"
+                disabled={arxivVenueFiltersDisabled}
+              >
                 {VENUE_TIER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </FieldBlock>
 
             <FieldBlock label="论文类型" icon={<Library className="h-3.5 w-3.5" />}>
-              <select value={venueType} onChange={(event) => setVenueType(event.target.value as LiteratureVenueType)} className="form-input">
+              <select
+                value={venueType}
+                onChange={(event) => setVenueType(event.target.value as LiteratureVenueType)}
+                className="form-input"
+                disabled={arxivVenueFiltersDisabled}
+              >
                 {VENUE_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </FieldBlock>
@@ -950,9 +968,21 @@ export default function Collect() {
             </FieldBlock>
 
             <FieldBlock label="指定 venue" icon={<Rss className="h-3.5 w-3.5" />}>
-              <input value={venueNameInput} onChange={(event) => setVenueNameInput(event.target.value)} placeholder="输入 venue" className="form-input" />
+              <input
+                value={venueNameInput}
+                onChange={(event) => setVenueNameInput(event.target.value)}
+                placeholder={arxivVenueFiltersDisabled ? "arXiv 模式不支持 venue 过滤" : "输入 venue"}
+                className="form-input"
+                disabled={arxivVenueFiltersDisabled}
+              />
             </FieldBlock>
           </div>
+
+          {arxivVenueFiltersDisabled && (
+            <div className="rounded-2xl border border-border/70 bg-page/70 px-4 py-3 text-xs text-ink-tertiary">
+              当前为 `arXiv` 检索源，仅支持关键词、时间、年份和日期范围过滤，不支持 CCF/会议/期刊/venue 名称过滤。
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <Button icon={searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} onClick={() => void handleSearch()} loading={searching} disabled={!searchInput.trim()}>

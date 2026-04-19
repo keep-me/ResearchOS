@@ -45,7 +45,6 @@ import {
   ArrowDown,
   TrendingUp,
   Trash2,
-  Sparkles,
 } from "lucide-react";
 
 /* ========== 类型 ========== */
@@ -92,7 +91,6 @@ export default function Papers() {
   const [batchPct, setBatchPct] = useState(0);
   const [selectAllLoading, setSelectAllLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
-  const [classifying, setClassifying] = useState(false);
   const [confirmDeletePaperId, setConfirmDeletePaperId] = useState<string | null>(null);
   const [confirmBatchDeleteOpen, setConfirmBatchDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -533,29 +531,6 @@ export default function Papers() {
     }
   }, [assignFolderId, loadFolderStats, loadPapers, selected, toast]);
 
-  const handleAutoClassify = useCallback(async () => {
-    setClassifying(true);
-    try {
-      const res = await paperApi.autoClassify({
-        only_unclassified: true,
-        max_papers: 400,
-        max_topics_per_paper: 2,
-        min_score: 1.2,
-        use_graph: true,
-      });
-      toast(
-        "success",
-        `已智能归档 ${res.classified_papers} 篇论文，关联 ${res.linked_topics} 个文件夹`,
-      );
-      await loadFolderStats();
-      await loadPapers();
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : "智能分类失败");
-    } finally {
-      setClassifying(false);
-    }
-  }, [loadFolderStats, loadPapers, toast]);
-
   const handleBatchSkim = async () => {
     const ids = [...selected].filter((id) => { const p = papers.find((pp) => pp.id === id); return p && p.read_status === "unread"; });
     if (!ids.length) { setBatchProgress("没有可粗读的未读论文"); setBatchPct(0); return; }
@@ -807,17 +782,6 @@ export default function Papers() {
                   : <ArrowUp className="h-3.5 w-3.5" />}
               </button>
 
-              {/* 智能分类 */}
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={<Sparkles className="h-3 w-3" />}
-                onClick={handleAutoClassify}
-                loading={classifying}
-                className="h-7"
-              >
-                智能分类
-              </Button>
             </div>
           )}
 

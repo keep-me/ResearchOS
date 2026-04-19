@@ -8,7 +8,7 @@ from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.pool import QueuePool, StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from packages.config import get_settings
 
@@ -29,7 +29,9 @@ if _is_sqlite:
 
 poolclass = None
 if _is_sqlite:
-    poolclass = StaticPool if _is_sqlite_memory else QueuePool
+    # SQLite file databases are prone to "database is locked" under pooled
+    # multi-connection write contention. Prefer opening short-lived connections.
+    poolclass = StaticPool if _is_sqlite_memory else NullPool
 
 engine = create_engine(
     settings.database_url,
@@ -46,7 +48,7 @@ if _is_sqlite:
     def _set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-redef]
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA busy_timeout=120000")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
         cursor.execute("PRAGMA cache_size=-64000")  # 64 MB cache

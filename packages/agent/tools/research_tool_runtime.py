@@ -4,6 +4,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import suppress
+from datetime import date, datetime
 from queue import Queue
 from uuid import UUID
 
@@ -240,6 +241,51 @@ def _normalize_venue_type(value: str | None) -> str:
 
 def _normalize_venue_names(value: list[str] | None) -> list[str]:
     return [str(item).strip() for item in (value or []) if str(item).strip()]
+
+
+def _external_publication_sort_key(item: dict) -> tuple[date, int]:
+    raw = str(item.get("publication_date") or "").strip()
+    if raw:
+        for fmt in ("%Y-%m-%d", "%Y-%m", "%Y"):
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                if fmt == "%Y":
+                    return date(parsed.year, 1, 1), int(item.get("citation_count") or 0)
+                if fmt == "%Y-%m":
+                    return date(parsed.year, parsed.month, 1), int(item.get("citation_count") or 0)
+                return parsed.date(), int(item.get("citation_count") or 0)
+            except ValueError:
+                continue
+    try:
+        year = int(item.get("publication_year") or 0)
+    except (TypeError, ValueError):
+        year = 0
+    return date(max(1, year), 1, 1) if year > 0 else date(1900, 1, 1), int(item.get("citation_count") or 0)
+
+
+def _sort_external_results(items: list[dict], sort_mode: str) -> list[dict]:
+    normalized = str(sort_mode or "relevance").strip().lower()
+    if normalized == "time":
+        return sorted(items, key=lambda item: _external_publication_sort_key(item), reverse=True)
+    if normalized == "impact":
+        return sorted(
+            items,
+            key=lambda item: (
+                int(item.get("citation_count") or 0),
+                _external_publication_sort_key(item)[0],
+            ),
+            reverse=True,
+        )
+    return items
+
+
+def _resolve_arxiv_sort_mode(sort_mode: str) -> str:
+    normalized = str(sort_mode or "relevance").strip().lower()
+    if normalized == "time":
+        return "submittedDate"
+    if normalized == "impact":
+        return "impact"
+    return "relevance"
 
 
 def _openalex_item_matches_filters(
@@ -485,6 +531,9 @@ def _search_literature(
     venue_type: str = "all",
     venue_names: list[str] | None = None,
     from_year: int | None = None,
+    sort_mode: str = "relevance",
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> ToolResult:
     cleaned_query = str(query or "").strip()
     if not cleaned_query:
@@ -539,9 +588,13 @@ def _search_literature(
         or bool(effective_venue_names)
     )
     if effective_scope in {"hybrid", "arxiv"} and not arxiv_requires_unsupported_filter:
-        arxiv_items = ArxivClient().search_candidates(
+        arxiv_items = ArxivClient().fetch_latest(
             cleaned_query,
             max_results=min(fetch_limit, 50),
+            sort_by=_resolve_arxiv_sort_mode(sort_mode),
+            date_from=date_from,
+            date_to=date_to,
+            enrich_impact=(str(sort_mode or "").strip().lower() == "impact"),
         )
         for paper in arxiv_items:
             annotated = _paper_to_external_result(paper)
@@ -555,7 +608,7 @@ def _search_literature(
     elif effective_scope in {"hybrid", "arxiv"}:
         skipped_sources.append("arxiv")
 
-    deduped = _dedupe_literature_items(results)[:requested]
+    deduped = _sort_external_results(_dedupe_literature_items(results), sort_mode)[:requested]
     for item in deduped:
         source_name = str(item.get("source") or "").strip().lower()
         if source_name in source_counts:
@@ -570,6 +623,8 @@ def _search_literature(
         filter_bits.append(f"venue={', '.join(effective_venue_names[:4])}")
     if effective_from_year is not None:
         filter_bits.append(f"from_year={effective_from_year}")
+    if str(sort_mode or "").strip():
+        filter_bits.append(f"sort={str(sort_mode).strip().lower()}")
 
     summary = f"外部文献检索完成，共找到 {len(deduped)} 篇结果"
     if filter_bits:
@@ -1105,4 +1160,3 @@ def _analyze_figures(paper_id: str, max_figures: int = 10) -> Iterator[ToolProgr
         summary=summary,
         internal_data={"display_data": {"figures": figure_items}},
     )
-

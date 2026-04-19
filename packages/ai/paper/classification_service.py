@@ -285,7 +285,9 @@ class PaperClassificationService:
         with session_scope() as session:
             paper_repo = PaperRepository(session)
             topic_repo = TopicRepository(session)
-            topics = topic_repo.list_topics(enabled_only=True, kind="folder")
+            # Folders are manual buckets, not scheduled subscriptions. Their `enabled`
+            # flag should not block auto-classification after imports.
+            topics = topic_repo.list_topics(enabled_only=False, kind="folder")
             if not topics:
                 return {
                     "requested": 0,

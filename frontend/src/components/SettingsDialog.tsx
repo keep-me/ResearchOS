@@ -1689,16 +1689,25 @@ function applyProviderPreset<T extends ProviderFormPresetState>(
     };
   }
 
-  return {
+  const next = {
     ...prev,
     provider,
     api_base_url: preset.base_url,
-    model_skim: preset.models.model_skim || prev.model_skim || "",
-    model_deep: preset.models.model_deep || prev.model_deep || "",
-    model_vision: preset.models.model_vision || "",
     model_embedding: preset.models.model_embedding || prev.model_embedding || "",
-    model_fallback: preset.models.model_fallback || prev.model_fallback || "",
+    model_skim: "",
+    model_deep: "",
+    model_vision: "",
+    model_fallback: "",
   };
+
+  const primaryModel = getPrimaryModelValue({
+    model_deep: preset.models.model_deep,
+    model_skim: preset.models.model_skim,
+    model_fallback: preset.models.model_fallback,
+    model_vision: preset.models.model_vision,
+  });
+
+  return syncPrimaryModelFields(next, primaryModel);
 }
 
 function getPrimaryModelValue(source: {
@@ -1741,6 +1750,26 @@ function syncPrimaryModelFields<T extends {
         ? nextValue
         : prev.model_embedding,
   };
+}
+
+function resolveEffectiveModel(
+  source: {
+    model_skim?: string | null;
+    model_deep?: string | null;
+    model_fallback?: string | null;
+    model_vision?: string | null;
+  },
+  key: "model_skim" | "model_deep" | "model_fallback" | "model_vision",
+): string {
+  return String(source[key] || "").trim() || getPrimaryModelValue(source);
+}
+
+function inheritedModelDetail(
+  rawValue: string | null | undefined,
+  inheritedDetail: string,
+  customDetail: string,
+): string {
+  return String(rawValue || "").trim() ? customDetail : inheritedDetail;
 }
 
 function SettingsFormCard({
@@ -2375,22 +2404,34 @@ function buildConfigChannelDescriptors(config: LLMProviderConfig): LlmChannelDes
       id: "skim",
       label: "粗读",
       provider: config.provider,
-      model: config.model_skim,
-      detail: config.api_base_url || "主通道默认地址",
+      model: resolveEffectiveModel(config, "model_skim"),
+      detail: inheritedModelDetail(
+        config.model_skim,
+        "继承主模型 / 主通道默认地址",
+        config.api_base_url || "主通道默认地址",
+      ),
     },
     {
       id: "deep",
       label: "精读",
       provider: config.provider,
-      model: config.model_deep,
-      detail: "深度分析 / 长链路研究",
+      model: resolveEffectiveModel(config, "model_deep"),
+      detail: inheritedModelDetail(
+        config.model_deep,
+        "继承主模型 / 深度分析 / 长链路研究",
+        "深度分析 / 长链路研究",
+      ),
     },
     {
       id: "fallback",
       label: "降级",
       provider: config.provider,
-      model: config.model_fallback,
-      detail: "失败回退 / 低成本兜底",
+      model: resolveEffectiveModel(config, "model_fallback"),
+      detail: inheritedModelDetail(
+        config.model_fallback,
+        "继承主模型 / 失败回退 / 低成本兜底",
+        "失败回退 / 低成本兜底",
+      ),
     },
     {
       id: "embedding",
@@ -2401,13 +2442,17 @@ function buildConfigChannelDescriptors(config: LLMProviderConfig): LlmChannelDes
     },
   ];
 
-  if (config.model_vision) {
+  if (getPrimaryModelValue(config)) {
     items.push({
       id: "vision",
       label: "视觉",
       provider: config.provider,
-      model: config.model_vision,
-      detail: "图像 / 多模态理解",
+      model: resolveEffectiveModel(config, "model_vision"),
+      detail: inheritedModelDetail(
+        config.model_vision,
+        "继承主模型 / 图像 / 多模态理解",
+        "图像 / 多模态理解",
+      ),
     });
   }
 
@@ -2504,23 +2549,32 @@ function AddConfigInline({
     presetOptions.find((item) => item.id === initialProvider) ||
     presetOptions.find((item) => item.id === "openai") ||
     buildProviderPresetOptions().find((item) => item.id === "openai");
-  const [form, setForm] = useState<LLMProviderCreate>({
-    name: "",
-    provider: (initialPreset?.id || "openai") as LLMProviderCreate["provider"],
-    api_key: "",
-    api_base_url: initialPreset?.base_url ?? PROVIDER_PRESETS.openai.base_url,
-    model_skim: initialPreset?.models.model_skim || PROVIDER_PRESETS.openai.models.model_skim || "",
-    model_deep: initialPreset?.models.model_deep || PROVIDER_PRESETS.openai.models.model_deep || "",
-    model_vision: initialPreset?.models.model_vision || PROVIDER_PRESETS.openai.models.model_vision || "",
-    embedding_provider: "",
-    embedding_api_key: "",
-    embedding_api_base_url: "",
-    model_embedding: initialPreset?.models.model_embedding || PROVIDER_PRESETS.openai.models.model_embedding || "",
-    model_fallback: initialPreset?.models.model_fallback || PROVIDER_PRESETS.openai.models.model_fallback || "",
-    image_provider: "",
-    image_api_key: "",
-    image_api_base_url: "",
-    model_image: "",
+  const [form, setForm] = useState<LLMProviderCreate>(() => {
+    const baseForm: LLMProviderCreate = {
+      name: "",
+      provider: (initialPreset?.id || "openai") as LLMProviderCreate["provider"],
+      api_key: "",
+      api_base_url: initialPreset?.base_url ?? PROVIDER_PRESETS.openai.base_url,
+      model_skim: "",
+      model_deep: "",
+      model_vision: "",
+      embedding_provider: "",
+      embedding_api_key: "",
+      embedding_api_base_url: "",
+      model_embedding: initialPreset?.models.model_embedding || PROVIDER_PRESETS.openai.models.model_embedding || "",
+      model_fallback: "",
+      image_provider: "",
+      image_api_key: "",
+      image_api_base_url: "",
+      model_image: "",
+    };
+    const primaryModel = getPrimaryModelValue({
+      model_deep: initialPreset?.models.model_deep || PROVIDER_PRESETS.openai.models.model_deep,
+      model_skim: initialPreset?.models.model_skim || PROVIDER_PRESETS.openai.models.model_skim,
+      model_fallback: initialPreset?.models.model_fallback || PROVIDER_PRESETS.openai.models.model_fallback,
+      model_vision: initialPreset?.models.model_vision || PROVIDER_PRESETS.openai.models.model_vision,
+    });
+    return syncPrimaryModelFields(baseForm, primaryModel);
   });
   const [showKey, setShowKey] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -2645,10 +2699,46 @@ function AddConfigInline({
             placeholder="输入模型"
           />
         </div>
+        <div className="text-[11px] text-ink-tertiary">
+          默认所有文本能力都跟随这个主模型。只有在高级项里显式填写覆写时，粗读 / 精读 / 视觉 / 降级才会分开走不同模型。
+        </div>
       </SettingsFormCard>
 
       {showAdvanced ? (
         <>
+          <SettingsFormCard
+            icon={Cpu}
+            title="文本模型覆写"
+            description="留空则继承上面的主模型，只在确实需要分流时填写。"
+          >
+            <div className="grid gap-3 lg:grid-cols-2">
+              <MiniInput
+                label="粗读模型"
+                value={form.model_skim || ""}
+                onChange={(v) => setField("model_skim", v)}
+                placeholder="留空则继承主模型"
+              />
+              <MiniInput
+                label="精读模型"
+                value={form.model_deep || ""}
+                onChange={(v) => setField("model_deep", v)}
+                placeholder="留空则继承主模型"
+              />
+              <MiniInput
+                label="视觉模型"
+                value={form.model_vision || ""}
+                onChange={(v) => setField("model_vision", v)}
+                placeholder="留空则继承主模型"
+              />
+              <MiniInput
+                label="降级模型"
+                value={form.model_fallback || ""}
+                onChange={(v) => setField("model_fallback", v)}
+                placeholder="留空则继承主模型"
+              />
+            </div>
+          </SettingsFormCard>
+
           <SettingsFormCard
             icon={Zap}
             title="嵌入"
@@ -2895,6 +2985,9 @@ function EditConfigInline({
             placeholder="输入模型"
           />
         </div>
+        <div className="text-[11px] text-ink-tertiary">
+          默认所有文本能力都跟随这个主模型。只有在高级项里显式填写覆写时，粗读 / 精读 / 视觉 / 降级才会分开走不同模型。
+        </div>
         <div className="grid gap-2 text-[11px] text-ink-tertiary md:grid-cols-2">
           {config.api_key_masked ? <div>当前主 Key：{config.api_key_masked}</div> : <div>当前主 Key：未显示</div>}
           {config.embedding_api_key_masked ? (
@@ -2907,6 +3000,39 @@ function EditConfigInline({
 
       {showAdvanced ? (
         <>
+          <SettingsFormCard
+            icon={Cpu}
+            title="文本模型覆写"
+            description="留空则继承上面的主模型，只在确实需要分流时填写。"
+          >
+            <div className="grid gap-3 lg:grid-cols-2">
+              <MiniInput
+                label="粗读模型"
+                value={form.model_skim || ""}
+                onChange={(v) => setField("model_skim", v)}
+                placeholder="留空则继承主模型"
+              />
+              <MiniInput
+                label="精读模型"
+                value={form.model_deep || ""}
+                onChange={(v) => setField("model_deep", v)}
+                placeholder="留空则继承主模型"
+              />
+              <MiniInput
+                label="视觉模型"
+                value={form.model_vision || ""}
+                onChange={(v) => setField("model_vision", v)}
+                placeholder="留空则继承主模型"
+              />
+              <MiniInput
+                label="降级模型"
+                value={form.model_fallback || ""}
+                onChange={(v) => setField("model_fallback", v)}
+                placeholder="留空则继承主模型"
+              />
+            </div>
+          </SettingsFormCard>
+
           <SettingsFormCard
             icon={Zap}
             title="嵌入"
@@ -3251,4 +3377,3 @@ function StorageSettingsSection() {
     </div>
   );
 }
-

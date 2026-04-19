@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import Select, delete, func, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from packages.domain.enums import (
@@ -334,15 +336,34 @@ class PipelineRunRepository:
         paper_id: UUID | None = None,
         decision_note: str | None = None,
     ) -> PipelineRun:
-        run = PipelineRun(
-            pipeline_name=pipeline_name,
-            paper_id=str(paper_id) if paper_id else None,
-            status=PipelineStatus.running,
-            decision_note=decision_note,
-        )
-        self.session.add(run)
-        self.session.flush()
-        return run
+        last_exc: OperationalError | None = None
+        for attempt in range(4):
+            run = PipelineRun(
+                pipeline_name=pipeline_name,
+                paper_id=str(paper_id) if paper_id else None,
+                status=PipelineStatus.running,
+                decision_note=decision_note,
+            )
+            self.session.add(run)
+            try:
+                self.session.flush()
+                return run
+            except OperationalError as exc:
+                self.session.rollback()
+                message = str(exc).lower()
+                if "database is locked" not in message:
+                    raise
+                last_exc = exc
+                wait_seconds = 0.5 * (attempt + 1)
+                logger.warning(
+                    "PipelineRunRepository.start hit SQLite lock, retrying in %.1fs (%d/4)",
+                    wait_seconds,
+                    attempt + 1,
+                )
+                time.sleep(wait_seconds)
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("PipelineRunRepository.start failed without captured exception")
 
     def finish(
         self,
@@ -1114,5 +1135,4 @@ class FeishuConfigRepository:
             config.is_active = True
         self.session.flush()
         return config
-
 

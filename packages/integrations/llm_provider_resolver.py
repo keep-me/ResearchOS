@@ -165,14 +165,33 @@ def resolve_embedding_config(cfg: RuntimeConfigLike) -> ResolvedEmbeddingConfig:
     )
 
 
+def resolve_primary_text_model(cfg: RuntimeConfigLike) -> str:
+    for candidate in (
+        clean_optional_text(cfg.model_deep),
+        clean_optional_text(cfg.model_skim),
+        clean_optional_text(cfg.model_fallback),
+        clean_optional_text(cfg.model_vision),
+    ):
+        if candidate:
+            return candidate
+    return ""
+
+
+def resolve_fallback_model(cfg: RuntimeConfigLike) -> str:
+    return clean_optional_text(cfg.model_fallback) or resolve_primary_text_model(cfg)
+
+
 def stage_model_string(stage: str, cfg: RuntimeConfigLike) -> str:
+    primary = resolve_primary_text_model(cfg)
     if stage in ("skim", "rag"):
-        return cfg.model_skim
+        return clean_optional_text(cfg.model_skim) or primary
     if stage == "vision":
-        return cfg.model_vision or cfg.model_deep
+        return clean_optional_text(cfg.model_vision) or primary
     if stage == "embedding":
         return cfg.model_embedding
-    return cfg.model_deep
+    if stage == "fallback":
+        return resolve_fallback_model(cfg)
+    return clean_optional_text(cfg.model_deep) or primary
 
 
 def parse_model_target(value: str | None) -> ParsedModelTarget | None:
@@ -251,7 +270,7 @@ def resolve_model_target(
                 stage=stage,
             )
 
-    target_spec = model_override or stage_model_string(stage, cfg) or cfg.model_fallback
+    target_spec = model_override or stage_model_string(stage, cfg) or resolve_fallback_model(cfg)
     parsed = parse_model_target(target_spec) or ParsedModelTarget(
         provider=None,
         model="",

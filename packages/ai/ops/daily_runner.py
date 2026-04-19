@@ -97,6 +97,18 @@ def _matches_external_publication_window(
     return True
 
 
+def _resolve_external_sort_mode(topic: TopicSubscription) -> str:
+    priority_mode = str(getattr(topic, "priority_mode", "") or "").strip().lower()
+    if priority_mode in {"relevance", "impact", "time"}:
+        return priority_mode
+    sort_by = str(getattr(topic, "sort_by", "") or "").strip()
+    if sort_by == "submittedDate":
+        return "time"
+    if sort_by == "impact":
+        return "impact"
+    return "relevance"
+
+
 def _process_paper(
     paper_id, force_deep: bool = False, deep_read_quota: Optional[int] = None
 ) -> dict:
@@ -257,6 +269,9 @@ def run_topic_ingest(
                         venue_type=venue_type,
                         venue_names=venue_names,
                         from_year=effective_from_year,
+                        sort_mode=_resolve_external_sort_mode(topic),
+                        date_from=date_from,
+                        date_to=date_to,
                     )
                     if not search_result.success:
                         raise RuntimeError(search_result.summary)
@@ -486,4 +501,3 @@ def run_weekly_graph_maintenance() -> dict:
         "topic_sync": topic_results,
         "incremental": incremental,
     }
-
