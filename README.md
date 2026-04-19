@@ -39,7 +39,7 @@
 
 ```bash
 # 1️⃣ 克隆项目
-git clone https://github.com/Color2333/ResearchOS.git && cd ResearchOS
+git clone https://github.com/keep-me/ResearchOS.git && cd ResearchOS
 
 # 2️⃣ 配置环境变量
 cp .env.example .env
@@ -73,7 +73,7 @@ docker system df
 
 ```bash
 # 1️⃣ 克隆项目
-git clone https://github.com/Color2333/ResearchOS.git && cd ResearchOS
+git clone https://github.com/keep-me/ResearchOS.git && cd ResearchOS
 
 # 2️⃣ 后端
 python -m venv .venv && source .venv/bin/activate
@@ -488,10 +488,10 @@ alembic upgrade head
 
 <div align="center">
 
-**Built with ❤️ by [Color2333](https://github.com/Color2333)**
+**Maintained by [keep-me](https://github.com/keep-me)**
 
 *ResearchOS — 让 AI 帮你读论文，让知识触手可及。*
 
-[![Star](https://img.shields.io/github/stars/Color2333/ResearchOS?style=social)](https://github.com/Color2333/ResearchOS/stargazers)
+[![Star](https://img.shields.io/github/stars/keep-me/ResearchOS?style=social)](https://github.com/keep-me/ResearchOS/stargazers)
 
 </div>
