@@ -1224,7 +1224,7 @@ export default function Projects() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-2 md:grid-cols-3">
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
                   {runStats.map((item) => (
                     <div key={item.label} className="rounded-[20px] border border-border/60 bg-page/72 px-3.5 py-3">
                       <div className="text-[11px] uppercase tracking-[0.12em] text-ink-tertiary">{item.label}</div>
@@ -1284,7 +1284,7 @@ export default function Projects() {
 
               {pendingCheckpoint ? (
                 <section className="rounded-[28px] border border-amber-200 bg-amber-50/85 p-5 shadow-[0_20px_36px_-28px_rgba(120,53,15,0.18)]">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">{checkpointTitle(pendingCheckpoint)}</div>
                       <div className="mt-2 text-lg font-semibold text-amber-950">{pendingCheckpoint.message || "等待人工确认"}</div>
@@ -1305,7 +1305,7 @@ export default function Projects() {
                       placeholder="可以填写批准说明或拒绝原因"
                     />
                   </div>
-                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                     <Button
                       variant="secondary"
                       loading={respondingCheckpoint === "reject"}

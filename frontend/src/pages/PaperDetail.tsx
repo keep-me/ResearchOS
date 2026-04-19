@@ -3426,7 +3426,7 @@ function FigureAnalysisView({ description }: { description: string }) {
       )}
 
       {cards.length > 0 ? (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 lg:grid-cols-2">
           {cards.map((card) => (
             <div key={card.key} className="rounded-xl border border-border bg-page px-3 py-2.5">
               <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-ink">

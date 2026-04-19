@@ -787,7 +787,7 @@ export default function Papers() {
 
           {/* 批量操作 */}
           {selected.size > 0 && (
-            <div className="glass-segment flex items-center gap-2 rounded-[20px] border-primary/20 bg-primary/6 px-3 py-1.5">
+            <div className="glass-segment flex flex-col items-stretch gap-2 rounded-[20px] border-primary/20 bg-primary/6 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
               <span className="text-xs font-medium text-primary">
                 已选 {selected.size} 篇{selected.size >= visibleTotal ? "（当前筛选结果全集）" : ""}
               </span>
@@ -1052,7 +1052,7 @@ export default function Papers() {
           ) : (
             <div className="p-4">
               {/* 全选 */}
-              <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
+              <div className="mb-2 flex flex-col gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-center">
                 <input
                   type="checkbox"
                   checked={filtered.length > 0 && filtered.every((paper) => selected.has(paper.id))}
@@ -1241,7 +1241,7 @@ export default function Papers() {
               ))}
             </select>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button
               variant="secondary"
               onClick={() => {
@@ -1281,30 +1281,17 @@ const PaperListItem = memo(function PaperListItem({ paper, selected, onSelect, o
     <div className={`group rounded-xl border bg-surface transition-all hover:shadow-sm ${
       selected ? "border-primary/30 ring-1 ring-primary/10" : "border-border/60"
     }`}>
-      <div className="flex items-start gap-3 px-3.5 py-3">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onSelect}
-          onClick={(e) => e.stopPropagation()}
-          className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-border text-primary focus:ring-primary/30"
-        />
-        <button className="flex min-w-0 flex-1 items-start gap-2.5 text-left" onClick={onClick}>
-          {/* 状态图标 */}
-          <div className={`mt-0.5 shrink-0 rounded-lg p-1.5 ${
-            paper.read_status === "deep_read" ? "bg-success-light" :
-            paper.read_status === "skimmed" ? "bg-warning-light" : "bg-page"
-          }`}>
-            {paper.read_status === "deep_read" ? <BookMarked className="h-3.5 w-3.5 text-success" /> :
-             paper.read_status === "skimmed" ? <Eye className="h-3.5 w-3.5 text-warning" /> :
-             <BookOpen className="h-3.5 w-3.5 text-ink-tertiary" />}
-          </div>
-          {/* 内容 */}
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex items-start gap-2">
-              <h3 className="text-[13px] font-semibold leading-snug text-ink transition-colors group-hover:text-primary">
-                {paper.title}
-              </h3>
+      <div className="px-3.5 py-3">
+        <div className="mb-2 flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onSelect}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-1 h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-primary/30"
+          />
+          <button className="min-w-0 flex-1 text-left" onClick={onClick}>
+            <div className="flex flex-wrap items-center gap-1.5">
               <Badge variant={sc.variant} className="shrink-0">{sc.label}</Badge>
               {paper.has_embedding && (
                 <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-info-light px-1.5 py-0.5 text-[9px] font-medium text-info">
@@ -1312,44 +1299,57 @@ const PaperListItem = memo(function PaperListItem({ paper, selected, onSelect, o
                 </span>
               )}
             </div>
-            {paper.title_zh && <p className="text-[11px] text-ink-tertiary">{paper.title_zh}</p>}
-            {paper.abstract && (
-              <p className="text-[11px] leading-relaxed text-ink-secondary">{truncate(paper.abstract, 140)}</p>
-            )}
-            {/* 标签行 */}
-            <div className="flex flex-wrap items-center gap-1">
-              {paper.topics?.map((t) => (
-                <span key={t} className="inline-flex items-center gap-0.5 rounded-md bg-primary/8 px-1.5 py-0.5 text-[9px] font-medium text-primary">
-                  <Tag className="h-2 w-2" />{t}
-                </span>
-              ))}
-              {paper.keywords?.slice(0, 3).map((kw) => (
-                <span key={kw} className="rounded-md bg-page px-1.5 py-0.5 text-[9px] text-ink-tertiary">{kw}</span>
-              ))}
+            <div className="mt-2 flex items-start gap-2.5">
+              <div className={`mt-0.5 shrink-0 rounded-lg p-1.5 ${
+                paper.read_status === "deep_read" ? "bg-success-light" :
+                paper.read_status === "skimmed" ? "bg-warning-light" : "bg-page"
+              }`}>
+                {paper.read_status === "deep_read" ? <BookMarked className="h-3.5 w-3.5 text-success" /> :
+                 paper.read_status === "skimmed" ? <Eye className="h-3.5 w-3.5 text-warning" /> :
+                 <BookOpen className="h-3.5 w-3.5 text-ink-tertiary" />}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <h3 className="text-[13px] font-semibold leading-snug text-ink transition-colors group-hover:text-primary">
+                  {paper.title}
+                </h3>
+                {paper.title_zh && <p className="text-[11px] text-ink-tertiary">{paper.title_zh}</p>}
+                {paper.abstract && (
+                  <p className="text-[11px] leading-relaxed text-ink-secondary">{truncate(paper.abstract, 140)}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-1">
+                  {paper.topics?.map((t) => (
+                    <span key={t} className="inline-flex items-center gap-0.5 rounded-md bg-primary/8 px-1.5 py-0.5 text-[9px] font-medium text-primary">
+                      <Tag className="h-2 w-2" />{t}
+                    </span>
+                  ))}
+                  {paper.keywords?.slice(0, 3).map((kw) => (
+                    <span key={kw} className="rounded-md bg-page px-1.5 py-0.5 text-[9px] text-ink-tertiary">{kw}</span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-ink-tertiary">
+                  {paper.arxiv_id && (
+                    <span className="flex items-center gap-0.5">
+                      <ExternalLink className="h-2.5 w-2.5" />{paper.arxiv_id}
+                    </span>
+                  )}
+                  {paper.publication_date && <span>{formatDate(paper.publication_date)}</span>}
+                  {typeof paper.citation_count === "number" && (
+                    <span className="flex items-center gap-0.5">
+                      <TrendingUp className="h-2.5 w-2.5" />
+                      引用 {paper.citation_count.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <ChevronRight className="mt-1 hidden h-3.5 w-3.5 shrink-0 text-ink-tertiary opacity-0 transition-opacity group-hover:opacity-100 sm:block" />
             </div>
-            {/* 元信息 */}
-            <div className="flex items-center gap-3 text-[10px] text-ink-tertiary">
-              {paper.arxiv_id && (
-                <span className="flex items-center gap-0.5">
-                  <ExternalLink className="h-2.5 w-2.5" />{paper.arxiv_id}
-                </span>
-              )}
-              {paper.publication_date && <span>{formatDate(paper.publication_date)}</span>}
-              {typeof paper.citation_count === "number" && (
-                <span className="flex items-center gap-0.5">
-                  <TrendingUp className="h-2.5 w-2.5" />
-                  引用 {paper.citation_count.toLocaleString()}
-                </span>
-              )}
-            </div>
-          </div>
-          <ChevronRight className="mt-2 h-3.5 w-3.5 shrink-0 text-ink-tertiary opacity-0 transition-opacity group-hover:opacity-100" />
-        </button>
-        <div className="mt-0.5 flex shrink-0 items-center gap-1">
-          <button aria-label={paper.favorited ? "取消收藏" : "收藏"} onClick={onFavorite} className="rounded-lg p-1 transition-colors hover:bg-error/10">
+          </button>
+        </div>
+        <div className="flex items-center justify-end gap-1 border-t border-border/50 pt-2">
+          <button aria-label={paper.favorited ? "取消收藏" : "收藏"} onClick={onFavorite} className="rounded-lg p-1.5 transition-colors hover:bg-error/10">
             <Heart className={`h-3.5 w-3.5 ${paper.favorited ? "fill-red-500 text-red-500" : "text-ink-tertiary"}`} />
           </button>
-          <button aria-label="删除论文" onClick={onDelete} className="rounded-lg p-1 text-ink-tertiary transition-colors hover:bg-error/10 hover:text-error">
+          <button aria-label="删除论文" onClick={onDelete} className="rounded-lg p-1.5 text-ink-tertiary transition-colors hover:bg-error/10 hover:text-error">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>

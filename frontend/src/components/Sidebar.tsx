@@ -130,23 +130,33 @@ export default function Sidebar() {
   useEffect(() => { void loadRoots(); }, [loadRoots]);
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
   useEffect(() => {
-    if (typeof document === "undefined") return;
+    if (typeof window === "undefined" || typeof document === "undefined") return;
     const body = document.body;
     const html = document.documentElement;
+    const scrollY = window.scrollY;
     const previousBodyOverflow = body.style.overflow;
-    const previousBodyTouchAction = body.style.touchAction;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyWidth = body.style.width;
     const previousHtmlOverflow = html.style.overflow;
 
     if (mobileOpen) {
       body.style.overflow = "hidden";
-      body.style.touchAction = "none";
+      body.style.position = "fixed";
+      body.style.top = `-${scrollY}px`;
+      body.style.width = "100%";
       html.style.overflow = "hidden";
     }
 
     return () => {
       body.style.overflow = previousBodyOverflow;
-      body.style.touchAction = previousBodyTouchAction;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.width = previousBodyWidth;
       html.style.overflow = previousHtmlOverflow;
+      if (mobileOpen) {
+        window.scrollTo(0, scrollY);
+      }
     };
   }, [mobileOpen]);
   useEffect(() => {
@@ -490,7 +500,7 @@ export default function Sidebar() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))]">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))] [webkit-overflow-scrolling:touch]">
               {loadingRoots ? (
                 <div className="flex items-center gap-2 rounded-md px-2 py-3 text-xs text-ink-tertiary">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -632,7 +642,7 @@ export default function Sidebar() {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overscroll-contain px-1.5 py-3 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))]">
+          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overscroll-contain px-1.5 py-3 pb-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))] [webkit-overflow-scrolling:touch]">
             <button
               type="button"
               onClick={openCreateWorkspaceDialog}
