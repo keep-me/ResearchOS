@@ -97,6 +97,7 @@ function SectionLabel({ children, collapsed }: { children: string; collapsed: bo
 
 export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [deleteChatId, setDeleteChatId] = useState<string | null>(null);
   const [removeWorkspaceTarget, setRemoveWorkspaceTarget] = useState<WorkspaceGroup | null>(null);
   const [roots, setRoots] = useState<WorkspaceRootItem[]>([]);
@@ -129,6 +130,14 @@ export default function Sidebar() {
 
   useEffect(() => { void loadRoots(); }, [loadRoots]);
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsMobileViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
     const body = document.body;
@@ -165,6 +174,8 @@ export default function Sidebar() {
     document.documentElement.style.setProperty("--shell-sidebar-width", `${width}px`);
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, desktopCollapsed ? "1" : "0");
   }, [desktopCollapsed]);
+
+  const effectiveCollapsed = desktopCollapsed && !isMobileViewport;
 
   const defaultChats = useMemo(
     () => metas.filter((meta) => !getConversationWorkspaceKey(meta)).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
@@ -404,25 +415,25 @@ export default function Sidebar() {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-64 touch-pan-y flex-col overflow-hidden border-r border-border bg-sidebar overscroll-contain transition-transform duration-150 lg:w-[var(--shell-sidebar-width)]",
+          "fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(88vw,22rem)] touch-pan-y flex-col overflow-hidden border-r border-border bg-sidebar overscroll-contain transition-transform duration-150 lg:w-[var(--shell-sidebar-width)]",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
-        <div className={cn("shrink-0 flex items-center gap-2 border-b border-border px-3 py-3", desktopCollapsed && "justify-center px-2")}>
+        <div className={cn("shrink-0 flex items-center gap-2 border-b border-border px-3 py-3", effectiveCollapsed && "justify-center px-2")}>
           <Link
             to="/"
             onClick={() => setMobileOpen(false)}
-            className={cn("flex min-w-0 items-center gap-2.5", desktopCollapsed && "justify-center")}
+            className={cn("flex min-w-0 items-center gap-2.5", effectiveCollapsed && "justify-center")}
           >
             <LogoIcon className="h-7 w-7 text-primary" />
-            {!desktopCollapsed ? (
+            {!effectiveCollapsed ? (
               <div className="min-w-0">
                 <div className="truncate text-[14px] font-semibold text-ink">ResearchOS</div>
               </div>
             ) : null}
           </Link>
 
-          <div className={cn("ml-auto flex items-center gap-1", desktopCollapsed && "hidden")}>
+          <div className={cn("ml-auto flex items-center gap-1", effectiveCollapsed && "hidden")}>
             <button
               type="button"
               onClick={toggleDesktopCollapsed}
@@ -443,8 +454,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <div className={cn("shrink-0 border-b border-border px-2 pb-3", desktopCollapsed && "px-1.5")}>
-          <SectionLabel collapsed={desktopCollapsed}>导航</SectionLabel>
+        <div className={cn("shrink-0 border-b border-border px-2 pb-3", effectiveCollapsed && "px-1.5")}>
+          <SectionLabel collapsed={effectiveCollapsed}>导航</SectionLabel>
           <nav className="space-y-0.5">
             {shellNavSections.map((section) => section.items.filter((item) => item.to !== "/settings")).flat().map((item) => {
               const active = isNavRouteActive(item.to);
@@ -463,20 +474,20 @@ export default function Sidebar() {
                   title={item.label}
                   className={cn(
                     "group relative flex items-center rounded-md text-[13px] text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active",
-                    desktopCollapsed ? "justify-center px-0 py-2.5" : "gap-2 px-3 py-2.5",
+                    effectiveCollapsed ? "justify-center px-0 py-2.5" : "gap-2 px-3 py-2.5",
                     active && "bg-active text-ink",
                   )}
                 >
-                  {active ? <span className={cn("absolute bottom-1.5 left-1 top-1.5 w-0.5 rounded-full bg-primary", desktopCollapsed && "left-0.5")} /> : null}
+                  {active ? <span className={cn("absolute bottom-1.5 left-1 top-1.5 w-0.5 rounded-full bg-primary", effectiveCollapsed && "left-0.5")} /> : null}
                   <item.icon className="h-4 w-4 shrink-0" />
-                  {!desktopCollapsed ? <span className="min-w-0 truncate">{item.label}</span> : null}
+                  {!effectiveCollapsed ? <span className="min-w-0 truncate">{item.label}</span> : null}
                 </NavLink>
               );
             })}
           </nav>
         </div>
 
-        {!desktopCollapsed ? (
+        {!effectiveCollapsed ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-3">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-[11px] font-medium tracking-[0.02em] text-ink-tertiary">历史</p>
@@ -692,28 +703,28 @@ export default function Sidebar() {
           </div>
         )}
 
-        <div className={cn("shrink-0 border-t border-border px-2 py-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))]", desktopCollapsed && "px-1.5")}>
-          <div className={cn("mb-3", desktopCollapsed && "flex justify-center")}>
-            <VisualStyleSwitcher collapsed={desktopCollapsed} />
+        <div className={cn("shrink-0 border-t border-border px-2 py-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))]", effectiveCollapsed && "px-1.5")}>
+          <div className={cn("mb-3", effectiveCollapsed && "flex justify-center")}>
+            <VisualStyleSwitcher collapsed={effectiveCollapsed} />
           </div>
 
-          <div className={cn("flex items-center gap-1", desktopCollapsed ? "flex-col" : "justify-between")}>
+          <div className={cn("flex items-center gap-1", effectiveCollapsed ? "flex-col" : "justify-between")}>
             <Link
               to="/settings"
               onClick={() => setMobileOpen(false)}
               className={cn(
                 "theme-control inline-flex items-center rounded-md border border-border bg-white text-sm text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active",
-                desktopCollapsed ? "h-10 w-10 justify-center" : "gap-2 px-3 py-2",
+                effectiveCollapsed ? "h-10 w-10 justify-center" : "gap-2 px-3 py-2",
                 location.pathname.startsWith("/settings") && "bg-active text-ink",
               )}
               aria-label="打开设置"
               title="设置"
             >
               <Settings className="h-4 w-4 shrink-0" />
-              {!desktopCollapsed ? <span>设置</span> : null}
+              {!effectiveCollapsed ? <span>设置</span> : null}
             </Link>
 
-            {desktopCollapsed ? (
+            {effectiveCollapsed ? (
               <button
                 type="button"
                 onClick={toggleDesktopCollapsed}

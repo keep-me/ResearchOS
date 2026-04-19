@@ -1852,15 +1852,15 @@ export default function PaperDetail() {
   return (
     <div className="animate-fade-in space-y-6">
       {/* Top actions */}
-      <div className="flex items-center justify-between">
-        <button onClick={() => navigate("/papers")} className="flex items-center gap-1.5 text-sm text-ink-secondary transition-colors hover:text-ink">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <button onClick={() => navigate("/papers")} className="inline-flex items-center gap-1.5 text-sm text-ink-secondary transition-colors hover:text-ink">
           <ArrowLeft className="h-4 w-4" /> 返回论文库
         </button>
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <button
             onClick={() => void handleManualRefresh()}
             disabled={manualRefreshing}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-ink-tertiary transition-colors hover:bg-hover hover:text-ink disabled:opacity-60"
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink-tertiary transition-colors hover:bg-hover hover:text-ink disabled:opacity-60 sm:min-h-0 sm:border-transparent sm:bg-transparent sm:px-3 sm:py-1.5"
             title="刷新论文详情、图表候选和相关论文"
           >
             <RefreshCw className={`h-4 w-4 ${manualRefreshing ? "animate-spin" : ""}`} />
@@ -1868,7 +1868,7 @@ export default function PaperDetail() {
           </button>
           <button
             onClick={() => setMetadataEditorOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-ink-tertiary transition-colors hover:bg-hover hover:text-ink"
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink-tertiary transition-colors hover:bg-hover hover:text-ink sm:min-h-0 sm:border-transparent sm:bg-transparent sm:px-3 sm:py-1.5"
             title="编辑标题、摘要与关键词"
           >
             <PencilLine className="h-4 w-4" />
@@ -1876,20 +1876,20 @@ export default function PaperDetail() {
           </button>
           <button
             onClick={() => setSourceEditorOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-ink-tertiary transition-colors hover:bg-hover hover:text-ink"
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink-tertiary transition-colors hover:bg-hover hover:text-ink sm:min-h-0 sm:border-transparent sm:bg-transparent sm:px-3 sm:py-1.5"
             title="修正来源链接或上传 PDF"
           >
             <Link2 className="h-4 w-4" />
             修正来源 / PDF
           </button>
-          <button onClick={handleToggleFavorite} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-error/10" title={paper.favorited ? "取消收藏" : "收藏"}>
+          <button onClick={handleToggleFavorite} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm transition-colors hover:bg-error/10 sm:min-h-0 sm:border-transparent sm:bg-transparent sm:px-3 sm:py-1.5" title={paper.favorited ? "取消收藏" : "收藏"}>
             <Heart className={`h-5 w-5 transition-all ${paper.favorited ? "fill-red-500 text-red-500 scale-110" : "text-ink-tertiary"}`} />
             <span className={paper.favorited ? "text-red-500" : "text-ink-tertiary"}>{paper.favorited ? "已收藏" : "收藏"}</span>
           </button>
           <button
             onClick={() => setConfirmDeleteOpen(true)}
             disabled={deleting}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-ink-tertiary transition-colors hover:bg-error/10 hover:text-error disabled:opacity-60"
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink-tertiary transition-colors hover:bg-error/10 hover:text-error disabled:opacity-60 sm:min-h-0 sm:border-transparent sm:bg-transparent sm:px-3 sm:py-1.5"
             title="删除论文"
           >
             <Trash2 className="h-4 w-4" />
