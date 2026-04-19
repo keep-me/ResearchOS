@@ -476,7 +476,7 @@ export default function Sidebar() {
                   className={cn(
                     "group relative flex items-center rounded-md text-[13px] text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active",
                     isMobileViewport
-                      ? "min-h-10 justify-center px-2 py-2"
+                      ? "min-h-14 flex-col justify-center gap-1 px-1.5 py-1.5"
                       : effectiveCollapsed
                         ? "justify-center px-0 py-2.5"
                         : "gap-2 px-3 py-2.5",
@@ -485,6 +485,7 @@ export default function Sidebar() {
                 >
                   {active ? <span className={cn("absolute bottom-1.5 left-1 top-1.5 w-0.5 rounded-full bg-primary", effectiveCollapsed && "left-0.5")} /> : null}
                   <item.icon className="h-4 w-4 shrink-0" />
+                  {isMobileViewport ? <span className="max-w-full truncate text-[10px] leading-none">{item.label}</span> : null}
                   {!effectiveCollapsed && !isMobileViewport ? <span className="min-w-0 truncate">{item.label}</span> : null}
                 </NavLink>
               );
