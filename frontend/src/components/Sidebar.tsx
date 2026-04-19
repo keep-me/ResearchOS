@@ -130,6 +130,26 @@ export default function Sidebar() {
   useEffect(() => { void loadRoots(); }, [loadRoots]);
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    const body = document.body;
+    const html = document.documentElement;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyTouchAction = body.style.touchAction;
+    const previousHtmlOverflow = html.style.overflow;
+
+    if (mobileOpen) {
+      body.style.overflow = "hidden";
+      body.style.touchAction = "none";
+      html.style.overflow = "hidden";
+    }
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      body.style.touchAction = previousBodyTouchAction;
+      html.style.overflow = previousHtmlOverflow;
+    };
+  }, [mobileOpen]);
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const width = desktopCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
     document.documentElement.style.setProperty("--shell-sidebar-width", `${width}px`);
@@ -374,7 +394,7 @@ export default function Sidebar() {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-64 flex-col overflow-hidden border-r border-border bg-sidebar overscroll-contain transition-transform duration-150 lg:w-[var(--shell-sidebar-width)]",
+          "fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-64 touch-pan-y flex-col overflow-hidden border-r border-border bg-sidebar overscroll-contain transition-transform duration-150 lg:w-[var(--shell-sidebar-width)]",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
@@ -744,7 +764,7 @@ export default function Sidebar() {
               />
             </label>
           )}
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <button type="button" onClick={() => setWorkspaceDialog(null)} className="rounded-lg border border-border px-4 py-2 text-sm text-ink-secondary transition hover:bg-hover" disabled={savingWorkspace}>取消</button>
             <button
               type="button"
