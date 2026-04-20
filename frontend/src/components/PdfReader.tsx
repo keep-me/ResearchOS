@@ -131,6 +131,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const [selectedText, setSelectedText] = useState("");
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
@@ -270,6 +271,21 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
   }, [setCopied]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobileViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (isMobileViewport) {
+      setScale((value) => (value > 1 ? 0.9 : value));
+    }
+  }, [isMobileViewport]);
+
+  useEffect(() => {
     const onLoadState = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", onLoadState);
     return () => document.removeEventListener("fullscreenchange", onLoadState);
@@ -367,7 +383,8 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
 
   return (
     <div ref={containerRef} className="fixed inset-0 z-50 flex bg-page/95 backdrop-blur-sm">
-      <div className="theme-terminal-header absolute left-0 right-0 top-0 z-20 flex items-center justify-between border-b px-4 py-2">
+      <div className="theme-terminal-header absolute left-0 right-0 top-0 z-20 border-b px-3 py-2 sm:px-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-ink">
             <BookOpen className="h-4 w-4 text-primary" />
@@ -380,7 +397,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1 sm:justify-end">
           <div className="flex items-center gap-1 rounded-md border border-border/60 bg-surface/72 px-2 py-1">
             <input
               value={pageInput}
@@ -401,9 +418,16 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
           <button onClick={() => setPanelOpen((value) => !value)} className={cn("toolbar-btn", panelOpen && "bg-primary/30 text-primary")}><MessageSquareText className="h-4 w-4" /></button>
           <button onClick={onClose} className="toolbar-btn hover:bg-red-500/20 hover:text-red-300"><X className="h-4 w-4" /></button>
         </div>
+        </div>
       </div>
 
-      <div ref={scrollRef} className="mt-12 flex-1 overflow-auto pb-10">
+      <div
+        ref={scrollRef}
+        className={cn(
+          "mt-[72px] flex-1 overflow-auto pb-10 sm:mt-12",
+          isMobileViewport && panelOpen && "pb-[min(60dvh,34rem)]",
+        )}
+      >
         {loadError ? (
           <div className="flex h-full items-center justify-center text-red-300">{loadError}</div>
         ) : (
@@ -413,16 +437,22 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
             onLoadError={(error) => setLoadError(`PDF 加载失败: ${error.message}`)}
             loading={<div className="flex h-96 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
           >
-            <div className="flex flex-col items-center gap-4 py-6">
+            <div className="flex flex-col items-center gap-4 px-2 py-4 sm:py-6">
               {pages.map((page) => {
                 const nearby = Math.abs(page - currentPage) <= 3;
                 const activeRect = regionSelection?.page === page ? regionSelection : null;
                 const dragRect = regionDrag?.page === page ? regionDrag : null;
                 return (
-                  <div key={page} data-page={page} ref={(el) => setPageRef(page, el)} className="relative" style={!nearby ? { minHeight: `${Math.round(792 * scale)}px`, width: `${Math.round(612 * scale)}px` } : undefined}>
+                  <div
+                    key={page}
+                    data-page={page}
+                    ref={(el) => setPageRef(page, el)}
+                    className="relative max-w-full"
+                    style={!nearby ? { minHeight: `${Math.round(792 * scale)}px`, width: `${Math.round(612 * scale)}px`, maxWidth: "100%" } : undefined}
+                  >
                     <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-full pb-1"><span className="rounded-full border border-border/60 bg-surface/72 px-2 py-0.5 text-[10px] text-ink-tertiary">{page}</span></div>
                     {nearby ? (
-                      <div className={cn("relative inline-block", regionMode && "pdf-region-mode")}>
+                      <div className={cn("relative inline-block max-w-full", regionMode && "pdf-region-mode")}>
                         <Page
                           pageNumber={page}
                           scale={scale}
@@ -452,10 +482,24 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
         )}
       </div>
 
-      <div className={cn("relative mt-12 overflow-hidden border-l border-border bg-surface transition-all duration-300", panelOpen ? "w-[420px]" : "w-0")}>
-        <div className="flex h-full w-[420px] flex-col">
-          <div className="border-b border-border px-4 py-3 text-sm text-ink">阅读助手</div>
-          <div className="flex-1 space-y-4 overflow-auto px-4 py-4">
+      <div
+        className={cn(
+          "overflow-hidden bg-surface transition-all duration-300",
+          isMobileViewport
+            ? "absolute inset-x-0 bottom-0 z-30 border-t border-border shadow-[0_-14px_28px_rgba(15,23,42,0.16)]"
+            : "relative mt-12 border-l border-border",
+          panelOpen
+            ? isMobileViewport
+              ? "h-[min(60dvh,34rem)]"
+              : "w-[420px]"
+            : isMobileViewport
+              ? "h-0"
+              : "w-0",
+        )}
+      >
+        <div className={cn("flex h-full flex-col", isMobileViewport ? "w-full" : "w-[420px]")}>
+          <div className="border-b border-border px-3 py-3 text-sm text-ink sm:px-4">阅读助手</div>
+          <div className="flex-1 space-y-4 overflow-auto px-3 py-3 sm:px-4 sm:py-4">
             <section className="rounded-xl border border-border/70 bg-surface/72 p-3">
               <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-ink-tertiary"><FileText className="h-3.5 w-3.5" />整篇论文</div>
               <div className="grid grid-cols-1 gap-2">
@@ -472,11 +516,11 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
               {selectedText ? (
                 <>
                   <div className="rounded-lg bg-page/72 p-2.5 text-xs leading-relaxed text-ink-secondary">{selectedText}</div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <ActionButton disabled={!!loadingLabel} onClick={() => void runReaderQuery({ scope: "selection", action: "translate", text: selectedText, page_number: selectedPage || undefined }, "正在翻译选中文本...")}>翻译</ActionButton>
                     <ActionButton disabled={!!loadingLabel} onClick={() => void runReaderQuery({ scope: "selection", action: "analyze", text: selectedText, page_number: selectedPage || undefined }, "正在分析选中文本...")}>分析</ActionButton>
                   </div>
-                  <div className="mt-3 flex gap-2 rounded-lg border border-border bg-page/72 p-2">
+                  <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border bg-page/72 p-2 sm:flex-row">
                     <input value={selectionQuestion} onChange={(event) => setSelectionQuestion(event.target.value)} placeholder="针对选区提问" className="h-9 min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-placeholder" />
                     <ActionButton tone="primary" disabled={!selectionQuestion.trim() || !!loadingLabel} onClick={() => { void runReaderQuery({ scope: "selection", action: "ask", text: selectedText, question: selectionQuestion.trim(), page_number: selectedPage || undefined }, "正在回答选区问题..."); setSelectionQuestion(""); }}>
                       <SendHorizontal className="h-4 w-4" />
@@ -501,7 +545,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                   <div className="mt-3 grid grid-cols-1 gap-2">
                     <ActionButton disabled={!!loadingLabel} onClick={() => void runReaderQuery({ scope: "figure", action: "analyze", image_base64: regionSelection.imageBase64, page_number: regionSelection.page }, "正在分析框选区域...")}>分析</ActionButton>
                   </div>
-                  <div className="mt-3 flex gap-2 rounded-lg border border-border bg-page/72 p-2">
+                  <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border bg-page/72 p-2 sm:flex-row">
                     <input value={regionQuestion} onChange={(event) => setRegionQuestion(event.target.value)} placeholder="针对区域提问" className="h-9 min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-placeholder" />
                     <ActionButton tone="primary" disabled={!regionQuestion.trim() || !!loadingLabel} onClick={() => { void runReaderQuery({ scope: "figure", action: "ask", image_base64: regionSelection.imageBase64, page_number: regionSelection.page, question: regionQuestion.trim() }, "正在分析框选区域..."); setRegionQuestion(""); }}>
                       <SendHorizontal className="h-4 w-4" />
@@ -535,7 +579,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                             {copiedKey === copyKey ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                           </button>
                         </div>
-                        <div className="mt-3 max-w-none text-sm">
+                      <div className="mt-3 max-w-none text-sm">
                           <Markdown className="pdf-ai-markdown">{item.result}</Markdown>
                         </div>
                       </div>
