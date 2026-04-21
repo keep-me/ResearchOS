@@ -2,8 +2,9 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState, type R
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAssistantInstance, type ChatItem, type StepItem } from "@/contexts/AssistantInstanceContext";
+import { useToast } from "@/contexts/ToastContext";
 import { normalizeReasoningDisplay } from "@/features/assistantInstance/reasoningText";
-import { paperApi, resolveApiAssetUrl } from "@/services/api";
+import { ingestApi, paperApi, resolveApiAssetUrl } from "@/services/api";
 import { deriveProjectName, getToolMeta, type WorkspaceFileTreeNode } from "./agentPageShared";
 import {
   AlertTriangle,
@@ -324,41 +325,38 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   return (
     <div className="group py-3">
-      {streaming ? (
-        <div className="rounded-xl border border-border bg-white px-4 py-3.5">
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+      <div className="rounded-xl border border-border bg-white px-4 py-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
             <Sparkles className="h-3.5 w-3.5" />
             {isPlanMode ? "ResearchOS Plan" : "ResearchOS"}
-          </div>
-          <p className="whitespace-pre-wrap text-sm leading-7 text-ink">
-            {renderedContent}
-            <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse rounded-full bg-primary" />
-          </p>
+          </span>
+          {streaming ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/8 px-2 py-1 text-[10px] font-medium text-primary">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              输出中
+            </span>
+          ) : (
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 rounded-md border border-border bg-page px-2.5 py-1 text-[11px] text-ink-tertiary transition-colors duration-150 hover:bg-hover hover:text-ink-secondary"
+            >
+              {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+              {copied ? "已复制" : "复制"}
+            </button>
+          )}
         </div>
-      ) : (
-        <>
-          <div className="rounded-xl border border-border bg-white px-4 py-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-                <Sparkles className="h-3.5 w-3.5" />
-                {isPlanMode ? "ResearchOS Plan" : "ResearchOS"}
-              </span>
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1 rounded-md border border-border bg-page px-2.5 py-1 text-[11px] text-ink-tertiary transition-colors duration-150 hover:bg-hover hover:text-ink-secondary"
-              >
-                {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
-                {copied ? "已复制" : "复制"}
-              </button>
+        <div className="prose-custom text-sm leading-relaxed text-ink">
+          <Suspense fallback={<div className="h-4 animate-pulse rounded bg-surface" />}>
+            <Markdown>{renderedContent}</Markdown>
+          </Suspense>
+          {streaming ? (
+            <div className="mt-2">
+              <span className="inline-block h-4 w-[2px] animate-pulse rounded-full bg-primary align-middle" />
             </div>
-            <div className="prose-custom text-sm leading-relaxed text-ink">
-              <Suspense fallback={<div className="h-4 animate-pulse rounded bg-surface" />}>
-                <Markdown>{renderedContent}</Markdown>
-              </Suspense>
-            </div>
-          </div>
-        </>
-      )}
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 });
@@ -548,37 +546,6 @@ export function externalLiteratureEntryKey(entry: Record<string, unknown>, index
   return `${source}::${arxivId || openalexId || title || index}`;
 }
 
-export function buildExternalLiteratureImportPrompt(
-  query: string,
-  entries: Array<Record<string, unknown>>,
-): string {
-  const normalizedEntries = entries.map((entry) => ({
-    title: String(entry.title ?? ""),
-    abstract: String(entry.abstract ?? ""),
-    publication_year: entry.publication_year ?? null,
-    publication_date: entry.publication_date ?? null,
-    citation_count: entry.citation_count ?? 0,
-    venue: String(entry.venue ?? ""),
-    venue_type: String(entry.venue_type ?? ""),
-    venue_tier: entry.venue_tier ?? null,
-    authors: Array.isArray(entry.authors) ? entry.authors : [],
-    categories: Array.isArray(entry.categories) ? entry.categories : [],
-    arxiv_id: entry.arxiv_id ?? null,
-    openalex_id: entry.openalex_id ?? null,
-    source_url: entry.source_url ?? null,
-    pdf_url: entry.pdf_url ?? null,
-    source: entry.source ?? null,
-  }));
-  return [
-    "请调用 ingest_external_literature，把以下外部文献导入本地论文库。",
-    query ? `query: ${query}` : "",
-    "只导入下面这些 entries，不要自行增删候选项：",
-    "```json",
-    JSON.stringify(normalizedEntries, null, 2),
-    "```",
-  ].filter(Boolean).join("\n");
-}
-
 /**
  * 入库结果卡片
  */
@@ -657,7 +624,14 @@ export const ExternalLiteratureSelector = memo(function ExternalLiteratureSelect
   papers: Array<Record<string, unknown>>;
   query: string;
 }) {
-  const { sendMessage, loading } = useAssistantInstance();
+  const {
+    ensureConversation,
+    loading,
+    mountedPaperIds,
+    mountedPaperTitles,
+    setMountedPapers,
+  } = useAssistantInstance();
+  const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
     () => new Set(papers.map((paper, index) => externalLiteratureEntryKey(paper, index))),
@@ -673,14 +647,50 @@ export const ExternalLiteratureSelector = memo(function ExternalLiteratureSelect
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedKeys.size === 0 || submitted) return;
     const selectedEntries = papers.filter((paper, index) => selectedKeys.has(externalLiteratureEntryKey(paper, index)));
     if (selectedEntries.length === 0) return;
     setSubmitted(true);
-    sendMessage(buildExternalLiteratureImportPrompt(query, selectedEntries)).catch(() => {
+    try {
+      const result = await ingestApi.importLiterature({
+        entries: selectedEntries.map((entry) => ({
+          title: String(entry.title ?? ""),
+          abstract: String(entry.abstract ?? ""),
+          publication_year: entry.publication_year as number | null | undefined,
+          publication_date: entry.publication_date as string | null | undefined,
+          citation_count: entry.citation_count as number | null | undefined,
+          venue: entry.venue as string | null | undefined,
+          venue_type: entry.venue_type as string | null | undefined,
+          venue_tier: entry.venue_tier as string | null | undefined,
+          authors: Array.isArray(entry.authors) ? entry.authors as string[] : [],
+          categories: Array.isArray(entry.categories) ? entry.categories as string[] : [],
+          arxiv_id: entry.arxiv_id as string | null | undefined,
+          openalex_id: entry.openalex_id as string | null | undefined,
+          source_url: entry.source_url as string | null | undefined,
+          pdf_url: entry.pdf_url as string | null | undefined,
+          source: entry.source as string | null | undefined,
+        })),
+      });
+      const importedPapers = result.papers || [];
+      if (importedPapers.length > 0) {
+        void ensureConversation();
+        setMountedPapers({
+          paperIds: [...mountedPaperIds, ...importedPapers.map((paper) => paper.id)],
+          paperTitles: [...mountedPaperTitles, ...importedPapers.map((paper) => paper.title)],
+          primaryPaperId: importedPapers[0]?.id || mountedPaperIds[0] || null,
+        });
+      }
+      toast(
+        importedPapers.length > 0 ? "success" : "warning",
+        importedPapers.length > 0
+          ? `已导入 ${importedPapers.length} 篇论文${query ? `：${query}` : ""}`
+          : "未导入新论文，可能都已存在于库中",
+      );
+    } catch (error) {
       setSubmitted(false);
-    });
+      toast("error", error instanceof Error ? error.message : "导入外部文献失败");
+    }
   };
 
   return (
@@ -770,7 +780,7 @@ export const ExternalLiteratureSelector = memo(function ExternalLiteratureSelect
       ) : (
         <div className="flex items-center justify-center gap-2 rounded-xl bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary">
           <Loader2 className="h-4 w-4 animate-spin" />
-          已发送导入请求，等待助手执行…
+          正在导入并挂载到当前聊天…
         </div>
       )}
     </div>
@@ -810,7 +820,14 @@ export function ArxivCandidateSelector({ candidates, query }: {
   candidates: Array<Record<string, unknown>>;
   query: string;
 }) {
-  const { sendMessage, loading } = useAssistantInstance();
+  const {
+    ensureConversation,
+    loading,
+    mountedPaperIds,
+    mountedPaperTitles,
+    setMountedPapers,
+  } = useAssistantInstance();
+  const { toast } = useToast();
   const relevantCats = inferRelevantCategories(query);
 
   const [selected, setSelected] = useState<Set<string>>(() => {
@@ -845,11 +862,30 @@ export function ArxivCandidateSelector({ candidates, query }: {
     setSelected(relevant);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selected.size === 0 || submitted) return;
     setSubmitted(true);
-    const ids = Array.from(selected).join(", ");
-    sendMessage(`请将以下论文入库：${ids}`).catch(() => { setSubmitted(false); });
+    try {
+      const result = await ingestApi.arxivIds(Array.from(selected));
+      const importedPapers = result.papers || [];
+      if (importedPapers.length > 0) {
+        void ensureConversation();
+        setMountedPapers({
+          paperIds: [...mountedPaperIds, ...importedPapers.map((paper) => paper.id)],
+          paperTitles: [...mountedPaperTitles, ...importedPapers.map((paper) => paper.title)],
+          primaryPaperId: importedPapers[0]?.id || mountedPaperIds[0] || null,
+        });
+      }
+      toast(
+        importedPapers.length > 0 ? "success" : "warning",
+        importedPapers.length > 0
+          ? `已导入 ${importedPapers.length} 篇 arXiv 论文`
+          : "未导入新论文，可能都已存在于库中",
+      );
+    } catch (error) {
+      setSubmitted(false);
+      toast("error", error instanceof Error ? error.message : "导入 arXiv 论文失败");
+    }
   };
 
   return (
@@ -935,7 +971,7 @@ export function ArxivCandidateSelector({ candidates, query }: {
       ) : (
         <div className="flex items-center justify-center gap-2 rounded-xl bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary">
           <Loader2 className="h-4 w-4 animate-spin" />
-          已发送请求，等待确认后开始入库…
+          正在导入并挂载到当前聊天…
         </div>
       )}
     </div>

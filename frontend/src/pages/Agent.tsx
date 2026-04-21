@@ -309,6 +309,7 @@ export default function Agent() {
   const [workspaceServerProbeResult, setWorkspaceServerProbeResult] = useState<string | null>(null);
   const [workspaceServerProbeSuccess, setWorkspaceServerProbeSuccess] = useState<boolean | null>(null);
   const [mountedPaperPanelOpen, setMountedPaperPanelOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [selectedSlashCommand, setSelectedSlashCommand] = useState<SlashCommandItem | null>(null);
@@ -730,6 +731,15 @@ export default function Agent() {
     searchParams,
     toast,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsMobileViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2408,10 +2418,10 @@ export default function Agent() {
 
   return (
     <>
-    <div className="flex h-full min-h-[100dvh] min-w-0 flex-col overflow-hidden bg-page">
+    <div className="flex h-[100dvh] min-h-[100dvh] min-w-0 flex-col overflow-hidden bg-page">
       <div className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex min-h-0 w-full flex-1">
-          <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none">
             <div className="sticky top-0 z-20 shrink-0 border-b border-border bg-white px-3 py-3 sm:px-4 lg:px-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -2557,8 +2567,13 @@ export default function Agent() {
             </div>
         <div
           ref={chatViewportRef}
-          className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
-          style={terminalDrawerOpen ? { paddingBottom: `${terminalViewportPadding}px` } : undefined}
+          className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+          style={{
+            ...(terminalDrawerOpen ? { paddingBottom: `${terminalViewportPadding}px` } : undefined),
+            WebkitOverflowScrolling: "touch",
+            touchAction: "pan-y",
+            overscrollBehaviorY: isMobileViewport ? "contain" : "auto",
+          }}
         >
           {isEmpty ? (
             <EmptyState
