@@ -310,6 +310,7 @@ export default function Agent() {
   const [workspaceServerProbeSuccess, setWorkspaceServerProbeSuccess] = useState<boolean | null>(null);
   const [mountedPaperPanelOpen, setMountedPaperPanelOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [mobileChromeCollapsed, setMobileChromeCollapsed] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [selectedSlashCommand, setSelectedSlashCommand] = useState<SlashCommandItem | null>(null);
@@ -329,6 +330,7 @@ export default function Agent() {
   const terminalSessionsRef = useRef<WorkspaceTerminalSession[]>([]);
   const workspacePanelResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const terminalPanelResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const lastViewportScrollTopRef = useRef(0);
   const activeSessionDirectory = normalizeAssistantWorkspacePath(activeSession?.directory || "");
   const assistantSourceDirectory = normalizeAssistantWorkspacePath(activeWorkspace?.path || activeSessionDirectory || "");
   const assistantDirectory = normalizeAssistantWorkspacePath(
@@ -2107,14 +2109,39 @@ export default function Agent() {
     updateViewportBottomState();
     const viewport = chatViewportRef.current;
     if (!viewport) return () => undefined;
-    const handleViewportChange = () => updateViewportBottomState();
+    const handleViewportChange = () => {
+      updateViewportBottomState();
+      if (!isMobileViewport) {
+        setMobileChromeCollapsed(false);
+        lastViewportScrollTopRef.current = viewport.scrollTop;
+        return;
+      }
+      const currentTop = viewport.scrollTop;
+      const previousTop = lastViewportScrollTopRef.current;
+      const delta = currentTop - previousTop;
+      lastViewportScrollTopRef.current = currentTop;
+
+      if (currentTop <= 24 || delta <= -18) {
+        setMobileChromeCollapsed(false);
+        return;
+      }
+      if (delta >= 18 && currentTop > 96 && document.activeElement !== textareaRef.current) {
+        setMobileChromeCollapsed(true);
+      }
+    };
     viewport.addEventListener("scroll", handleViewportChange, { passive: true });
     window.addEventListener("resize", handleViewportChange);
     return () => {
       viewport.removeEventListener("scroll", handleViewportChange);
       window.removeEventListener("resize", handleViewportChange);
     };
-  }, [updateViewportBottomState]);
+  }, [isMobileViewport, updateViewportBottomState]);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileChromeCollapsed(false);
+    }
+  }, [isMobileViewport]);
 
   useEffect(() => () => {
     if (scrollRafRef.current) {
@@ -2422,11 +2449,18 @@ export default function Agent() {
       <div className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex min-h-0 w-full flex-1">
           <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none">
-            <div className="sticky top-0 z-20 shrink-0 border-b border-border bg-white px-3 py-3 sm:px-4 lg:px-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className={cn(
+              "sticky top-0 z-20 shrink-0 border-b border-border bg-white transition-[max-height,opacity,padding,transform] duration-200 ease-out sm:px-4 lg:px-6",
+              isMobileViewport ? "px-3 py-2" : "px-3 py-3",
+              isMobileViewport && mobileChromeCollapsed && "max-h-0 -translate-y-3 overflow-hidden border-b-0 px-3 py-0 opacity-0",
+            )}>
+              <div className={cn(
+                "flex flex-col sm:flex-row sm:items-center sm:justify-between",
+                isMobileViewport ? "gap-2" : "gap-3",
+              )}>
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-ink">{sessionTitle}</span>
+                  <div className={cn("flex flex-wrap items-center", isMobileViewport ? "gap-1.5" : "gap-2")}>
+                    <span className={cn("truncate font-semibold text-ink", isMobileViewport ? "text-[13px]" : "text-sm")}>{sessionTitle}</span>
                     {workspaceName ? (
                       <span className="inline-flex items-center rounded-full border border-border/70 bg-white px-2 py-0.5 text-[10px] text-ink-secondary">
                         {workspaceName}
@@ -2441,12 +2475,18 @@ export default function Agent() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:justify-end">
+                <div className={cn(
+                  "flex shrink-0 flex-wrap items-center sm:justify-end",
+                  isMobileViewport ? "gap-1" : "gap-1.5",
+                )}>
                   {loading && (
                     <button
                       type="button"
                       onClick={stopGeneration}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-error/20 bg-error-light px-3 text-[11px] font-medium text-error transition hover:bg-error/10"
+                      className={cn(
+                        "inline-flex items-center rounded-full border border-error/20 bg-error-light font-medium text-error transition hover:bg-error/10",
+                        isMobileViewport ? "h-7 gap-1 px-2.5 text-[10px]" : "h-8 gap-1.5 px-3 text-[11px]",
+                      )}
                     >
                       <Square className="h-3.5 w-3.5" />
                       停止
@@ -2456,7 +2496,7 @@ export default function Agent() {
                     type="button"
                     onClick={() => setWorkflowDrawerOpen(true)}
                     className={cn(
-                      "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium transition",
+                      isMobileViewport ? "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition" : "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium transition",
                       workflowDrawerOpen
                         ? "border-primary/30 bg-primary/10 text-primary"
                         : "border-border/70 bg-white/72 text-ink-secondary hover:border-primary/20 hover:text-primary",
@@ -2473,7 +2513,10 @@ export default function Agent() {
                   <button
                     type="button"
                     onClick={() => setShowMcpModal(true)}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border/70 bg-white/72 px-3 text-[11px] font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary"
+                    className={cn(
+                      "inline-flex rounded-full border border-border/70 bg-white/72 font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary",
+                      isMobileViewport ? "h-7 gap-1 px-2.5 text-[10px]" : "h-8 gap-1.5 px-3 text-[11px]",
+                    )}
                   >
                     <Server className="h-3.5 w-3.5 text-primary" />
                     集成
@@ -2487,7 +2530,10 @@ export default function Agent() {
                     type="button"
                     data-testid="assistant-ssh-button"
                     onClick={handleCreateWorkspaceServer}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border/70 bg-white/88 px-3 text-[11px] font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary"
+                    className={cn(
+                      "inline-flex rounded-full border border-border/70 bg-white/88 font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary",
+                      isMobileViewport ? "h-7 gap-1 px-2.5 text-[10px]" : "h-8 gap-1.5 px-3 text-[11px]",
+                    )}
                   >
                     <Server className="h-3.5 w-3.5" />
                     SSH
@@ -2496,7 +2542,7 @@ export default function Agent() {
                     type="button"
                     onClick={() => setTerminalDrawerOpen((current) => !current)}
                     className={cn(
-                      "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium transition",
+                      isMobileViewport ? "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition" : "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium transition",
                       terminalDrawerOpen
                         ? "border-primary/30 bg-primary/10 text-primary"
                         : "border-border/70 bg-white/88 text-ink-secondary hover:border-primary/20 hover:text-primary",
@@ -2590,7 +2636,10 @@ export default function Agent() {
               onOpenWorkspace={workspaceDirectory ? () => openSidePanel("files") : undefined}
             />
           ) : (
-            <div className="mx-auto w-full max-w-[1040px] px-4 pb-14 pt-8 lg:px-6 lg:pb-16 lg:pt-10">
+            <div className={cn(
+              "mx-auto w-full max-w-[1040px] lg:px-6 lg:pb-16 lg:pt-10",
+              isMobileViewport ? "px-3 pb-8 pt-4" : "px-4 pb-14 pt-8",
+            )}>
               {items.map((item, idx) => {
                 const retryFn = item.type === "error" ? (() => {
                   for (let i = idx - 1; i >= 0; i--) {
@@ -2631,10 +2680,14 @@ export default function Agent() {
         </div>
 
         <div
-          className="sticky bottom-0 z-20 shrink-0 border-t border-border bg-page px-4 pb-2 pt-2 lg:px-6 lg:pb-3"
+          className={cn(
+            "sticky bottom-0 z-20 shrink-0 border-t border-border bg-page transition-[max-height,opacity,padding,transform] duration-200 ease-out lg:px-6 lg:pb-3",
+            isMobileViewport ? "px-3 pb-1.5 pt-1.5" : "px-4 pb-2 pt-2",
+            isMobileViewport && mobileChromeCollapsed && "max-h-0 translate-y-4 overflow-hidden border-t-0 px-3 py-0 opacity-0",
+          )}
           style={{ bottom: `calc(var(--task-dock-offset, 0px) + ${terminalComposerOffset}px)` }}
         >
-          <div className="mx-auto max-w-[980px] space-y-2.5">
+          <div className={cn("mx-auto max-w-[980px]", isMobileViewport ? "space-y-1.5" : "space-y-2.5")}>
             {hasPendingConfirm && (
               <div className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning-light px-3 py-2 text-[11px] font-medium text-warning">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -2652,7 +2705,7 @@ export default function Agent() {
             />
 
             <div className={cn(
-              "rounded-xl border border-border bg-white p-2.5 transition-colors duration-150 focus-within:border-primary/25",
+              isMobileViewport ? "rounded-xl border border-border bg-white p-2 transition-colors duration-150 focus-within:border-primary/25" : "rounded-xl border border-border bg-white p-2.5 transition-colors duration-150 focus-within:border-primary/25",
               hasPendingConfirm && "opacity-60",
             )}>
               {selectedSlashCommand && (
@@ -2707,7 +2760,10 @@ export default function Agent() {
               )}
 
               <div className="relative">
-                <div className="rounded-lg border border-border bg-page px-4 py-3 pr-[4.4rem]">
+                <div className={cn(
+                  "rounded-lg border border-border bg-page pr-[4.4rem]",
+                  isMobileViewport ? "px-3 py-2.5" : "px-4 py-3",
+                )}>
                   <textarea
                     ref={textareaRef}
                     value={input}
@@ -2721,19 +2777,25 @@ export default function Agent() {
                           : "输入消息"
                     }
                     className={cn(
-                      "w-full resize-none overflow-hidden bg-transparent pr-2 text-[15px] leading-7 text-ink placeholder:text-ink-placeholder focus:outline-none",
-                      isEmpty ? "min-h-[96px]" : "h-[68px]",
+                      "w-full resize-none overflow-hidden bg-transparent pr-2 text-ink placeholder:text-ink-placeholder focus:outline-none",
+                      isMobileViewport ? "text-[14px] leading-6" : "text-[15px] leading-7",
+                      isEmpty
+                        ? (isMobileViewport ? "min-h-[72px]" : "min-h-[96px]")
+                        : (isMobileViewport ? "h-[54px]" : "h-[68px]"),
                     )}
                     rows={1}
                     disabled={composerLocked}
                   />
                 </div>
-                <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
+                <div className={cn("absolute flex items-center gap-2", isMobileViewport ? "bottom-2 right-2" : "bottom-2.5 right-2.5")}>
                   {loading && (
                     <button
                       aria-label="停止生成"
                       onClick={stopGeneration}
-                      className="flex h-10 w-10 items-center justify-center rounded-md border border-error/20 bg-error-light text-error transition-colors duration-150 hover:bg-error/10"
+                      className={cn(
+                        "flex items-center justify-center rounded-md border border-error/20 bg-error-light text-error transition-colors duration-150 hover:bg-error/10",
+                        isMobileViewport ? "h-9 w-9" : "h-10 w-10",
+                      )}
                     >
                       <Square className="h-4 w-4" />
                     </button>
@@ -2743,7 +2805,7 @@ export default function Agent() {
                     onClick={() => handleSend(input)}
                     disabled={!input.trim() || composerLocked}
                     className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-md transition-colors duration-150",
+                      isMobileViewport ? "flex h-9 w-9 items-center justify-center rounded-md transition-colors duration-150" : "flex h-10 w-10 items-center justify-center rounded-md transition-colors duration-150",
                       input.trim() && !composerLocked
                         ? "bg-primary text-white hover:bg-primary-hover"
                         : "bg-hover text-ink-tertiary",
@@ -2754,7 +2816,10 @@ export default function Agent() {
                 </div>
               </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 overflow-x-auto border-t border-border/50 pt-2">
+              <div className={cn(
+                "mt-2 flex flex-wrap items-center overflow-x-auto border-t border-border/50",
+                isMobileViewport ? "gap-1 pt-1.5" : "gap-1.5 pt-2",
+              )}>
                 <button
                   type="button"
                   onClick={() => setShowImportModal(true)}
@@ -2879,54 +2944,78 @@ export default function Agent() {
               )}
 
               {mountedPaperIds.length > 0 && (
-                <div className="mt-2 rounded-[22px] border border-primary/15 bg-primary/6 px-3 py-2.5">
-                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/88 px-2.5 py-1 font-medium text-primary">
+                <div className={cn(
+                  "mt-2 rounded-[22px] border border-primary/15 bg-primary/6",
+                  isMobileViewport ? "px-2.5 py-2" : "px-3 py-2.5",
+                )}>
+                  <div className={cn("flex flex-wrap items-center text-[11px]", isMobileViewport ? "gap-1.5" : "gap-2")}>
+                    <span className={cn(
+                      "inline-flex items-center rounded-full bg-white/88 font-medium text-primary",
+                      isMobileViewport ? "gap-1 px-2 py-0.5 text-[10px]" : "gap-1.5 px-2.5 py-1",
+                    )}>
                       <Link2 className="h-3.5 w-3.5" />
                       已导入 {mountedPaperIds.length} 篇
                     </span>
                     <span
-                      className="min-w-0 flex-1 break-words text-ink-secondary"
+                      className={cn(
+                        "min-w-0 break-words text-ink-secondary",
+                        isMobileViewport ? "order-3 basis-full text-[10px] leading-4" : "flex-1",
+                      )}
                       title={mountedPaperSummary}
                     >
                       {mountedPaperSummary}
                     </span>
                     {focusedPaperId ? (
-                      <span className="inline-flex items-center rounded-full border border-primary/15 bg-white/84 px-2.5 py-1 text-primary">
+                      <span className={cn(
+                        "inline-flex items-center rounded-full border border-primary/15 bg-white/84 text-primary",
+                        isMobileViewport ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1",
+                      )}>
                         目标：{truncateText(focusedPaperLabel, 20)}
                       </span>
                     ) : null}
                     <button
                       type="button"
                       onClick={() => setShowImportModal(true)}
-                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border/70 bg-white/86 px-2.5 text-[11px] font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary"
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border border-border/70 bg-white/86 font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary",
+                        isMobileViewport ? "h-6 px-2 text-[10px]" : "h-7 px-2.5 text-[11px]",
+                      )}
                     >
                       管理
                     </button>
                     <button
                       type="button"
                       onClick={() => setMountedPaperPanelOpen((current) => !current)}
-                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border/70 bg-white/86 px-2.5 text-[11px] font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary"
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border border-border/70 bg-white/86 font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary",
+                        isMobileViewport ? "h-6 px-2 text-[10px]" : "h-7 px-2.5 text-[11px]",
+                      )}
                     >
-                      {mountedPaperPanelOpen ? "收起" : "展开"}
+                      {mountedPaperPanelOpen ? "收起" : "详情"}
                     </button>
                     <button
                       type="button"
                       onClick={handleClearMountedPapers}
-                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border/70 bg-white/86 px-2.5 text-[11px] font-medium text-ink-secondary transition hover:border-error/25 hover:text-error"
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border border-border/70 bg-white/86 font-medium text-ink-secondary transition hover:border-error/25 hover:text-error",
+                        isMobileViewport ? "h-6 px-2 text-[10px]" : "h-7 px-2.5 text-[11px]",
+                      )}
                     >
                       清空
                     </button>
                   </div>
                   {mountedPaperPanelOpen && (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className={cn("mt-2 flex flex-wrap", isMobileViewport ? "gap-1.5" : "gap-2")}>
                       {mountedPaperItems.map((paper) => (
                         <span
                           key={paper.id}
-                          className="inline-flex max-w-full items-center gap-2 rounded-full border border-primary/15 bg-white/86 px-3 py-1 text-[11px] text-primary"
+                          className={cn(
+                            "inline-flex max-w-full items-center rounded-full border border-primary/15 bg-white/86 text-primary",
+                            isMobileViewport ? "gap-1.5 px-2.5 py-1 text-[10px]" : "gap-2 px-3 py-1 text-[11px]",
+                          )}
                           title={paper.title}
                         >
-                          <span className="max-w-[320px] break-words text-left">
+                          <span className={cn("break-words text-left", isMobileViewport ? "max-w-[220px]" : "max-w-[320px]")}>
                             {paper.title}
                           </span>
                           <button

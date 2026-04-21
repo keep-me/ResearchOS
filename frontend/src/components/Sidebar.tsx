@@ -111,7 +111,6 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { metas, activeId, activeWorkspace, createConversation, switchConversation, deleteConversation, renameWorkspaceConversations, clearWorkspaceConversations } = useConversationCtx();
-
   const loadRoots = useCallback(async () => {
     setLoadingRoots(true);
     try {
@@ -406,7 +405,7 @@ export default function Sidebar() {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-3 top-3 z-40 inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white text-ink shadow-sm transition-colors duration-150 hover:bg-hover active:bg-active lg:hidden"
+        className="fixed left-3 top-[max(0.75rem,env(safe-area-inset-top))] z-40 inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white text-ink shadow-sm transition-colors duration-150 hover:bg-hover active:bg-active lg:hidden"
         aria-label="打开菜单"
       >
         <Menu className="h-4 w-4" />
