@@ -139,7 +139,7 @@ class ReasoningService:
             if analysis_blocks:
                 analysis_context = (
                     "以下已有分析仅作弱参考，用于术语对齐和快速回忆；"
-                    "如果与本轮结构化证据冲突，必须以结构化证据为准，并直接纠正旧结论。\n\n"
+                    "如果与本轮论文证据冲突，必须以论文证据为准，并直接纠正旧结论。\n\n"
                     + "\n\n".join(analysis_blocks)
                 )
 
@@ -168,7 +168,7 @@ class ReasoningService:
             effective_source_detail = evidence.source
             if normalized_evidence_mode == "full":
                 extracted_text = evidence.build_targeted_context(
-                    name="推理链结构化证据包",
+                    name="推理链论文证据",
                     targets=[
                         "overview",
                         "method",
@@ -188,8 +188,8 @@ class ReasoningService:
                     max_equations=5,
                     include_outline=True,
                     notes=[
-                        "用于推理链分析，证据跨全文选取，不代表正文只到某一节。",
-                        "这是面向推理链任务筛选的结构化证据包；未出现的细节不代表原文不存在。",
+                        "用于推理链分析，证据跨全文选取或顺序摘录，不代表正文只到某一节。",
+                        "这是面向推理链任务准备的论文证据；未出现的细节不代表原文不存在。",
                     ],
                 )
             else:

@@ -813,7 +813,7 @@ class PaperPipelines:
                 46,
             )
 
-            if normalized_evidence_mode == "full":
+            if normalized_evidence_mode == "full" and not evidence.uses_linear_pdf_evidence():
                 method_evidence = evidence.build_targeted_context(
                     name="方法证据包",
                     targets=["overview", "method", "equation", "figure"],
@@ -861,6 +861,19 @@ class PaperPipelines:
                     for part in (method_evidence, experiment_evidence, risk_evidence)
                     if str(part or "").strip()
                 )
+            elif normalized_evidence_mode == "full":
+                linear_full_evidence = evidence.build_analysis_context(max_chars=0)
+                method_evidence = linear_full_evidence
+                experiment_evidence = linear_full_evidence
+                risk_evidence = linear_full_evidence
+                model_selection_context = "\n\n".join(
+                    part
+                    for part in (
+                        f"[证据来源]\n{evidence.source}",
+                        f"[全文线性证据]\n{linear_full_evidence}",
+                    )
+                    if str(part or "").strip()
+                )
             else:
                 rough_evidence = evidence.build_analysis_context(
                     max_chars=max(3200, min(pdf_text_chars, 6200)),
@@ -892,7 +905,7 @@ class PaperPipelines:
                     fallback_model=active_cfg.model_fallback,
                 )
 
-            if normalized_evidence_mode == "full":
+            if normalized_evidence_mode == "full" and not evidence.uses_linear_pdf_evidence():
                 self._report_progress(progress_callback, "正在并发进行方法 / 实验 / 风险聚焦分析...", 54)
                 focus_specs = {
                     "method": {
@@ -961,6 +974,16 @@ class PaperPipelines:
                         f"[方法聚焦分析]\n{method_focus}",
                         f"[实验聚焦分析]\n{experiment_focus}",
                         f"[局限与复现聚焦分析]\n{risk_focus}",
+                    )
+                    if str(part or "").strip()
+                )
+            elif normalized_evidence_mode == "full":
+                self._report_progress(progress_callback, "正在按照全文线性证据生成精读...", 62)
+                synthesis_context = "\n\n".join(
+                    part
+                    for part in (
+                        f"[证据来源]\n{evidence.source}",
+                        f"[全文线性证据]\n{method_evidence}",
                     )
                     if str(part or "").strip()
                 )

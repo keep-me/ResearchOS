@@ -50,6 +50,29 @@ class PreparedPaperEvidence:
     round_context_builder: Callable[[str, int], str] | None = None
     targeted_context_builder: Callable[..., str] | None = None
 
+    def uses_linear_pdf_evidence(self) -> bool:
+        return self.document_context is None and "pdf" in str(self.source or "").strip().lower()
+
+    def _render_linear_pdf_context(
+        self,
+        *,
+        name: str,
+        max_chars: int,
+        notes: list[str] | None = None,
+    ) -> str:
+        header = [
+            f"- 以下是“{name}”的线性正文证据。",
+            f"- 来源：{self.source}。",
+            "- 说明：这是按 PDF 正文顺序保留的原始摘录，不是结构化章节/图表/表格/公式证据包。",
+            "- 请优先依据原文顺序理解内容；不要把未出现的标题、图表或公式槽位当作不存在。",
+        ]
+        for note in notes or []:
+            note_text = str(note or "").strip()
+            if note_text:
+                header.append(f"- {note_text}")
+        content = _truncate_text(self.raw_excerpt, max_chars)
+        return "\n".join([*header, "", content]).strip()
+
     def build_analysis_context(self, *, max_chars: int = 18000) -> str:
         if self.document_context is not None:
             full_mode = int(max_chars) <= 0
@@ -76,6 +99,11 @@ class PreparedPaperEvidence:
             )
             if rendered.strip():
                 return rendered
+        if self.uses_linear_pdf_evidence():
+            return self._render_linear_pdf_context(
+                name="全文线性证据",
+                max_chars=max_chars,
+            )
         return _truncate_text(self.raw_excerpt, max_chars)
 
     def build_round_context(self, round_name: str, *, max_chars: int) -> str:
@@ -90,6 +118,11 @@ class PreparedPaperEvidence:
             rendered = self.document_context.build_round_context(round_name, max_chars=max_chars)
             if rendered.strip():
                 return rendered
+        if self.uses_linear_pdf_evidence():
+            return self._render_linear_pdf_context(
+                name=f"{round_name or 'analysis'} 论文证据",
+                max_chars=max_chars,
+            )
         return _truncate_text(self.raw_excerpt, max_chars)
 
     def build_targeted_context(
@@ -139,6 +172,12 @@ class PreparedPaperEvidence:
             )
             if rendered.strip():
                 return rendered
+        if self.uses_linear_pdf_evidence():
+            return self._render_linear_pdf_context(
+                name=name,
+                max_chars=max_chars,
+                notes=notes,
+            )
         return _truncate_text(self.raw_excerpt, max_chars)
 
 
@@ -304,16 +343,10 @@ def load_prepared_paper_evidence(
                 raw_excerpt=raw_excerpt,
             ),
         )
-    document_context = (
-        PaperDocumentContext.from_text(raw_excerpt, source=source)
-        if raw_excerpt
-        else None
-    )
     return _cache_put(
         pdf_cache_key,
         PreparedPaperEvidence(
             source=source,
             raw_excerpt=raw_excerpt,
-            document_context=document_context,
         ),
     )
