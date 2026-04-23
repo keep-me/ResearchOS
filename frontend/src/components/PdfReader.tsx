@@ -45,6 +45,7 @@ interface PdfReaderProps {
   paperId: string;
   paperTitle: string;
   paperArxivId?: string;
+  onOcrUpdated?: () => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -105,6 +106,13 @@ interface SelectionAnchor {
   matchedBlock?: PaperReaderDocumentBlock | null;
 }
 
+interface PdfNoteMarker {
+  key: string;
+  page: number;
+  count: number;
+  block: PaperReaderDocumentBlock | null;
+}
+
 const ACTION_LABEL: Record<PaperReaderAction, string> = {
   analyze: "分析",
   explain: "分析",
@@ -143,6 +151,8 @@ const NOTE_COLOR_BADGE_CLASS: Record<NoteColor, string> = {
 
 const READER_PANEL_MIN_WIDTH = 360;
 const READER_PANEL_MAX_WIDTH = 760;
+const MOBILE_WORKSPACE_TABBAR_HEIGHT = 72;
+const MOBILE_TOPBAR_HEIGHT = 44;
 
 const DOCUMENT_BLOCK_LABEL: Record<PaperReaderDocumentBlock["type"], string> = {
   heading: "标题",
@@ -241,10 +251,22 @@ function canLinkBlockToPdf(block: PaperReaderDocumentBlock) {
   return Boolean(block.page_number && block.bbox);
 }
 
-function getPdfOverlayStyle(block: PaperReaderDocumentBlock | null) {
+function getPdfOverlayStyle(block: PaperReaderDocumentBlock | null, canvasEl?: HTMLCanvasElement | null) {
   const bbox = block?.bbox;
   if (!block || !bbox) return null;
   if (block.bbox_normalized) {
+    if (canvasEl) {
+      const width = canvasEl.clientWidth || 0;
+      const height = canvasEl.clientHeight || 0;
+      if (width > 0 && height > 0) {
+        return {
+          left: `${(bbox.x0 / 1000) * width}px`,
+          top: `${(bbox.y0 / 1000) * height}px`,
+          width: `${(bbox.width / 1000) * width}px`,
+          height: `${(bbox.height / 1000) * height}px`,
+        };
+      }
+    }
     return {
       left: `${bbox.x0 / 10}%`,
       top: `${bbox.y0 / 10}%`,
@@ -257,6 +279,42 @@ function getPdfOverlayStyle(block: PaperReaderDocumentBlock | null) {
     top: bbox.y,
     width: bbox.width,
     height: bbox.height,
+  };
+}
+
+function getPdfSideMarkerStyle(block: PaperReaderDocumentBlock | null, offsetPx = 18, canvasEl?: HTMLCanvasElement | null) {
+  const bbox = block?.bbox;
+  if (!block || !bbox) return null;
+  if (block.bbox_normalized) {
+    if (canvasEl) {
+      const width = canvasEl.clientWidth || 0;
+      const height = canvasEl.clientHeight || 0;
+      if (width > 0 && height > 0) {
+        return {
+          left: `${width + offsetPx}px`,
+          top: `${(bbox.y0 / 1000) * height + ((bbox.height / 1000) * height) / 2}px`,
+          transform: "translateY(-50%)",
+        };
+      }
+    }
+    const top = clamp(bbox.y0 + (bbox.height / 2), 22, 978) / 10;
+    return {
+      left: `calc(100% + ${offsetPx}px)`,
+      top: `${top}%`,
+      transform: "translateY(-50%)",
+    };
+  }
+  return {
+    left: `calc(100% + ${offsetPx}px)`,
+    top: clamp(bbox.y + (bbox.height / 2), 18, 99999),
+    transform: "translateY(-50%)",
+  };
+}
+
+function getPdfPageSideMarkerStyle(index: number, offsetPx = 14) {
+  return {
+    left: `calc(100% + ${offsetPx}px)`,
+    top: `${1.25 + (index * 2.25)}rem`,
   };
 }
 
@@ -489,19 +547,41 @@ function NoteEditorCard({
 
 function SavedNoteCard({
   note,
+  onLocate,
   onEdit,
   onDelete,
   onTogglePin,
+  active = false,
   compact = false,
 }: {
   note: PaperReaderNote;
+  onLocate?: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onTogglePin: () => void;
+  active?: boolean;
   compact?: boolean;
 }) {
   return (
-    <div className={cn("rounded-xl border px-3 py-3", NOTE_COLOR_BADGE_CLASS[note.color], compact ? "bg-page/72" : "bg-page/80")}>
+    <div
+      role={onLocate ? "button" : undefined}
+      tabIndex={onLocate ? 0 : undefined}
+      onClick={onLocate}
+      onKeyDown={(event) => {
+        if (!onLocate) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onLocate();
+        }
+      }}
+      className={cn(
+        "rounded-xl border px-3 py-3",
+        NOTE_COLOR_BADGE_CLASS[note.color],
+        compact ? "bg-page/72" : "bg-page/80",
+        active && "border-primary/40 bg-primary/8 shadow-[0_0_0_1px_rgba(37,99,235,0.18)]",
+        onLocate && "cursor-pointer transition-colors hover:border-primary/35 hover:bg-primary/6",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-tertiary">
@@ -517,13 +597,13 @@ function SavedNoteCard({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button onClick={onTogglePin} className="rounded-md p-1.5 text-ink-tertiary transition hover:bg-hover hover:text-ink-secondary">
+          <button onClick={(event) => { event.stopPropagation(); onTogglePin(); }} className="rounded-md p-1.5 text-ink-tertiary transition hover:bg-hover hover:text-ink-secondary">
             <Pin className="h-3.5 w-3.5" />
           </button>
-          <button onClick={onEdit} className="rounded-md p-1.5 text-ink-tertiary transition hover:bg-hover hover:text-ink-secondary">
+          <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-md p-1.5 text-ink-tertiary transition hover:bg-hover hover:text-ink-secondary">
             <PencilLine className="h-3.5 w-3.5" />
           </button>
-          <button onClick={onDelete} className="rounded-md p-1.5 text-ink-tertiary transition hover:bg-red-500/10 hover:text-red-300">
+          <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-md p-1.5 text-ink-tertiary transition hover:bg-red-500/10 hover:text-red-300">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -535,7 +615,7 @@ function SavedNoteCard({
   );
 }
 
-export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }: PdfReaderProps) {
+export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpdated, onClose }: PdfReaderProps) {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.2);
@@ -574,13 +654,24 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
 
   const [pageInput, setPageInput] = useState("");
   const [workspaceWidth, setWorkspaceWidth] = useState(440);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [mobileViewportHeight, setMobileViewportHeight] = useState(0);
+  const [mobileSheetHeight, setMobileSheetHeight] = useState(0);
+  const [mobileSheetDragging, setMobileSheetDragging] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const blockCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const noteCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pinchStateRef = useRef<{ distance: number; scale: number } | null>(null);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const mobileSheetDragRef = useRef<{ startY: number; startHeight: number; lastHeight: number } | null>(null);
+  const mobileSheetRef = useRef<HTMLDivElement>(null);
+  const mobileSheetRafRef = useRef<number | null>(null);
+  const mobileSheetVisualHeightRef = useRef(0);
+  const autoOcrAttemptedRef = useRef(false);
+  const ocrRunRef = useRef(false);
 
   const pdfUrl = useMemo(() => paperApi.pdfUrl(paperId, paperArxivId), [paperArxivId, paperId]);
   const pages = useMemo(() => Array.from({ length: numPages }, (_, i) => i + 1), [numPages]);
@@ -604,6 +695,13 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
     }));
   }, [readerDocument]);
   const documentBlocks = readerDocument?.blocks || [];
+  const blocksById = useMemo(() => {
+    const map = new Map<string, PaperReaderDocumentBlock>();
+    for (const block of documentBlocks) {
+      map.set(block.id, block);
+    }
+    return map;
+  }, [documentBlocks]);
   const inlineEditorBlockId = noteEditor?.anchor_source === "ocr_block" ? noteEditor.anchor_id || null : null;
   const activePdfLinkedBlockId = ocrHoveredBlockId || pdfHoveredBlockId || linkedBlockId || inlineEditorBlockId || null;
   const activePdfLinkedBlock = useMemo(
@@ -614,6 +712,16 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
     const map = new Map<string, PaperReaderNote[]>();
     for (const note of notes) {
       if (note.anchor_source !== "ocr_block" || !note.anchor_id) continue;
+      const list = map.get(note.anchor_id) || [];
+      list.push(note);
+      map.set(note.anchor_id, list);
+    }
+    return map;
+  }, [notes]);
+  const anchoredNotesByBlockId = useMemo(() => {
+    const map = new Map<string, PaperReaderNote[]>();
+    for (const note of notes) {
+      if (!note.anchor_id) continue;
       const list = map.get(note.anchor_id) || [];
       list.push(note);
       map.set(note.anchor_id, list);
@@ -637,16 +745,56 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
     }
     return Array.from(groups.values()).sort((a, b) => a.order - b.order);
   }, [notes, sectionsById]);
-  const pageSelectionNotes = useMemo(() => {
-    const map = new Map<number, PaperReaderNote[]>();
+  const pdfNoteMarkersByPage = useMemo(() => {
+    const anchored = new Map<number, Map<string, PdfNoteMarker>>();
+    const fallback = new Map<number, number>();
+
     for (const note of notes) {
-      if (note.anchor_source !== "pdf_selection" || !note.page_number) continue;
-      const list = map.get(note.page_number) || [];
-      list.push(note);
-      map.set(note.page_number, list);
+      let block = note.anchor_id ? blocksById.get(note.anchor_id) || null : null;
+      if (!block && note.anchor_source === "pdf_selection") {
+        const sourceText = normalizeText(note.quote || note.content || "");
+        if (sourceText) {
+          block = findMatchingDocumentBlock(sourceText, note.page_number ?? null, documentBlocks);
+        }
+      }
+
+      const page = block?.page_number ?? note.page_number ?? null;
+      if (!page) continue;
+
+      if (block?.bbox) {
+        const pageMap = anchored.get(page) || new Map<string, PdfNoteMarker>();
+        const existing = pageMap.get(block.id);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          pageMap.set(block.id, {
+            key: `marker-${page}-${block.id}`,
+            page,
+            count: 1,
+            block,
+          });
+        }
+        anchored.set(page, pageMap);
+        continue;
+      }
+
+      fallback.set(page, (fallback.get(page) || 0) + 1);
     }
-    return map;
-  }, [notes]);
+
+    return {
+      anchored: new Map(
+        Array.from(anchored.entries()).map(([page, markers]) => [
+          page,
+          Array.from(markers.values()).sort((left, right) => {
+            const leftY = left.block?.bbox?.y0 ?? 0;
+            const rightY = right.block?.bbox?.y0 ?? 0;
+            return leftY - rightY;
+          }),
+        ]),
+      ),
+      fallback,
+    };
+  }, [blocksById, documentBlocks, notes]);
   const inlinePdfSelectionEditor = Boolean(
     noteEditor
     && noteEditor.anchor_source === "pdf_selection"
@@ -655,11 +803,25 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
   const selectionOverlayVisible = Boolean(selectedText && !regionMode && (!isMobileViewport || activeTab === "pdf"));
   const workspaceVisible = !isMobileViewport ? panelOpen : activeTab !== "pdf";
   const currentWorkspaceTitle = activeTab === "ocr" ? "OCR" : activeTab === "notes" ? "笔记" : activeTab === "results" ? "助手" : "PDF";
-  const mobileWorkspaceHeightClass = activeTab === "ocr"
-    ? "h-[min(54dvh,33rem)]"
-    : activeTab === "notes"
-      ? "h-[min(50dvh,30rem)]"
-      : "h-[min(46dvh,27rem)]";
+  const mobileSheetBounds = useMemo(() => {
+    const viewport = mobileViewportHeight || 820;
+    const max = Math.max(360, viewport - MOBILE_TOPBAR_HEIGHT - 10);
+    const min = clamp(Math.round(viewport * 0.28), 188, max);
+    const medium = clamp(Math.round(viewport * 0.52), min, max);
+    const large = clamp(Math.round(viewport * 0.76), medium, max);
+    return { min, medium, large, full: max };
+  }, [mobileViewportHeight]);
+  const resolveDefaultMobileSheetHeight = useCallback((tab: ReaderWorkspaceTab) => {
+    if (tab === "ocr") return mobileSheetBounds.large;
+    if (tab === "notes") return mobileSheetBounds.medium;
+    return clamp(Math.round(mobileSheetBounds.medium * 0.92), mobileSheetBounds.min, mobileSheetBounds.full);
+  }, [mobileSheetBounds]);
+  const mobileSheetHeightPx = workspaceVisible
+    ? clamp(mobileSheetHeight || resolveDefaultMobileSheetHeight(activeTab), mobileSheetBounds.min, mobileSheetBounds.full)
+    : clamp(mobileSheetHeight || resolveDefaultMobileSheetHeight("ocr"), mobileSheetBounds.min, mobileSheetBounds.full);
+  const mobileScrollPaddingBottom = isMobileViewport
+    ? `${(workspaceVisible ? mobileSheetHeightPx : 0) + MOBILE_WORKSPACE_TABBAR_HEIGHT + 16}px`
+    : undefined;
 
   const setCopied = useCallback((key: string) => {
     setCopiedKey(key);
@@ -668,8 +830,17 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
 
   const ensureWorkspaceTab = useCallback((tab: ReaderWorkspaceTab) => {
     setActiveTab(tab);
-    if (!isMobileViewport) setPanelOpen(true);
-  }, [isMobileViewport]);
+    if (!isMobileViewport) {
+      setPanelOpen(true);
+      return;
+    }
+    if (tab !== "pdf") {
+      setMobileSheetHeight((current) => {
+        const nextBase = current > 0 ? current : resolveDefaultMobileSheetHeight(tab);
+        return clamp(nextBase, mobileSheetBounds.min, mobileSheetBounds.full);
+      });
+    }
+  }, [isMobileViewport, mobileSheetBounds.full, mobileSheetBounds.min, resolveDefaultMobileSheetHeight]);
 
   const appendResult = useCallback((response: PaperReaderQueryResponse, fallbackText?: string, fallbackQuestion?: string) => {
     setResults((prev) => [
@@ -794,6 +965,11 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
     else blockCardRefs.current.delete(blockId);
   }, []);
 
+  const setNoteCardRef = useCallback((noteId: string, el: HTMLDivElement | null) => {
+    if (el) noteCardRefs.current.set(noteId, el);
+    else noteCardRefs.current.delete(noteId);
+  }, []);
+
   const scrollToPage = useCallback((page: number) => {
     const target = Math.max(1, Math.min(page, numPages || 1));
     pageRefs.current.get(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -802,6 +978,10 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
 
   const scrollOcrBlockIntoView = useCallback((blockId: string) => {
     blockCardRefs.current.get(blockId)?.scrollIntoView({ block: "center", inline: "nearest" });
+  }, []);
+
+  const scrollNoteCardIntoView = useCallback((noteId: string) => {
+    noteCardRefs.current.get(noteId)?.scrollIntoView({ block: "center", inline: "nearest" });
   }, []);
 
   const handleFocusDocumentBlock = useCallback((block: PaperReaderDocumentBlock) => {
@@ -992,7 +1172,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
       quote: selectedText,
       page_number: anchor.page_number,
       anchor_source: "pdf_selection",
-      anchor_id: null,
+      anchor_id: anchor.anchor_id,
       section_id: anchor.section_id,
       section_title: anchor.section_title,
       source: "manual",
@@ -1072,7 +1252,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
         quote: selectedText,
         page_number: anchor.page_number,
         anchor_source: "pdf_selection",
-        anchor_id: null,
+        anchor_id: anchor.anchor_id,
         section_id: anchor.section_id,
         section_title: anchor.section_title,
       },
@@ -1117,7 +1297,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
         section_title: noteEditor.section_title ?? null,
       });
       setNotes(response.items || []);
-      if (noteEditor.anchor_source === "ocr_block" && noteEditor.anchor_id) {
+      if (noteEditor.anchor_id) {
         setLinkedBlockId(noteEditor.anchor_id);
       }
       const shouldStayInline = noteEditor.anchor_source === "pdf_selection" && (!noteEditor.id || noteEditor.source === "ai_draft");
@@ -1184,9 +1364,145 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
     }
   }, [paperId]);
 
-  const handleStartOcr = useCallback(async () => {
-    setOcrTaskLabel("正在提交 OCR 任务...");
-    ensureWorkspaceTab("ocr");
+  const handleLocateNote = useCallback((note: PaperReaderNote) => {
+    if (note.anchor_id) {
+      setLinkedBlockId(note.anchor_id);
+      if (!isMobileViewport && note.anchor_source === "ocr_block") {
+        scrollOcrBlockIntoView(note.anchor_id);
+      }
+    }
+    if (note.page_number) {
+      if (isMobileViewport) {
+        setActiveTab("pdf");
+      }
+      scrollToPage(note.page_number);
+    } else if (note.anchor_id && isMobileViewport) {
+      setActiveTab("pdf");
+    }
+  }, [isMobileViewport, scrollOcrBlockIntoView, scrollToPage]);
+
+  const focusNoteCard = useCallback((noteId: string) => {
+    setActiveNoteId(noteId);
+    ensureWorkspaceTab("notes");
+    window.setTimeout(() => {
+      scrollNoteCardIntoView(noteId);
+    }, 80);
+    window.setTimeout(() => {
+      setActiveNoteId((current) => (current === noteId ? null : current));
+    }, 2200);
+  }, [ensureWorkspaceTab, scrollNoteCardIntoView]);
+
+  const handleOpenNotesForBlock = useCallback((block: PaperReaderDocumentBlock) => {
+    setLinkedBlockId(block.id);
+    if (block.page_number) {
+      scrollToPage(block.page_number);
+    }
+    const note = (anchoredNotesByBlockId.get(block.id) || [])[0];
+    if (note) {
+      focusNoteCard(note.id);
+      return;
+    }
+    ensureWorkspaceTab("notes");
+  }, [anchoredNotesByBlockId, ensureWorkspaceTab, focusNoteCard, scrollToPage]);
+
+  const handleOpenNotesForPage = useCallback((page: number) => {
+    const note = notes.find((item) => (item.page_number || 0) === page);
+    if (note) {
+      if (note.anchor_id) {
+        setLinkedBlockId(note.anchor_id);
+      }
+      focusNoteCard(note.id);
+      scrollToPage(page);
+      return;
+    }
+    ensureWorkspaceTab("notes");
+    scrollToPage(page);
+  }, [ensureWorkspaceTab, focusNoteCard, notes, scrollToPage]);
+
+  const handleMobileSheetTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    if (!isMobileViewport || activeTab === "pdf" || event.touches.length !== 1) return;
+    mobileSheetDragRef.current = {
+      startY: event.touches[0].clientY,
+      startHeight: mobileSheetHeightPx,
+      lastHeight: mobileSheetHeightPx,
+    };
+    mobileSheetVisualHeightRef.current = mobileSheetHeightPx;
+    setMobileSheetDragging(true);
+  }, [activeTab, isMobileViewport, mobileSheetHeightPx]);
+
+  const handleMobileSheetTouchMove = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    const dragState = mobileSheetDragRef.current;
+    if (!dragState || event.touches.length !== 1) return;
+    const delta = dragState.startY - event.touches[0].clientY;
+    const nextHeight = clamp(dragState.startHeight + delta, 0, mobileSheetBounds.full);
+    dragState.lastHeight = nextHeight;
+    mobileSheetVisualHeightRef.current = nextHeight;
+    if (mobileSheetRafRef.current == null) {
+      mobileSheetRafRef.current = window.requestAnimationFrame(() => {
+        mobileSheetRafRef.current = null;
+        if (mobileSheetRef.current) {
+          mobileSheetRef.current.style.height = `${mobileSheetVisualHeightRef.current}px`;
+        }
+      });
+    }
+    event.preventDefault();
+  }, [mobileSheetBounds.full]);
+
+  const handleMobileSheetTouchEnd = useCallback(() => {
+    const dragState = mobileSheetDragRef.current;
+    if (!dragState) return;
+    mobileSheetDragRef.current = null;
+    if (mobileSheetRafRef.current != null) {
+      window.cancelAnimationFrame(mobileSheetRafRef.current);
+      mobileSheetRafRef.current = null;
+    }
+    setMobileSheetDragging(false);
+    const current = dragState.lastHeight;
+    if (current < mobileSheetBounds.min * 0.72) {
+      if (mobileSheetRef.current) {
+        mobileSheetRef.current.style.height = "0px";
+      }
+      setMobileSheetHeight(0);
+      setActiveTab("pdf");
+      return;
+    }
+    const snapPoints = [mobileSheetBounds.min, mobileSheetBounds.medium, mobileSheetBounds.large, mobileSheetBounds.full];
+    const nextHeight = snapPoints.reduce((best, point) => (
+      Math.abs(point - current) < Math.abs(best - current) ? point : best
+    ), snapPoints[0]);
+    setMobileSheetHeight(nextHeight);
+  }, [mobileSheetBounds.full, mobileSheetBounds.large, mobileSheetBounds.medium, mobileSheetBounds.min]);
+
+  useEffect(() => {
+    return () => {
+      if (mobileSheetRafRef.current != null) {
+        window.cancelAnimationFrame(mobileSheetRafRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    autoOcrAttemptedRef.current = false;
+    ocrRunRef.current = false;
+  }, [paperId]);
+
+  const handleStartOcr = useCallback(async (options?: { openWorkspace?: boolean }) => {
+    const openWorkspace = options?.openWorkspace ?? true;
+    if (ocrRunRef.current) return;
+    const currentStatus = String(ocrStatus?.status || "").trim().toLowerCase();
+    if (["running", "queued", "pending"].includes(currentStatus)) {
+      setOcrTaskLabel("OCR 已在后台处理中，请稍候刷新");
+      if (openWorkspace) {
+        ensureWorkspaceTab("ocr");
+      }
+      return;
+    }
+
+    ocrRunRef.current = true;
+    setOcrTaskLabel(openWorkspace ? "正在提交 OCR 任务..." : "已自动启动 OCR，正在生成 Markdown...");
+    if (openWorkspace) {
+      ensureWorkspaceTab("ocr");
+    }
     try {
       const kickoff = await paperApi.processOcrAsync(paperId);
       await pollTaskResult(kickoff.task_id, {
@@ -1196,18 +1512,45 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
       });
       await Promise.all([loadDocument(true), loadNotes(true)]);
       setOcrTaskLabel("OCR 已更新");
+      await Promise.resolve(onOcrUpdated?.());
     } catch (error) {
       setOcrTaskLabel(`OCR 失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      ocrRunRef.current = false;
     }
-  }, [ensureWorkspaceTab, loadDocument, loadNotes, paperId, pollTaskResult]);
+  }, [ensureWorkspaceTab, loadDocument, loadNotes, ocrStatus?.status, onOcrUpdated, paperId, pollTaskResult]);
+
+  useEffect(() => {
+    if (documentLoading) return;
+    if (readerDocument?.available) return;
+    if (autoOcrAttemptedRef.current || ocrRunRef.current) return;
+    if (ocrStatus?.available) return;
+
+    const status = String(ocrStatus?.status || "").trim().toLowerCase();
+    if (status === "success") return;
+    if (["running", "queued", "pending"].includes(status)) {
+      setOcrTaskLabel((current) => current || "OCR 正在后台处理中...");
+      return;
+    }
+
+    autoOcrAttemptedRef.current = true;
+    void handleStartOcr({ openWorkspace: false });
+  }, [documentLoading, handleStartOcr, ocrStatus?.available, ocrStatus?.status, readerDocument?.available]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const media = window.matchMedia("(max-width: 767px)");
-    const sync = () => setIsMobileViewport(media.matches);
+    const sync = () => {
+      setIsMobileViewport(media.matches);
+      setMobileViewportHeight(window.innerHeight);
+    };
     sync();
     media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
+    window.addEventListener("resize", sync);
+    return () => {
+      media.removeEventListener("change", sync);
+      window.removeEventListener("resize", sync);
+    };
   }, []);
 
   useEffect(() => {
@@ -1221,6 +1564,15 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
       setActiveTab("ocr");
     }
   }, [activeTab, isMobileViewport]);
+
+  useEffect(() => {
+    if (!isMobileViewport) return;
+    if (activeTab === "pdf") return;
+    setMobileSheetHeight((current) => {
+      const next = current > 0 ? current : resolveDefaultMobileSheetHeight(activeTab);
+      return clamp(next, mobileSheetBounds.min, mobileSheetBounds.full);
+    });
+  }, [activeTab, isMobileViewport, mobileSheetBounds.full, mobileSheetBounds.min, resolveDefaultMobileSheetHeight]);
 
   useEffect(() => {
     const onLoadState = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -1395,8 +1747,18 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                     ref={(el) => setBlockCardRef(block.id, el)}
                     className={cn(
                       "rounded-xl border p-3 transition-colors",
+                      canLink && "cursor-pointer hover:border-primary/30 hover:bg-primary/5",
                       isActive ? "border-primary/35 bg-primary/6" : "border-border/60 bg-page/72",
                     )}
+                    onClick={() => {
+                      if (!canLink) return;
+                      const selected = normalizeText(window.getSelection?.()?.toString() || "");
+                      if (selected) return;
+                      handleFocusDocumentBlock(block);
+                      if (isMobileViewport) {
+                        setActiveTab("pdf");
+                      }
+                    }}
                     onMouseEnter={() => {
                       if (canLink) setOcrHoveredBlockId(block.id);
                     }}
@@ -1411,19 +1773,18 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                         {canLink ? <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-primary">已联动 PDF</span> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {canLink ? (
-                          <ActionButton onClick={() => handleFocusDocumentBlock(block)}>
-                            <span className="inline-flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5" />定位 PDF</span>
-                          </ActionButton>
-                        ) : null}
                         {canAnnotate ? (
                           <>
-                            <ActionButton onClick={() => handleCreateBlockNote(block)} disabled={!!noteBusyLabel}>
-                              <span className="inline-flex items-center gap-1.5"><PencilLine className="h-3.5 w-3.5" />写笔记</span>
-                            </ActionButton>
-                            <ActionButton onClick={() => void handleGenerateBlockNoteDraft(block)} disabled={!!noteBusyLabel}>
-                              <span className="inline-flex items-center gap-1.5"><Wand2 className="h-3.5 w-3.5" />AI 批注</span>
-                            </ActionButton>
+                            <div onClick={(event) => event.stopPropagation()}>
+                              <ActionButton onClick={() => handleCreateBlockNote(block)} disabled={!!noteBusyLabel}>
+                                <span className="inline-flex items-center gap-1.5"><PencilLine className="h-3.5 w-3.5" />写笔记</span>
+                              </ActionButton>
+                            </div>
+                            <div onClick={(event) => event.stopPropagation()}>
+                              <ActionButton onClick={() => void handleGenerateBlockNoteDraft(block)} disabled={!!noteBusyLabel}>
+                                <span className="inline-flex items-center gap-1.5"><Wand2 className="h-3.5 w-3.5" />AI 批注</span>
+                              </ActionButton>
+                            </div>
                           </>
                         ) : (
                           <div className="self-center text-[11px] text-ink-tertiary">信息块</div>
@@ -1463,6 +1824,8 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                             key={note.id}
                             note={note}
                             compact
+                            onLocate={() => handleLocateNote(note)}
+                            active={activeNoteId === note.id}
                             onEdit={() => { setNoteEditor(buildNoteEditorState(note)); ensureWorkspaceTab("notes"); }}
                             onDelete={() => void handleDeleteNote(note.id)}
                             onTogglePin={() => void handleTogglePinned(note)}
@@ -1508,13 +1871,16 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
               <div className="border-b border-border/60 pb-3 text-sm text-ink">{group.title}</div>
               <div className="mt-3 space-y-3">
                 {group.notes.map((note) => (
-                  <SavedNoteCard
-                    key={note.id}
-                    note={note}
-                    onEdit={() => setNoteEditor(buildNoteEditorState(note))}
-                    onDelete={() => void handleDeleteNote(note.id)}
-                    onTogglePin={() => void handleTogglePinned(note)}
-                  />
+                  <div key={note.id} ref={(el) => setNoteCardRef(note.id, el)}>
+                    <SavedNoteCard
+                      note={note}
+                      onLocate={() => handleLocateNote(note)}
+                      active={activeNoteId === note.id}
+                      onEdit={() => setNoteEditor(buildNoteEditorState(note))}
+                      onDelete={() => void handleDeleteNote(note.id)}
+                      onTogglePin={() => void handleTogglePinned(note)}
+                    />
+                  </div>
                 ))}
               </div>
             </section>
@@ -1715,28 +2081,30 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
 
   return (
     <div ref={containerRef} className="fixed inset-0 z-50 bg-page/95 backdrop-blur-sm">
-      <div className="theme-terminal-header absolute left-0 right-0 top-0 z-40 border-b px-2 py-1.5 sm:px-4 sm:py-2">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-ink">
-              <BookOpen className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
-              <span className="truncate text-[13px] sm:text-sm">{paperTitle}</span>
-            </div>
-            {!isMobileViewport ? (
+      <div className="theme-terminal-header absolute left-0 right-0 top-0 z-40 border-b px-2 py-1 sm:px-4 sm:py-2">
+        <div className="flex items-center justify-between gap-2">
+          {!isMobileViewport ? (
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-ink">
+                <BookOpen className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
+                <span className="truncate text-[13px] sm:text-sm">{paperTitle}</span>
+              </div>
               <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-ink-tertiary">
                 {selectedPage ? <span>选区 p.{selectedPage}</span> : null}
                 {regionSelection ? <span>区域 p.{regionSelection.page}</span> : null}
                 {regionMode ? <span className="text-primary">框选中</span> : null}
                 {readerDocument?.available ? <span>{readerDocument.source}</span> : null}
               </div>
-            ) : (
-              <div className="mt-0.5 flex flex-wrap gap-1.5 text-[10px] text-ink-tertiary">
-                <span>{currentWorkspaceTitle}</span>
-                {selectedPage ? <span>p.{selectedPage}</span> : null}
-                {regionSelection ? <span>区域 p.{regionSelection.page}</span> : null}
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-ink-tertiary">
+              <div className="rounded-full border border-border/60 bg-surface/72 px-2 py-0.5 text-[10px] text-ink-secondary">
+                p.{currentPage}/{numPages || "-"}
               </div>
-            )}
-          </div>
+              <span>{currentWorkspaceTitle}</span>
+              {regionMode ? <span className="text-primary">框选</span> : null}
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-1 sm:justify-end">
             {!isMobileViewport ? (
@@ -1761,16 +2129,18 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                 <button onClick={() => setScale((value) => Math.min(value + 0.2, 3))} className="toolbar-btn"><ZoomIn className="h-4 w-4" /></button>
               </>
             ) : (
-              <div className="rounded-md border border-border/60 bg-surface/72 px-2 py-1 text-[11px] text-ink-tertiary">
-                p.{currentPage}/{numPages || "-"}
-              </div>
+              <button onClick={() => setScale((value) => Math.max(value - 0.15, 0.6))} className="toolbar-btn"><ZoomOut className="h-4 w-4" /></button>
             )}
-            <button onClick={() => { setRegionMode((value) => !value); setRegionDrag(null); }} className={cn("toolbar-btn", regionMode && "bg-primary/30 text-primary")}><ImageIcon className="h-4 w-4" /></button>
-            {!isMobileViewport ? (
-              <button onClick={() => !isFullscreen ? containerRef.current?.requestFullscreen?.() : document.exitFullscreen?.()} className="toolbar-btn">
-                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              </button>
+            {isMobileViewport ? (
+              <button onClick={() => setScale(1)} className="toolbar-btn-text min-w-[3.25rem]">{Math.round(scale * 100)}%</button>
             ) : null}
+            {isMobileViewport ? (
+              <button onClick={() => setScale((value) => Math.min(value + 0.15, 3))} className="toolbar-btn"><ZoomIn className="h-4 w-4" /></button>
+            ) : null}
+            <button onClick={() => { setRegionMode((value) => !value); setRegionDrag(null); }} className={cn("toolbar-btn", regionMode && "bg-primary/30 text-primary")}><ImageIcon className="h-4 w-4" /></button>
+            <button onClick={() => !isFullscreen ? containerRef.current?.requestFullscreen?.() : document.exitFullscreen?.()} className="toolbar-btn">
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
             {!isMobileViewport ? (
               <button onClick={() => setPanelOpen((value) => !value)} className={cn("toolbar-btn", panelOpen && "bg-primary/30 text-primary")}>
                 <MessageSquareText className="h-4 w-4" />
@@ -1781,15 +2151,14 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
         </div>
       </div>
 
-      <div className="flex h-full pt-[54px] sm:pt-12">
+      <div className="flex h-full pt-[44px] sm:pt-12">
         <div className="relative min-w-0 flex-1">
           <div
             ref={scrollRef}
             className={cn(
               "h-full overflow-auto pb-12",
-              isMobileViewport && workspaceVisible && "pb-[calc(min(54dvh,33rem)+4rem)]",
-              isMobileViewport && !workspaceVisible && "pb-24",
             )}
+            style={isMobileViewport ? { paddingBottom: mobileScrollPaddingBottom } : undefined}
             onTouchStart={handlePdfTouchStart}
             onTouchMove={handlePdfTouchMove}
             onTouchEnd={handlePdfTouchEnd}
@@ -1804,23 +2173,22 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                 onLoadError={(error) => setLoadError(`PDF 加载失败: ${error.message}`)}
                 loading={<div className="flex h-96 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
               >
-                <div className="flex flex-col items-center gap-4 px-2 py-4 sm:py-6">
+                <div className="flex flex-col items-center gap-4 px-2 py-4 pr-10 sm:pr-20 sm:py-6">
                   {pages.map((page) => {
                     const nearby = Math.abs(page - currentPage) <= 3;
                     const activeRect = regionSelection?.page === page ? regionSelection : null;
                     const dragRect = regionDrag?.page === page ? regionDrag : null;
                     const linkedBlockForPage = !regionMode && activePdfLinkedBlock?.page_number === page ? activePdfLinkedBlock : null;
-                    const linkedOverlayStyle = getPdfOverlayStyle(linkedBlockForPage);
-                    const noteBlocksOnPage = documentBlocks.filter(
-                      (block) => block.page_number === page && block.bbox && (blockNotes.get(block.id)?.length || 0) > 0,
-                    );
-                    const pageSelectionNoteCount = (pageSelectionNotes.get(page) || []).length;
+                    const pageCanvas = pageRefs.current.get(page)?.querySelector("canvas") as HTMLCanvasElement | null;
+                    const linkedOverlayStyle = getPdfOverlayStyle(linkedBlockForPage, pageCanvas);
+                    const noteMarkersOnPage = pdfNoteMarkersByPage.anchored.get(page) || [];
+                    const fallbackPageNoteCount = pdfNoteMarkersByPage.fallback.get(page) || 0;
                     return (
                       <div
                         key={page}
                         data-page={page}
                         ref={(el) => setPageRef(page, el)}
-                        className="relative max-w-full"
+                        className="relative max-w-full overflow-visible"
                         style={!nearby ? { minHeight: `${Math.round(792 * scale)}px`, width: `${Math.round(612 * scale)}px`, maxWidth: "100%" } : undefined}
                       >
                         <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-full pb-1">
@@ -1828,7 +2196,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                         </div>
                         {nearby ? (
                           <div
-                            className={cn("relative inline-block max-w-full", regionMode && "pdf-region-mode")}
+                            className={cn("relative inline-block max-w-full overflow-visible", regionMode && "pdf-region-mode")}
                             onMouseMove={(event) => handlePdfMouseMove(page, event)}
                             onMouseLeave={handlePdfMouseLeave}
                             onClick={(event) => handlePdfClick(page, event)}
@@ -1854,26 +2222,23 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                                 style={linkedOverlayStyle}
                               />
                             ) : null}
-                            {noteBlocksOnPage.map((block) => {
-                              const noteCount = (blockNotes.get(block.id) || []).length;
-                              const noteOverlayStyle = getPdfOverlayStyle(block);
-                              if (!noteOverlayStyle) return null;
+                            {noteMarkersOnPage.map((marker) => {
+                              const block = marker.block;
+                              const markerStyle = getPdfSideMarkerStyle(block, isMobileViewport ? 8 : 20, pageCanvas);
+                              if (!markerStyle || !block) return null;
                               return (
                                 <button
-                                  key={`note-${block.id}`}
+                                  key={marker.key}
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    ensureWorkspaceTab("ocr");
-                                    setLinkedBlockId(block.id);
-                                    scrollOcrBlockIntoView(block.id);
+                                    handleOpenNotesForBlock(block);
                                   }}
-                                  className="absolute z-30 rounded border border-amber-400/70 bg-amber-400/10 transition-colors hover:bg-amber-400/16"
-                                  style={noteOverlayStyle}
-                                  title={`该位置已有 ${noteCount} 条笔记`}
+                                  className="absolute z-30 inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded-full border border-amber-400/70 bg-page/96 px-1.5 text-[10px] font-semibold text-amber-700 shadow-sm transition-colors hover:border-amber-500 hover:bg-amber-50"
+                                  style={markerStyle}
+                                  title={`该位置已有 ${marker.count} 条笔记`}
                                 >
-                                  <span className="absolute -right-1 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full border border-amber-500/70 bg-amber-500 px-1 text-[10px] font-semibold text-white shadow-sm">
-                                    {noteCount}
-                                  </span>
+                                  <Pin className="h-3 w-3" />
+                                  <span>{marker.count}</span>
                                 </button>
                               );
                             })}
@@ -1883,14 +2248,15 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
                         ) : (
                           <div className="rounded bg-surface/10" style={{ width: Math.round(612 * scale), height: Math.round(792 * scale) }} />
                         )}
-                        {pageSelectionNoteCount > 0 ? (
+                        {fallbackPageNoteCount > 0 ? (
                           <button
-                            onClick={() => ensureWorkspaceTab("notes")}
-                            className="absolute right-2 top-2 z-20 inline-flex items-center gap-1 rounded-full border border-amber-400/70 bg-page/92 px-2 py-1 text-[10px] text-amber-700 shadow-sm"
-                            title={`本页有 ${pageSelectionNoteCount} 条选区笔记`}
+                            onClick={() => handleOpenNotesForPage(page)}
+                            className="absolute z-20 inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded-full border border-amber-400/70 bg-page/96 px-1.5 text-[10px] font-semibold text-amber-700 shadow-sm transition-colors hover:border-amber-500 hover:bg-amber-50"
+                            style={getPdfPageSideMarkerStyle(0, isMobileViewport ? 8 : 14)}
+                            title={`本页有 ${fallbackPageNoteCount} 条未精确定位的笔记`}
                           >
                             <Pin className="h-3 w-3" />
-                            {pageSelectionNoteCount}
+                            <span>{fallbackPageNoteCount}</span>
                           </button>
                         ) : null}
                       </div>
@@ -1939,19 +2305,6 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
             </div>
           ) : null}
 
-          {isMobileViewport && activeTab === "pdf" ? (
-            <div className="absolute bottom-[4.85rem] right-2 z-30 flex items-center gap-1 rounded-2xl border border-border/70 bg-surface/92 p-1.5 shadow-xl backdrop-blur">
-              <button onClick={() => setScale((value) => Math.max(value - 0.2, 0.6))} className="toolbar-btn">
-                <ZoomOut className="h-4 w-4" />
-              </button>
-              <button onClick={() => setScale(1)} className="toolbar-btn-text min-w-[3.5rem]">
-                {Math.round(scale * 100)}%
-              </button>
-              <button onClick={() => setScale((value) => Math.min(value + 0.2, 3))} className="toolbar-btn">
-                <ZoomIn className="h-4 w-4" />
-              </button>
-            </div>
-          ) : null}
         </div>
 
         {!isMobileViewport ? (
@@ -2002,24 +2355,38 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
       {isMobileViewport ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex flex-col">
           <div
+            ref={mobileSheetRef}
             className={cn(
-              "pointer-events-auto overflow-hidden rounded-t-[1.75rem] border-t border-border bg-surface/96 shadow-[0_-16px_32px_rgba(15,23,42,0.18)] transition-all duration-300",
-              workspaceVisible ? mobileWorkspaceHeightClass : "h-0",
+              "overflow-hidden rounded-t-[1.75rem] border-t border-border bg-surface/96 shadow-[0_-16px_32px_rgba(15,23,42,0.18)] will-change-[height,transform,opacity]",
+              mobileSheetDragging ? "transition-none" : "transition-all duration-300",
             )}
+            style={{
+              height: `${mobileSheetHeightPx}px`,
+              opacity: workspaceVisible ? 1 : 0,
+              transform: workspaceVisible ? "translateY(0)" : "translateY(calc(100% + 0.75rem))",
+              pointerEvents: workspaceVisible ? "auto" : "none",
+            }}
           >
             <div className="flex h-full flex-col">
-              <div className="border-b border-border px-3 py-2">
+              <div className="border-b border-border px-3 py-1.5">
+                <div
+                  className="mb-1.5 flex justify-center"
+                  style={{ touchAction: "none" }}
+                  onTouchStart={handleMobileSheetTouchStart}
+                  onTouchMove={handleMobileSheetTouchMove}
+                  onTouchEnd={handleMobileSheetTouchEnd}
+                  onTouchCancel={handleMobileSheetTouchEnd}
+                >
+                  <div className="h-1.5 w-14 rounded-full bg-border/80" />
+                </div>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm text-ink">{currentWorkspaceTitle}</div>
-                    <div className="mt-0.5 truncate text-[10px] text-ink-tertiary">
-                      {activeTab === "ocr" ? (readerDocument?.source || "OCR / Markdown") : activeTab === "notes" ? "段落笔记" : "阅读助手输出"}
-                    </div>
-                  </div>
-                  <ActionButton onClick={() => setActiveTab("pdf")}>收起</ActionButton>
+                  <div className="min-w-0 text-sm text-ink">{currentWorkspaceTitle}</div>
+                  <button onClick={() => setActiveTab("pdf")} className="toolbar-btn">
+                    <Minimize2 className="h-4 w-4" />
+                  </button>
                 </div>
                 {activeTab === "ocr" ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-2 flex flex-wrap gap-2">
                     <ActionButton onClick={() => void loadDocument()} disabled={documentLoading}>
                       <span className="inline-flex items-center gap-1.5"><RefreshCw className="h-3.5 w-3.5" />刷新</span>
                     </ActionButton>
@@ -2038,9 +2405,9 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onClose }
           <div className="pointer-events-auto border-t border-border bg-surface/98 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 shadow-[0_-10px_24px_rgba(15,23,42,0.12)]">
             <div className="grid grid-cols-4 gap-1.5">
               <TabButton active={activeTab === "pdf"} icon={<BookOpen className="h-4 w-4" />} label="PDF" onClick={() => setActiveTab("pdf")} />
-              <TabButton active={activeTab === "ocr"} icon={<FileText className="h-4 w-4" />} label="OCR" onClick={() => setActiveTab("ocr")} />
-              <TabButton active={activeTab === "notes"} icon={<PencilLine className="h-4 w-4" />} label="笔记" onClick={() => setActiveTab("notes")} />
-              <TabButton active={activeTab === "results"} icon={<Sparkles className="h-4 w-4" />} label="助手" onClick={() => setActiveTab("results")} />
+              <TabButton active={activeTab === "ocr"} icon={<FileText className="h-4 w-4" />} label="OCR" onClick={() => ensureWorkspaceTab("ocr")} />
+              <TabButton active={activeTab === "notes"} icon={<PencilLine className="h-4 w-4" />} label="笔记" onClick={() => ensureWorkspaceTab("notes")} />
+              <TabButton active={activeTab === "results"} icon={<Sparkles className="h-4 w-4" />} label="助手" onClick={() => ensureWorkspaceTab("results")} />
             </div>
           </div>
         </div>

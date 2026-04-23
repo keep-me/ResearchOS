@@ -28,7 +28,12 @@ def resolve_effective_paper_content_source(
 
 
 def paper_content_source_label(value: str | None) -> str:
-    return "Markdown" if normalize_paper_content_source(value) == "markdown" else "PDF"
+    normalized = normalize_paper_content_source(value)
+    if normalized == "markdown":
+        return "Markdown"
+    if normalized == "auto":
+        return "自动（优先 Markdown）"
+    return "PDF"
 
 
 def prefers_markdown_content(value: str | None) -> bool:

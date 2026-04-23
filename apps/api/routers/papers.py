@@ -29,6 +29,7 @@ from packages.ai.paper.paper_ops_service import (
     PaperUploadNotFoundError,
     PaperUploadValidationError,
     apply_external_resolution as _apply_external_resolution,
+    clear_pdf_derived_metadata as _clear_pdf_derived_metadata,
     ensure_paper_pdf as _ensure_paper_pdf_impl,
     extract_paper_figures_payload as _extract_paper_figures_payload_impl,
     has_real_arxiv_id as _has_real_arxiv_id,
@@ -1426,6 +1427,9 @@ def update_paper_source(paper_id: UUID, body: PaperSourceUpdateReq) -> dict:
             if old_pdf_path:
                 paper.pdf_path = None
                 local_pdf_cleared = True
+
+        if local_pdf_cleared:
+            metadata = _clear_pdf_derived_metadata(metadata)
 
         if changed or metadata != (paper.metadata_json or {}):
             paper.metadata_json = metadata
@@ -2895,7 +2899,7 @@ def paper_reasoning(
         paper_id,
         reasoning_level=reasoning_level,
         detail_level=detail_level,
-        content_source=content_source or "pdf",
+        content_source=content_source or "auto",
         evidence_mode=evidence_mode or "full",
     )
 
@@ -2923,7 +2927,7 @@ def paper_reasoning_async(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     title = (get_paper_title(paper_id) or str(paper_id)[:8])[:30]
-    requested_content_source = normalize_paper_content_source(content_source or "pdf")
+    requested_content_source = normalize_paper_content_source(content_source or "auto")
     normalized_evidence_mode = str(evidence_mode or "full").strip().lower() or "full"
 
     def _fn(progress_callback=None):
@@ -2931,7 +2935,7 @@ def paper_reasoning_async(
             paper_id,
             reasoning_level=reasoning_level,
             detail_level=detail_level,
-            content_source=content_source or "pdf",
+            content_source=content_source or "auto",
             evidence_mode=normalized_evidence_mode,
             progress_callback=progress_callback,
         )
@@ -2967,7 +2971,7 @@ def analyze_paper_rounds(
         (body or {}).get("detail_level"),
         (body or {}).get("reasoning_level"),
     )
-    content_source = str((body or {}).get("content_source") or "pdf")
+    content_source = str((body or {}).get("content_source") or "auto")
     evidence_mode = str((body or {}).get("evidence_mode") or "full")
     requested_content_source = normalize_paper_content_source(content_source)
     normalized_evidence_mode = str(evidence_mode or "full").strip().lower() or "full"

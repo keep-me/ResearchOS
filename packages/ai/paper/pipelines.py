@@ -818,34 +818,43 @@ class PaperPipelines:
                     name="方法证据包",
                     targets=["overview", "method", "equation", "figure"],
                     max_chars=0,
-                    max_sections=0,
-                    max_figures=0,
-                    max_tables=0,
-                    max_equations=0,
+                    max_sections=8,
+                    max_figures=4,
+                    max_tables=2,
+                    max_equations=6,
                     include_outline=True,
-                    notes=["优先用于提炼问题定义、核心模块、关键公式与方法机制。"],
+                    notes=[
+                        "优先用于提炼问题定义、核心模块、关键公式与方法机制。",
+                        "这是面向方法聚焦筛选的证据包；未出现的实验或风险细节不代表原文不存在。",
+                    ],
                 )
                 experiment_evidence = evidence.build_targeted_context(
                     name="实验与结果证据包",
                     targets=["experiment", "results", "ablation", "table", "figure"],
                     max_chars=0,
-                    max_sections=0,
-                    max_figures=0,
-                    max_tables=0,
-                    max_equations=0,
+                    max_sections=9,
+                    max_figures=5,
+                    max_tables=6,
+                    max_equations=2,
                     include_outline=True,
-                    notes=["优先用于提炼实验设置、主结果、表格结论与消融规律。"],
+                    notes=[
+                        "优先用于提炼实验设置、主结果、表格结论与消融规律。",
+                        "这是面向实验聚焦筛选的证据包；未出现的方法推导或风险细节不代表原文不存在。",
+                    ],
                 )
                 risk_evidence = evidence.build_targeted_context(
                     name="局限与复现证据包",
                     targets=["limitations", "discussion", "conclusion", "ablation", "experiment"],
                     max_chars=0,
-                    max_sections=0,
-                    max_figures=0,
-                    max_tables=0,
-                    max_equations=0,
+                    max_sections=6,
+                    max_figures=2,
+                    max_tables=3,
+                    max_equations=1,
                     include_outline=True,
-                    notes=["优先用于提炼局限性、边界条件、复现依赖与审稿风险。"],
+                    notes=[
+                        "优先用于提炼局限性、边界条件、复现依赖与审稿风险。",
+                        "这是面向风险聚焦筛选的证据包；未出现的方法或实验细节不代表原文不存在。",
+                    ],
                 )
                 model_selection_context = "\n\n".join(
                     part

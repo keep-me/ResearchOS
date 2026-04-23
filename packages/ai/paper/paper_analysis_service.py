@@ -60,6 +60,21 @@ class PaperAnalysisService:
             if progress_callback:
                 progress_callback(message, current, 100)
 
+        def _reference_block(
+            label: str,
+            text: str | None,
+            *,
+            full_limit: int,
+            rough_limit: int,
+        ) -> str:
+            content = str(text or "").strip()
+            if not content:
+                return ""
+            limit = full_limit if normalized_evidence_mode == "full" else rough_limit
+            if limit > 0 and len(content) > limit:
+                content = f"{content[:limit].rstrip()}\n..."
+            return f"[弱参考 | {label}]\n{content}"
+
         with session_scope() as session:
             from sqlalchemy import select
 
@@ -110,24 +125,37 @@ class PaperAnalysisService:
             f"分析来源: {paper_content_source_label(effective_content_source)}",
         ]
         if skim_report:
-            skim_text = str(skim_report)
-            context_blocks.append(
-                f"已有粗读: {skim_text if normalized_evidence_mode == 'full' else skim_text[:1200]}"
+            skim_block = _reference_block(
+                "粗读",
+                str(skim_report),
+                full_limit=900,
+                rough_limit=600,
             )
+            if skim_block:
+                context_blocks.append(skim_block)
         if deep_report:
-            deep_text = str(deep_report)
-            context_blocks.append(
-                f"已有精读: {deep_text if normalized_evidence_mode == 'full' else deep_text[:1800]}"
+            deep_block = _reference_block(
+                "精读",
+                str(deep_report),
+                full_limit=1300,
+                rough_limit=900,
             )
+            if deep_block:
+                context_blocks.append(deep_block)
         if reasoning_chain:
-            reasoning_text = str(reasoning_chain)
-            context_blocks.append(
-                f"已有推理链: {reasoning_text if normalized_evidence_mode == 'full' else reasoning_text[:1800]}"
+            reasoning_block = _reference_block(
+                "推理链",
+                str(reasoning_chain),
+                full_limit=1300,
+                rough_limit=900,
             )
+            if reasoning_block:
+                context_blocks.append(reasoning_block)
         evidence_notice = (
             "证据说明：下面的结构化证据包是按全文结构跨章节选择的内容，"
             "不代表论文只截到某一节。除非证据明确显示缺页/截断，否则不要写“正文仅覆盖到 Sec.x.x”。"
             " 只有当某个具体判断确实没有直接证据时，才写“当前证据不足”，不要据此臆断全文不存在该内容。"
+            " 另外，每一轮拿到的证据包都是为该轮目标筛选的，某信息未出现在当前证据包中，不代表原文没有。"
         )
         context_text = "\n\n".join(context_blocks)
         if evidence is None:
@@ -185,6 +213,7 @@ class PaperAnalysisService:
             prompt=(
                 "请对下面论文做第 2 轮内容理解，输出中文 Markdown。\n"
                 "必须覆盖：问题定义、方法要点、实验设置、主要结果、关键图表或表格的文字化复现。\n\n"
+                "第 1 轮结果仅作中间草稿；如果与本轮结构化证据冲突，必须直接纠正，不要盲从前一轮。\n\n"
                 f"{evidence_notice}\n\n"
                 f"{context_text}\n\n"
                 f"[第 2 轮结构化证据包]\n{comprehension_evidence}\n\n"
@@ -211,6 +240,7 @@ class PaperAnalysisService:
                 "请对下面论文做第 3 轮深度分析，输出中文 Markdown。\n"
                 "必须覆盖：数学框架、算法流程、实现要点、局限性、复现实验建议。\n"
                 "如果适合，请给出 Mermaid 流程图和 KaTeX 公式片段。\n\n"
+                "第 1 / 2 轮结果仅作中间草稿；如果与本轮结构化证据冲突，必须以本轮结构化证据为准并显式纠正。\n\n"
                 f"{evidence_notice}\n\n"
                 f"{context_text}\n\n"
                 f"[第 3 轮结构化证据包]\n{deep_analysis_evidence}\n\n"
@@ -237,6 +267,7 @@ class PaperAnalysisService:
             prompt=(
                 "请把下面三轮分析汇总为最终结构化笔记，输出中文 Markdown。\n"
                 "结构至少包含：一句话总结、核心贡献、方法机制、实验结论、可复现要点、风险与开放问题。\n\n"
+                "如果三轮之间存在冲突，请优先采用更具体、更靠近原始结构化证据的结论，并在最终笔记中消解冲突。\n\n"
                 f"[第 1 轮]\n{rounds['round_1']['markdown']}\n\n"
                 f"[第 2 轮]\n{rounds['round_2']['markdown']}\n\n"
                 f"[第 3 轮]\n{rounds['round_3']['markdown']}"

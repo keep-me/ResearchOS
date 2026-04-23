@@ -88,6 +88,21 @@ class ReasoningService:
             if progress_callback:
                 progress_callback(message, current, 100)
 
+        def _reference_block(
+            label: str,
+            text: str | None,
+            *,
+            full_limit: int,
+            rough_limit: int,
+        ) -> str:
+            content = str(text or "").strip()
+            if not content:
+                return ""
+            limit = full_limit if normalized_evidence_mode == "full" else rough_limit
+            if limit > 0 and len(content) > limit:
+                content = f"{content[:limit].rstrip()}\n..."
+            return f"[弱参考 | {label}]\n{content}"
+
         _report("正在准备推理链分析...", 6)
 
         # 1) 在 session 内取出所有需要的数据
@@ -103,17 +118,30 @@ class ReasoningService:
                 select(AnalysisReport).where(AnalysisReport.paper_id == str(paper_id))
             ).scalar_one_or_none()
             analysis_context = ""
+            analysis_blocks: list[str] = []
             if existing:
-                if existing.summary_md:
-                    analysis_context += (
-                        f"粗读报告:\n"
-                        f"{existing.summary_md if normalized_evidence_mode == 'full' else existing.summary_md[:1500]}\n\n"
-                    )
-                if existing.deep_dive_md:
-                    analysis_context += (
-                        f"精读报告:\n"
-                        f"{existing.deep_dive_md if normalized_evidence_mode == 'full' else existing.deep_dive_md[:2000]}\n\n"
-                    )
+                skim_block = _reference_block(
+                    "粗读",
+                    existing.summary_md,
+                    full_limit=900,
+                    rough_limit=600,
+                )
+                if skim_block:
+                    analysis_blocks.append(skim_block)
+                deep_block = _reference_block(
+                    "精读",
+                    existing.deep_dive_md,
+                    full_limit=1400,
+                    rough_limit=900,
+                )
+                if deep_block:
+                    analysis_blocks.append(deep_block)
+            if analysis_blocks:
+                analysis_context = (
+                    "以下已有分析仅作弱参考，用于术语对齐和快速回忆；"
+                    "如果与本轮结构化证据冲突，必须以结构化证据为准，并直接纠正旧结论。\n\n"
+                    + "\n\n".join(analysis_blocks)
+                )
 
         # 2) 提取 PDF 文本（session 外）
         _report(
@@ -154,12 +182,15 @@ class ReasoningService:
                         "equation",
                     ],
                     max_chars=0,
-                    max_sections=0,
-                    max_figures=0,
-                    max_tables=0,
-                    max_equations=0,
+                    max_sections=12,
+                    max_figures=6,
+                    max_tables=6,
+                    max_equations=5,
                     include_outline=True,
-                    notes=["用于推理链分析，证据跨全文选取，不代表正文只到某一节。"],
+                    notes=[
+                        "用于推理链分析，证据跨全文选取，不代表正文只到某一节。",
+                        "这是面向推理链任务筛选的结构化证据包；未出现的细节不代表原文不存在。",
+                    ],
                 )
             else:
                 extracted_text = evidence.build_analysis_context(max_chars=profile_excerpt_chars)

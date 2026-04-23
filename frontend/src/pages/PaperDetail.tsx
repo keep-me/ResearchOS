@@ -378,6 +378,12 @@ function getMineruOcrMeta(metadata?: Record<string, unknown>): MineruOcrMeta | n
   return raw as MineruOcrMeta;
 }
 
+function resolvePreferredProcessingSource(paper: Pick<Paper, "metadata"> | null | undefined): PaperContentSource {
+  const ocrMeta = getMineruOcrMeta(paper?.metadata as Record<string, unknown> | undefined);
+  const hasOcrMarkdown = ocrMeta?.status === "success" && ((ocrMeta.markdown_chars || 0) > 0 || !!ocrMeta.has_structured_output);
+  return hasOcrMarkdown ? "markdown" : "pdf";
+}
+
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -1191,7 +1197,7 @@ export default function PaperDetail() {
     ])
       .then(([p, figRes]) => {
         setPaper(p);
-        setProcessingSource("pdf");
+        setProcessingSource(resolvePreferredProcessingSource(p));
         setEmbedDone(p.has_embedding ?? false);
         setSavedSkim(p.skim_report ?? null);
         setSavedDeep(p.deep_report ?? null);
@@ -1307,7 +1313,7 @@ export default function PaperDetail() {
       const updated = await refreshPaperDetail();
       if (updated?.pdf_path || payload?.pdf_path) {
         setReaderOpen(true);
-        toast("success", `PDF ${payload?.status === "exists" ? "已存在，已直接打开" : "下载完成"}`);
+        toast("success", payload?.status === "exists" ? "PDF 已存在，已直接打开" : "PDF 下载完成，已打开阅读器，OCR 将自动在后台启动");
       } else {
         throw new Error("PDF 已处理完成，但未找到本地文件");
       }
@@ -1342,7 +1348,8 @@ export default function PaperDetail() {
       });
       setOcrTaskProgress(100);
       setOcrTaskMessage("OCR 处理完成");
-      await refreshPaperDetail();
+      const nextPaper = await refreshPaperDetail();
+      setProcessingSource(resolvePreferredProcessingSource(nextPaper));
       if (payload.available) {
         toast("success", `OCR 处理完成，已生成 Markdown（约 ${payload.markdown_chars || 0} 字），可手动切换到 Markdown`);
       } else {
@@ -1357,6 +1364,11 @@ export default function PaperDetail() {
       setOcrTaskProgress(null);
     }
   };
+
+  const handleReaderOcrUpdated = useCallback(async () => {
+    const nextPaper = await refreshPaperDetail();
+    setProcessingSource(resolvePreferredProcessingSource(nextPaper));
+  }, [refreshPaperDetail]);
 
   const handleSkim = async () => {
     if (!id) return;
@@ -2445,6 +2457,7 @@ export default function PaperDetail() {
             paperId={id!}
             paperTitle={paper.title}
             paperArxivId={paper.arxiv_id}
+            onOcrUpdated={handleReaderOcrUpdated}
             onClose={() => setReaderOpen(false)}
           />
         </Suspense>
@@ -2477,7 +2490,8 @@ export default function PaperDetail() {
         onClose={() => setSourceEditorOpen(false)}
         onSaved={async () => {
           setReaderOpen(false);
-          await refreshPaperDetail();
+          const nextPaper = await refreshPaperDetail();
+          setProcessingSource(resolvePreferredProcessingSource(nextPaper));
         }}
       />
 

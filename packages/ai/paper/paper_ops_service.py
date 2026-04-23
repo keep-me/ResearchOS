@@ -6,7 +6,7 @@ import re
 import shutil
 import threading
 from pathlib import Path
-from typing import BinaryIO, Callable
+from typing import Any, BinaryIO, Callable
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -115,6 +115,12 @@ def sanitize_external_pdf_url(url: str | None) -> tuple[str | None, str | None]:
 def safe_uploaded_filename(filename: str) -> str:
     stem = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(filename or "paper").stem).strip("-")
     return stem[:80] or "paper"
+
+
+def clear_pdf_derived_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    cleaned = dict(metadata or {})
+    cleaned.pop("mineru_ocr", None)
+    return cleaned
 
 
 def guess_title_from_text(text: str, fallback: str) -> str:
@@ -487,7 +493,7 @@ def upload_paper_pdf(
                 )
             else:
                 old_pdf_path = paper.pdf_path
-                current_meta = dict(paper.metadata_json or {})
+                current_meta = clear_pdf_derived_metadata(paper.metadata_json)
                 current_meta.update(metadata)
                 if title.strip():
                     paper.title = resolved_title
@@ -568,7 +574,7 @@ def replace_paper_pdf(
             if extracted_abstract and not (paper.abstract or "").strip():
                 paper.abstract = extracted_abstract.strip()
 
-            metadata = dict(paper.metadata_json or {})
+            metadata = clear_pdf_derived_metadata(paper.metadata_json)
             metadata["source"] = "manual_pdf_upload"
             metadata["original_filename"] = filename
             paper.metadata_json = metadata
