@@ -147,7 +147,6 @@ function parseKeywordInput(value: string): string[] {
 }
 
 const PAPER_ANALYSIS_DETAIL_LEVEL_KEY = "researchos.paper.analysisDetailLevel";
-const PAPER_ANALYSIS_EVIDENCE_MODE_KEY = "researchos.paper.evidenceMode";
 const DEEP_DETAIL_LEVEL_KEY = "researchos.paper.deepDetailLevel";
 const REASONING_DETAIL_LEVEL_KEY = "researchos.paper.reasoningDetailLevel";
 
@@ -177,14 +176,6 @@ function resolveFigurePreviewUrl(
   }
   const rawImageUrl = typeof figure.image_url === "string" ? figure.image_url.trim() : "";
   return rawImageUrl ? resolveApiAssetUrl(rawImageUrl) : null;
-}
-
-function getStoredEvidenceMode(): PaperEvidenceMode | null {
-  const stored = (localStorage.getItem(PAPER_ANALYSIS_EVIDENCE_MODE_KEY) || "").trim().toLowerCase();
-  if (stored === "full" || stored === "rough") {
-    return stored;
-  }
-  return null;
 }
 
 function getPaperSourceLabel(url: string | null) {
@@ -366,10 +357,6 @@ function normalizeSavedPaperContentSource(value: unknown): PaperContentSource | 
 
 function getSavedPaperContentSourceLabel(value: unknown): string {
   return normalizeSavedPaperContentSource(value) === "markdown" ? "Markdown" : "PDF";
-}
-
-function getEvidenceModeLabel(mode: string | null | undefined): string {
-  return String(mode || "").trim().toLowerCase() === "full" ? "完整" : "粗略";
 }
 
 function getAnalysisArtifactMeta(
@@ -1114,8 +1101,7 @@ export default function PaperDetail() {
   const [analysisTaskProgress, setAnalysisTaskProgress] = useState<number | null>(null);
   const [paperAnalysisDetailLevel, setPaperAnalysisDetailLevel] = useState<AnalysisDetailLevel>(() =>
     getPreferredPaperAnalysisDetailLevel());
-  const [paperEvidenceMode, setPaperEvidenceMode] = useState<PaperEvidenceMode>(() =>
-    getStoredEvidenceMode() || "rough");
+  const paperEvidenceMode: PaperEvidenceMode = "full";
 
   const [readerOpen, setReaderOpen] = useState(false);
   const [reportTab, setReportTab] = useState("skim");
@@ -1135,10 +1121,6 @@ export default function PaperDetail() {
     localStorage.setItem(DEEP_DETAIL_LEVEL_KEY, paperAnalysisDetailLevel);
     localStorage.setItem(REASONING_DETAIL_LEVEL_KEY, paperAnalysisDetailLevel);
   }, [paperAnalysisDetailLevel]);
-
-  useEffect(() => {
-    localStorage.setItem(PAPER_ANALYSIS_EVIDENCE_MODE_KEY, paperEvidenceMode);
-  }, [paperEvidenceMode]);
 
   const refreshPaperDetail = useCallback(async (options?: { includeFigures?: boolean }) => {
     if (!id) return null;
@@ -1427,7 +1409,7 @@ export default function PaperDetail() {
     if (!id) return;
     setDeepLoading(true);
     setReportTab("deep");
-    setDeepTaskMessage(`创建精读任务（详略: ${paperAnalysisDetailLevel}，证据: ${getEvidenceModeLabel(paperEvidenceMode)}，来源: ${getProcessingSourceLabel(processingSource)}）...`);
+    setDeepTaskMessage(`创建精读任务（详略: ${paperAnalysisDetailLevel}，来源: ${getProcessingSourceLabel(processingSource)}）...`);
     setDeepTaskProgress(1);
     try {
       const kickoff = await pipelineApi.deepAsync(id, {
@@ -1676,7 +1658,7 @@ export default function PaperDetail() {
     if (!id) return;
     setReasoningLoading(true);
     setReportTab("reasoning");
-    setReasoningTaskMessage(`创建推理链任务（详略: ${paperAnalysisDetailLevel}，证据: ${getEvidenceModeLabel(paperEvidenceMode)}，来源: ${getProcessingSourceLabel(processingSource)}）...`);
+    setReasoningTaskMessage(`创建推理链任务（详略: ${paperAnalysisDetailLevel}，来源: ${getProcessingSourceLabel(processingSource)}）...`);
     setReasoningTaskProgress(1);
     try {
       const kickoff = await paperApi.reasoningAnalysisAsync(id, {
@@ -1718,7 +1700,7 @@ export default function PaperDetail() {
     setAnalysisLoading(true);
     setReportTab("analysis");
     setAnalysisTaskMessage(
-      `${shouldRetry ? "重新创建" : "创建"}三轮分析任务（详略: ${paperAnalysisDetailLevel}，证据: ${getEvidenceModeLabel(paperEvidenceMode)}，来源: ${getProcessingSourceLabel(processingSource)}）...`,
+      `${shouldRetry ? "重新创建" : "创建"}三轮分析任务（详略: ${paperAnalysisDetailLevel}，来源: ${getProcessingSourceLabel(processingSource)}）...`,
     );
     setAnalysisTaskProgress(1);
     try {
@@ -2078,17 +2060,6 @@ export default function PaperDetail() {
             >
               <option value="pdf">PDF</option>
               <option value="markdown">Markdown</option>
-            </select>
-          </label>
-          <label className="inline-flex min-h-11 items-center justify-between gap-2 rounded-md border border-border bg-page px-3 py-2 text-xs font-medium text-ink-secondary sm:min-h-0 sm:justify-start">
-            证据模式
-            <select
-              value={paperEvidenceMode}
-              onChange={(event) => setPaperEvidenceMode(event.target.value as PaperEvidenceMode)}
-              className="bg-transparent text-xs text-ink outline-none"
-            >
-              <option value="rough">粗略</option>
-              <option value="full">完整</option>
             </select>
           </label>
           <button
@@ -3120,7 +3091,6 @@ function PaperAnalysisRoundsPanel({
   const activeRound = rounds.find((section) => section.key === selectedRoundKey) || rounds[0] || null;
   const detailLevelValue = String(bundle.detail_level || "").trim().toLowerCase();
   const reasoningLevelValue = String(bundle.reasoning_level || "").trim().toLowerCase();
-  const evidenceModeValue = String(bundle.evidence_mode || "").trim().toLowerCase();
   const showReasoningChip = Boolean(reasoningLevelValue && reasoningLevelValue !== detailLevelValue);
   const activeRoundLayout = useMemo(
     () => (activeRound ? buildAnalysisRoundLayout(activeRound.item?.markdown || "") : null),
@@ -3150,11 +3120,6 @@ function PaperAnalysisRoundsPanel({
         {showReasoningChip ? (
           <span className="rounded-full border border-purple-500/20 bg-purple-500/5 px-3 py-1.5">
             推理 {getReasoningLevelLabel(bundle.reasoning_level)}
-          </span>
-        ) : null}
-        {evidenceModeValue ? (
-          <span className="rounded-full border border-amber-500/20 bg-amber-500/5 px-3 py-1.5">
-            证据 {getEvidenceModeLabel(bundle.evidence_mode)}
           </span>
         ) : null}
         {bundle.content_source ? (

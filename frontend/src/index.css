@@ -1023,6 +1023,19 @@ html.dark textarea {
   color: color-mix(in srgb, var(--color-ink) 72%, transparent);
 }
 
+@media (max-width: 767px) {
+  .toolbar-btn {
+    width: 1.875rem;
+    height: 1.875rem;
+  }
+
+  .toolbar-btn-text {
+    height: 1.875rem;
+    padding: 0 0.4375rem;
+    font-size: 0.6875rem;
+  }
+}
+
 .ai-action-btn {
   display: flex;
   align-items: center;
@@ -1041,8 +1054,8 @@ html.dark textarea {
 
 .pdf-ai-markdown p { margin-bottom: 0.6em; }
 .pdf-ai-markdown p:last-child { margin-bottom: 0; }
-.pdf-ai-markdown strong { color: rgba(255, 255, 255, 0.95); font-weight: 600; }
-.pdf-ai-markdown em { color: rgba(255, 255, 255, 0.7); font-style: italic; }
+.pdf-ai-markdown strong { color: var(--color-ink); font-weight: 600; }
+.pdf-ai-markdown em { color: var(--color-ink-secondary); font-style: italic; }
 
 .pdf-ai-markdown h1,
 .pdf-ai-markdown h2,
@@ -1050,7 +1063,7 @@ html.dark textarea {
 .pdf-ai-markdown h4,
 .pdf-ai-markdown h5,
 .pdf-ai-markdown h6 {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--color-ink);
   font-weight: 600;
   margin: 0.8em 0 0.4em;
   line-height: 1.4;
@@ -1067,11 +1080,11 @@ html.dark textarea {
 }
 
 .pdf-ai-markdown li { margin-bottom: 0.25em; }
-.pdf-ai-markdown li::marker { color: rgba(255, 255, 255, 0.3); }
+.pdf-ai-markdown li::marker { color: color-mix(in srgb, var(--color-ink-tertiary) 70%, transparent); }
 
 .pdf-ai-markdown code {
-  background: rgba(255, 255, 255, 0.08);
-  color: #f5c996;
+  background: color-mix(in srgb, var(--color-primary-light) 78%, var(--color-surface));
+  color: var(--color-primary);
   padding: 0.15em 0.4em;
   border-radius: 0.3em;
   font-size: 0.85em;
@@ -1079,8 +1092,8 @@ html.dark textarea {
 }
 
 .pdf-ai-markdown pre {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--color-page) 68%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
   margin: 0.6em 0;
@@ -1089,44 +1102,50 @@ html.dark textarea {
 
 .pdf-ai-markdown pre code {
   background: none;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--color-ink-secondary);
   padding: 0;
   font-size: 0.8em;
 }
 
 .pdf-ai-markdown blockquote {
-  border-left: 3px solid rgba(49, 193, 176, 0.65);
+  border-left: 3px solid color-mix(in srgb, var(--color-primary) 60%, transparent);
   padding-left: 0.8em;
   margin: 0.6em 0;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--color-ink-secondary);
   font-style: italic;
+}
+
+.pdf-ai-markdown-table-wrap {
+  overflow-x: auto;
+  margin: 0.6em 0;
+  padding-bottom: 0.25rem;
 }
 
 .pdf-ai-markdown table {
   width: 100%;
+  min-width: max-content;
   border-collapse: collapse;
-  margin: 0.6em 0;
   font-size: 0.8em;
 }
 
 .pdf-ai-markdown th {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--color-primary-light) 48%, var(--color-surface));
+  color: var(--color-ink);
   font-weight: 600;
   text-align: left;
   padding: 0.4em 0.6em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
 }
 
 .pdf-ai-markdown td {
   padding: 0.35em 0.6em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.7);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 62%, transparent);
+  color: var(--color-ink-secondary);
 }
 
 .pdf-ai-markdown hr {
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
   margin: 0.8em 0;
 }
 
@@ -1137,14 +1156,29 @@ html.dark textarea {
 }
 
 .pdf-ai-markdown a:hover { color: #b5e5ff; }
-.pdf-ai-markdown .katex { color: rgba(255, 255, 255, 0.9); }
+.pdf-ai-markdown .katex,
+.pdf-ai-markdown .katex-display {
+  color: var(--color-ink);
+}
+
+.pdf-ai-markdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
+.pdf-ai-markdown .katex-error {
+  color: var(--color-warning);
+  white-space: pre-wrap;
+}
+
 .pdf-ai-markdown .mermaid-block {
-  background: rgba(0, 0, 0, 0.24);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--color-page) 68%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-border) 80%, transparent);
 }
 
 .pdf-ai-markdown .mermaid-block-loading {
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--color-ink-tertiary);
 }
 
 .analysis-round-markdown .katex {

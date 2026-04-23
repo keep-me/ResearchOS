@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -512,12 +513,23 @@ def test_reader_notes_crud(monkeypatch: pytest.MonkeyPatch) -> None:
             "page_number": 4,
             "tags": ["method", "important"],
             "pinned": True,
+            "source": "ai_draft",
+            "anchor_source": "ocr_block",
+            "anchor_id": "block_12",
+            "section_id": "section_3",
+            "section_title": "3 Method",
         },
     )
     assert create_response.status_code == 200
     created = create_response.json()["item"]
     assert created["title"] == "关键段落"
     assert created["pinned"] is True
+    assert created["status"] == "saved"
+    assert created["source"] == "ai_draft"
+    assert created["anchor_source"] == "ocr_block"
+    assert created["anchor_id"] == "block_12"
+    assert created["section_id"] == "section_3"
+    assert created["section_title"] == "3 Method"
 
     list_response = client.get(f"/papers/{paper_id}/reader/notes")
     assert list_response.status_code == 200
@@ -526,3 +538,300 @@ def test_reader_notes_crud(monkeypatch: pytest.MonkeyPatch) -> None:
     delete_response = client.delete(f"/papers/{paper_id}/reader/notes/{created['id']}")
     assert delete_response.status_code == 200
     assert delete_response.json()["items"] == []
+
+
+def test_reader_document_returns_structured_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_test_db(monkeypatch)
+    paper_id = _create_paper()
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 structured")
+    output_root = tmp_path / "ocr"
+    output_root.mkdir(parents=True)
+    content_list_path = output_root / "paper_content_list.json"
+    content_list_path.write_text(
+        json.dumps(
+            [
+                {
+                    "type": "text",
+                    "text": "Abstract",
+                    "text_level": 1,
+                    "page_idx": 0,
+                    "bbox": [120, 180, 260, 220],
+                },
+                {
+                    "type": "text",
+                    "text": "This paper studies a compact multimodal encoder.",
+                    "page_idx": 0,
+                    "bbox": [120, 230, 860, 320],
+                },
+                {
+                    "type": "text",
+                    "text": "1 Method",
+                    "text_level": 1,
+                    "page_idx": 1,
+                    "bbox": [120, 160, 320, 200],
+                },
+                {
+                    "type": "list",
+                    "list_items": ["contrastive alignment", "fusion decoder"],
+                    "page_idx": 1,
+                    "bbox": [140, 220, 520, 320],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        papers_router,
+        "_ensure_paper_pdf",
+        lambda session, repo, paper, pid: str(pdf_path),
+    )
+    monkeypatch.setattr(
+        "packages.ai.paper.mineru_runtime.MinerUOcrRuntime.get_cached_bundle",
+        lambda *args, **kwargs: SimpleNamespace(
+            output_root=output_root,
+            markdown_text="# Abstract\n\nThis paper studies a compact multimodal encoder.",
+            has_structured_output=True,
+            available=True,
+        ),
+    )
+
+    client = TestClient(_build_app())
+    response = client.get(f"/papers/{paper_id}/reader/document")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["source"] == "mineru_structured"
+    assert len(payload["sections"]) >= 2
+    assert payload["sections"][0]["title"] == "Abstract"
+    assert payload["blocks"][0]["type"] == "heading"
+    assert payload["blocks"][1]["section_id"] == payload["sections"][0]["id"]
+    assert payload["blocks"][1]["bbox_normalized"] is True
+    assert payload["blocks"][1]["bbox"]["width"] > 0
+    assert payload["blocks"][-1]["type"] == "list"
+
+
+def test_reader_document_falls_back_to_markdown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_test_db(monkeypatch)
+    paper_id = _create_paper()
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 markdown")
+
+    monkeypatch.setattr(
+        papers_router,
+        "_ensure_paper_pdf",
+        lambda session, repo, paper, pid: str(pdf_path),
+    )
+    monkeypatch.setattr(
+        "packages.ai.paper.mineru_runtime.MinerUOcrRuntime.get_cached_bundle",
+        lambda *args, **kwargs: SimpleNamespace(
+            output_root=tmp_path / "missing-structured",
+            markdown_text="# Abstract\n\nA concise summary.\n\n## Method\n\nThe model uses two encoders.",
+            has_structured_output=False,
+            available=True,
+        ),
+    )
+
+    client = TestClient(_build_app())
+    response = client.get(f"/papers/{paper_id}/reader/document")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["source"] == "mineru_markdown"
+    assert payload["sections"][0]["title"] == "Abstract"
+    assert payload["blocks"][0]["type"] == "heading"
+    assert any(block["text"] == "The model uses two encoders." for block in payload["blocks"])
+
+
+def test_reader_document_uses_output_root_metadata_when_cached_bundle_misses(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_test_db(monkeypatch)
+    output_root = tmp_path / "ocr-output"
+    output_root.mkdir(parents=True)
+    images_dir = output_root / "images"
+    images_dir.mkdir()
+    (images_dir / "fig.png").write_bytes(b"fake-image")
+    (output_root / "paper.md").write_text(
+        "# Abstract\n\nRecovered from output_root metadata.\n\n![](images/fig.png)",
+        encoding="utf-8",
+    )
+    (output_root / "manifest.json").write_text(
+        json.dumps({"status": "success", "pdf_sha256": "abc123", "output_root": str(output_root)}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    paper_id = _create_paper(
+        metadata={
+            "mineru_ocr": {
+                "status": "success",
+                "output_root": str(output_root),
+                "pdf_sha256": "abc123",
+                "markdown_chars": 38,
+                "has_structured_output": False,
+            }
+        }
+    )
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 metadata-fallback")
+
+    monkeypatch.setattr(
+        papers_router,
+        "_ensure_paper_pdf",
+        lambda session, repo, paper, pid: str(pdf_path),
+    )
+    monkeypatch.setattr(
+        "packages.ai.paper.mineru_runtime.MinerUOcrRuntime.get_cached_bundle",
+        lambda *args, **kwargs: None,
+    )
+
+    client = TestClient(_build_app())
+    response = client.get(f"/papers/{paper_id}/reader/document")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["source"] == "mineru_markdown"
+    assert payload["markdown"].startswith("# Abstract")
+    assert f"/papers/{paper_id}/ocr/assets/images/fig.png" in payload["markdown"]
+
+    asset_response = client.get(f"/papers/{paper_id}/ocr/assets/images/fig.png")
+    assert asset_response.status_code == 200
+    assert asset_response.content == b"fake-image"
+
+
+def test_reader_note_draft_returns_unsaved_ai_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    paper_id = _create_paper()
+
+    monkeypatch.setattr(
+        papers_router.LLMClient,
+        "complete_json",
+        lambda self, prompt, stage, max_tokens=None, max_retries=1: LLMResult(
+            content='{"title":"方法抓手","content":"- 提出了新的融合策略\\n- 需要核实训练细节","tags":["method","todo"],"color":"blue"}',
+            parsed_json={
+                "title": "方法抓手",
+                "content": "- 提出了新的融合策略\n- 需要核实训练细节",
+                "tags": ["method", "todo"],
+                "color": "blue",
+            },
+        ),
+    )
+
+    client = TestClient(_build_app())
+    response = client.post(
+        f"/papers/{paper_id}/reader/note-draft",
+        json={
+            "text": "The model aligns image and text representations before fusion.",
+            "quote": "aligns image and text representations before fusion",
+            "page_number": 5,
+            "anchor_source": "ocr_block",
+            "anchor_id": "block_9",
+            "section_id": "section_2",
+            "section_title": "2 Method",
+        },
+    )
+
+    assert response.status_code == 200
+    item = response.json()["item"]
+    assert item["status"] == "draft"
+    assert item["source"] == "ai_draft"
+    assert item["title"] == "方法抓手"
+    assert item["color"] == "blue"
+    assert item["anchor_source"] == "ocr_block"
+    assert item["anchor_id"] == "block_9"
+    assert item["section_id"] == "section_2"
+
+
+def test_reader_note_draft_falls_back_to_structured_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    paper_id = _create_paper()
+    captured: dict[str, str] = {}
+
+    monkeypatch.setattr(
+        papers_router.LLMClient,
+        "complete_json",
+        lambda self, prompt, stage, max_tokens=None, max_retries=1: LLMResult(
+            content="",
+            parsed_json=None,
+        ),
+    )
+
+    def _fake_summarize(self, prompt, stage, max_tokens=None, **kwargs):
+        captured["stage"] = stage
+        return LLMResult(
+            content=(
+                "标题：结果对比线索\n"
+                "标签：实验, 结果\n"
+                "颜色：emerald\n"
+                "正文：\n"
+                "- 该段给出了跨任务的对比结果线索。\n"
+                "- 需要结合 Table 2 继续核对具体指标。"
+            )
+        )
+
+    monkeypatch.setattr(papers_router.LLMClient, "summarize_text", _fake_summarize)
+
+    client = TestClient(_build_app())
+    response = client.post(
+        f"/papers/{paper_id}/reader/note-draft",
+        json={
+            "text": "We report the detailed comparison on each task in Table 2.",
+            "quote": "We report the detailed comparison on each task in Table 2.",
+            "page_number": 9,
+            "anchor_source": "pdf_selection",
+        },
+    )
+
+    assert response.status_code == 200
+    item = response.json()["item"]
+    assert captured["stage"] == "paper_reader_note_draft_fallback"
+    assert item["title"] == "结果对比线索"
+    assert item["color"] == "emerald"
+    assert item["content"].startswith("- 该段给出了跨任务的对比结果线索。")
+    assert item["tags"] == ["实验", "结果"]
+
+
+def test_reader_note_draft_returns_503_when_model_service_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    paper_id = _create_paper()
+
+    monkeypatch.setattr(
+        papers_router.LLMClient,
+        "complete_json",
+        lambda self, prompt, stage, max_tokens=None, max_retries=1: LLMResult(
+            content="模型服务暂不可用。(stage=paper_reader_note_draft, provider=custom, model=gpt-5.4) 请稍后重试或检查 API 配置。",
+            parsed_json=None,
+        ),
+    )
+    monkeypatch.setattr(
+        papers_router.LLMClient,
+        "summarize_text",
+        lambda self, prompt, stage, max_tokens=None, **kwargs: LLMResult(
+            content="模型服务暂不可用。(stage=paper_reader_note_draft_fallback, provider=custom, model=gpt-5.4) 请稍后重试或检查 API 配置。",
+        ),
+    )
+
+    client = TestClient(_build_app())
+    response = client.post(
+        f"/papers/{paper_id}/reader/note-draft",
+        json={
+            "text": "We report the detailed comparison on each task in Table 2.",
+            "quote": "We report the detailed comparison on each task in Table 2.",
+            "page_number": 9,
+            "anchor_source": "pdf_selection",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "模型服务暂不可用" in response.json()["detail"]

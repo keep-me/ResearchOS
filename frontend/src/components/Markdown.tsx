@@ -132,7 +132,7 @@ const Markdown = memo(function Markdown({ children, className, autoMath = false 
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, trust: true }]]}
         components={{
           pre({ children: preChildren, ...props }) {
             const firstChild = Children.toArray(preChildren)[0];
@@ -143,6 +143,13 @@ const Markdown = memo(function Markdown({ children, className, autoMath = false 
               }
             }
             return <pre {...props}>{preChildren}</pre>;
+          },
+          table({ children: tableChildren, ...props }) {
+            return (
+              <div className="pdf-ai-markdown-table-wrap">
+                <table {...props}>{tableChildren}</table>
+              </div>
+            );
           },
           img({ src, alt, ...props }) {
             const resolvedSrc = resolveApiAssetUrl(String(src || ""));

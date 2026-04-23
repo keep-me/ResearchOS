@@ -224,6 +224,11 @@ export interface PaperAnalysisBundle {
 export type PaperReaderScope = "paper" | "selection" | "figure";
 export type PaperReaderAction = "analyze" | "explain" | "translate" | "summarize" | "ask";
 export type PaperReaderNoteKind = "general" | "text" | "figure";
+export type PaperReaderNoteStatus = "draft" | "saved";
+export type PaperReaderNoteSource = "manual" | "ai_draft";
+export type PaperReaderAnchorSource = "pdf_selection" | "ocr_block";
+export type PaperReaderDocumentSource = "mineru_structured" | "mineru_markdown" | "none";
+export type PaperReaderDocumentBlockType = "heading" | "text" | "aside_text" | "list" | "equation" | "image" | "table";
 
 export interface PaperReaderQueryResponse {
   scope: PaperReaderScope;
@@ -233,6 +238,46 @@ export interface PaperReaderQueryResponse {
   figure_id?: string | null;
   page_number?: number | null;
   caption?: string | null;
+}
+
+export interface PaperReaderDocumentBBox {
+  x: number;
+  y: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  width: number;
+  height: number;
+}
+
+export interface PaperReaderDocumentSection {
+  id: string;
+  title: string;
+  level: number;
+  order: number;
+  page_start?: number | null;
+}
+
+export interface PaperReaderDocumentBlock {
+  id: string;
+  section_id: string;
+  page_number?: number | null;
+  order: number;
+  type: PaperReaderDocumentBlockType;
+  text: string;
+  markdown: string;
+  bbox?: PaperReaderDocumentBBox | null;
+  bbox_normalized: boolean;
+}
+
+export interface PaperReaderDocumentResponse {
+  paper_id: string;
+  available: boolean;
+  source: PaperReaderDocumentSource;
+  markdown: string;
+  sections: PaperReaderDocumentSection[];
+  blocks: PaperReaderDocumentBlock[];
 }
 
 export interface PaperReaderNote {
@@ -246,6 +291,12 @@ export interface PaperReaderNote {
   color: "amber" | "blue" | "emerald" | "rose" | "violet" | "slate";
   tags: string[];
   pinned: boolean;
+  status: PaperReaderNoteStatus;
+  source: PaperReaderNoteSource;
+  anchor_source?: PaperReaderAnchorSource | null;
+  anchor_id?: string | null;
+  section_id?: string | null;
+  section_title?: string | null;
   created_at: string;
   updated_at: string;
 }

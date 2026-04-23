@@ -219,6 +219,51 @@ class PaperReaderNoteReq(BaseModel):
     color: str | None = None
     tags: list[str] = Field(default_factory=list)
     pinned: bool = False
+    status: Literal["draft", "saved"] | None = None
+    source: Literal["manual", "ai_draft"] | None = None
+    anchor_source: Literal["pdf_selection", "ocr_block"] | None = None
+    anchor_id: str | None = None
+    section_id: str | None = None
+    section_title: str | None = None
+
+
+class PaperReaderNoteDraftReq(BaseModel):
+    text: str
+    quote: str | None = None
+    page_number: int | None = Field(default=None, ge=1)
+    anchor_source: Literal["pdf_selection", "ocr_block"] | None = None
+    anchor_id: str | None = None
+    section_id: str | None = None
+    section_title: str | None = None
+
+
+class PaperReaderDocumentSection(BaseModel):
+    id: str
+    title: str
+    level: int = 1
+    order: int = 0
+    page_start: int | None = Field(default=None, ge=1)
+
+
+class PaperReaderDocumentBlock(BaseModel):
+    id: str
+    section_id: str
+    page_number: int | None = Field(default=None, ge=1)
+    order: int = 0
+    type: Literal["heading", "text", "aside_text", "list", "equation", "image", "table"] = "text"
+    text: str
+    markdown: str = ""
+    bbox: dict[str, float] | None = None
+    bbox_normalized: bool = False
+
+
+class PaperReaderDocumentResp(BaseModel):
+    paper_id: str
+    available: bool = False
+    source: Literal["mineru_structured", "mineru_markdown", "none"] = "none"
+    markdown: str = ""
+    sections: list[PaperReaderDocumentSection] = Field(default_factory=list)
+    blocks: list[PaperReaderDocumentBlock] = Field(default_factory=list)
 
 
 class PaperBatchDeleteReq(BaseModel):

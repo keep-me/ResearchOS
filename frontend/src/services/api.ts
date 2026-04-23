@@ -88,6 +88,7 @@ import type {
   PaperEvidenceMode,
   PaperAnalysisBundle,
   PaperReaderAction,
+  PaperReaderDocumentResponse,
   PaperReaderNote,
   PaperReaderQueryResponse,
   PaperReaderScope,
@@ -600,8 +601,22 @@ export const paperApi = {
       page_number?: number;
     },
   ) => post<PaperReaderQueryResponse>(`/papers/${id}/reader/query`, body),
+  getReaderDocument: (id: string) =>
+    get<PaperReaderDocumentResponse>(`/papers/${id}/reader/document`),
   getReaderNotes: (id: string) =>
     get<{ items: PaperReaderNote[] }>(`/papers/${id}/reader/notes`),
+  generateReaderNoteDraft: (
+    id: string,
+    body: {
+      text: string;
+      quote?: string;
+      page_number?: number;
+      anchor_source?: "pdf_selection" | "ocr_block" | null;
+      anchor_id?: string | null;
+      section_id?: string | null;
+      section_title?: string | null;
+    },
+  ) => post<{ item: PaperReaderNote }>(`/papers/${id}/reader/note-draft`, body),
   saveReaderNote: (
     id: string,
     body: {
@@ -615,6 +630,12 @@ export const paperApi = {
       color?: "amber" | "blue" | "emerald" | "rose" | "violet" | "slate";
       tags?: string[];
       pinned?: boolean;
+      status?: "draft" | "saved";
+      source?: "manual" | "ai_draft";
+      anchor_source?: "pdf_selection" | "ocr_block" | null;
+      anchor_id?: string | null;
+      section_id?: string | null;
+      section_title?: string | null;
     },
   ) => put<{ item: PaperReaderNote; items: PaperReaderNote[] }>(`/papers/${id}/reader/notes`, body),
   deleteReaderNote: (id: string, noteId: string) =>

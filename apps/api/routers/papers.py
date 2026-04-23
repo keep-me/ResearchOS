@@ -4,12 +4,14 @@
 
 import asyncio
 import base64
+import json
 import logging
 import re
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Any, Callable, Literal
+from urllib.parse import quote
 from uuid import UUID, uuid4
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -46,9 +48,11 @@ from packages.domain.schemas import (
     AIExplainReq,
     PaperAutoClassifyReq,
     PaperBatchDeleteReq,
+    PaperReaderDocumentResp,
     PaperFigureAnalyzeReq,
     PaperFigureDeleteReq,
     PaperMetadataUpdateReq,
+    PaperReaderNoteDraftReq,
     PaperReaderNoteReq,
     PaperReaderQueryReq,
 )
@@ -132,6 +136,9 @@ def _build_pdf_reader_ai_prompt(
 
 
 _READER_NOTE_COLORS = {"amber", "blue", "emerald", "rose", "violet", "slate"}
+_READER_NOTE_STATUSES = {"draft", "saved"}
+_READER_NOTE_SOURCES = {"manual", "ai_draft"}
+_READER_NOTE_ANCHOR_SOURCES = {"pdf_selection", "ocr_block"}
 
 
 def _clean_reader_text(value: str | None, *, max_len: int) -> str:
@@ -173,6 +180,26 @@ def _sanitize_reader_note_color(value: str | None) -> str:
     return color if color in _READER_NOTE_COLORS else "amber"
 
 
+def _sanitize_reader_note_status(value: str | None) -> str:
+    status = str(value or "").strip().lower()
+    return status if status in _READER_NOTE_STATUSES else "saved"
+
+
+def _sanitize_reader_note_source(value: str | None) -> str:
+    source = str(value or "").strip().lower()
+    return source if source in _READER_NOTE_SOURCES else "manual"
+
+
+def _sanitize_reader_note_anchor_source(value: str | None) -> str | None:
+    source = str(value or "").strip().lower()
+    return source if source in _READER_NOTE_ANCHOR_SOURCES else None
+
+
+def _clean_reader_optional_id(value: str | None, *, max_len: int = 120) -> str | None:
+    cleaned = _clean_reader_text(value, max_len=max_len)
+    return cleaned or None
+
+
 def _sort_reader_notes(notes: list[dict]) -> list[dict]:
     return sorted(
         notes,
@@ -209,6 +236,12 @@ def _normalize_reader_note_dict(raw: dict) -> dict | None:
         "color": _sanitize_reader_note_color(raw.get("color")),
         "tags": _normalize_reader_tags(raw.get("tags") if isinstance(raw.get("tags"), list) else []),
         "pinned": bool(raw.get("pinned")),
+        "status": _sanitize_reader_note_status(raw.get("status")),
+        "source": _sanitize_reader_note_source(raw.get("source")),
+        "anchor_source": _sanitize_reader_note_anchor_source(raw.get("anchor_source")),
+        "anchor_id": _clean_reader_optional_id(raw.get("anchor_id")),
+        "section_id": _clean_reader_optional_id(raw.get("section_id")),
+        "section_title": _clean_reader_optional_id(raw.get("section_title"), max_len=160),
         "created_at": str(raw.get("created_at") or "").strip() or _utc_iso(),
         "updated_at": str(raw.get("updated_at") or "").strip() or _utc_iso(),
     }
@@ -232,6 +265,645 @@ def _reader_notes_from_metadata(metadata: dict | None) -> list[dict]:
         if note is not None:
             notes.append(note)
     return _sort_reader_notes(notes)
+
+
+def _normalize_reader_document_bbox(raw_bbox: list[float] | None) -> dict[str, float] | None:
+    if not isinstance(raw_bbox, list) or len(raw_bbox) < 4:
+        return None
+    try:
+        x0, y0, x1, y1 = [float(raw_bbox[idx]) for idx in range(4)]
+    except Exception:
+        return None
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return {
+        "x": x0,
+        "y": y0,
+        "x0": x0,
+        "y0": y0,
+        "x1": x1,
+        "y1": y1,
+        "width": x1 - x0,
+        "height": y1 - y0,
+    }
+
+
+def _resolve_reader_structured_text(item: dict) -> str:
+    raw_type = str(item.get("type") or "").strip().lower()
+    if raw_type == "list":
+        values = item.get("list_items")
+        if isinstance(values, list):
+            parts = [_clean_reader_text(entry, max_len=300) for entry in values]
+            parts = [part for part in parts if part]
+            if parts:
+                return "\n".join(f"- {part}" for part in parts)[:12000]
+        return _clean_reader_text(item.get("text"), max_len=12000)
+    if raw_type in {"text", "aside_text"}:
+        return _clean_reader_text(item.get("text"), max_len=12000)
+    return ""
+
+
+def _join_reader_structured_parts(value: Any) -> str:
+    if isinstance(value, str):
+        return _clean_reader_text(value, max_len=6000)
+    if not isinstance(value, list):
+        return ""
+    parts = [_clean_reader_text(item, max_len=1200) for item in value]
+    return " ".join(part for part in parts if part)[:6000]
+
+
+def _resolve_reader_structured_visual_block(item: dict, paper_id: UUID) -> tuple[str, str, str]:
+    from packages.ai.paper.figure_service import FigureService
+
+    raw_type = str(item.get("type") or "").strip().lower()
+    if raw_type == "equation":
+        text = _clean_reader_text(item.get("text"), max_len=12000)
+        return "equation", text, text
+
+    if raw_type in {"image", "chart"}:
+        caption = _join_reader_structured_parts(item.get("image_caption"))
+        footnote = _join_reader_structured_parts(item.get("image_footnote"))
+        img_path = _clean_reader_text(item.get("img_path"), max_len=500)
+        image_url = _reader_ocr_asset_url(paper_id, img_path) if img_path else ""
+        markdown_parts: list[str] = []
+        if image_url:
+            markdown_parts.append(f"![{caption or 'figure'}]({image_url})")
+        if caption:
+            markdown_parts.append(caption)
+        if footnote and footnote.lower() != caption.lower():
+            markdown_parts.append(footnote)
+        text = caption or footnote or "图片"
+        return "image", text, "\n\n".join(part for part in markdown_parts if part).strip()
+
+    if raw_type == "table":
+        caption = _join_reader_structured_parts(item.get("table_caption"))
+        footnote = _join_reader_structured_parts(item.get("table_footnote"))
+        table_body = FigureService._normalize_candidate_markdown(item.get("table_body"))
+        img_path = _clean_reader_text(item.get("img_path"), max_len=500)
+        image_url = _reader_ocr_asset_url(paper_id, img_path) if img_path else ""
+        markdown_parts: list[str] = []
+        if image_url:
+            markdown_parts.append(f"![{caption or 'table'}]({image_url})")
+        if caption:
+            markdown_parts.append(caption)
+        if table_body:
+            markdown_parts.append(table_body)
+        if footnote and footnote.lower() not in {caption.lower(), table_body.lower()}:
+            markdown_parts.append(footnote)
+        text = caption or "表格"
+        return "table", text, "\n\n".join(part for part in markdown_parts if part).strip()
+
+    return raw_type, "", ""
+
+
+def _coerce_reader_text_level(value: Any) -> int | None:
+    try:
+        level = int(value)
+    except (TypeError, ValueError):
+        return None
+    if level < 1:
+        return None
+    return min(level, 6)
+
+
+def _looks_like_reader_heading(raw_type: str, text: str, text_level: int | None) -> bool:
+    if raw_type != "text" or text_level is None:
+        return False
+    normalized = str(text or "").strip()
+    if not normalized:
+        return False
+    return len(normalized) <= 220
+
+
+def _reader_default_section(section_order: int, page_number: int | None) -> dict[str, Any]:
+    return {
+        "id": f"section_{section_order}",
+        "title": "前置信息",
+        "level": 1,
+        "order": section_order,
+        "page_start": page_number,
+    }
+
+
+def _build_reader_structured_document(bundle) -> dict[str, Any] | None:  # noqa: ANN001
+    from packages.ai.paper.figure_service import FigureService
+
+    content_paths = FigureService._collect_mineru_structured_json_files(bundle.output_root, "_content_list.json")
+    if not content_paths:
+        return None
+
+    sections: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
+    current_section: dict[str, Any] | None = None
+    section_order = 0
+    block_order = 0
+
+    for content_path in content_paths:
+        try:
+            payload = json.loads(content_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            continue
+        if not isinstance(payload, list):
+            continue
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            raw_type = str(item.get("type") or "").strip().lower()
+            if raw_type not in {"text", "aside_text", "list", "equation", "image", "table", "chart"}:
+                continue
+            if raw_type in {"text", "aside_text", "list"}:
+                text = _resolve_reader_structured_text(item)
+                block_type = "list" if raw_type == "list" else raw_type
+                markdown = text
+            else:
+                block_type, text, markdown = _resolve_reader_structured_visual_block(item, bundle.paper_id)
+            if not text:
+                continue
+            try:
+                page_number = int(item.get("page_idx") or 0) + 1
+            except (TypeError, ValueError):
+                page_number = None
+            text_level = _coerce_reader_text_level(item.get("text_level"))
+            is_heading = _looks_like_reader_heading(raw_type, text, text_level)
+
+            if is_heading:
+                current_section = {
+                    "id": f"section_{section_order}",
+                    "title": text,
+                    "level": text_level or 1,
+                    "order": section_order,
+                    "page_start": page_number,
+                }
+                sections.append(current_section)
+                section_order += 1
+            elif current_section is None:
+                current_section = _reader_default_section(section_order, page_number)
+                sections.append(current_section)
+                section_order += 1
+
+            if is_heading:
+                block_type = "heading"
+                markdown = f"{'#' * max(1, text_level or 1)} {text}"
+
+            blocks.append(
+                {
+                    "id": f"block_{block_order}",
+                    "section_id": str(current_section["id"]),
+                    "page_number": page_number,
+                    "order": block_order,
+                    "type": block_type,
+                    "text": text,
+                    "markdown": markdown,
+                    "bbox": _normalize_reader_document_bbox(
+                        FigureService._normalize_mineru_bbox_list(item.get("bbox"))
+                    ),
+                    "bbox_normalized": True,
+                }
+            )
+            block_order += 1
+
+    if not blocks:
+        return None
+    return {
+        "available": True,
+        "source": "mineru_structured",
+        "markdown": str(getattr(bundle, "markdown_text", "") or ""),
+        "sections": sections,
+        "blocks": blocks,
+    }
+
+
+def _strip_reader_markdown_heading(title: str, body: str) -> str:
+    lines = str(body or "").splitlines()
+    if not lines:
+        return ""
+    normalized_title = re.sub(r"^#+\s*", "", str(title or "")).strip().lower()
+    first_line = re.sub(r"^#+\s*", "", lines[0]).strip().lower()
+    if normalized_title and first_line == normalized_title:
+        lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def _reader_markdown_heading_level(title: str) -> int:
+    stripped = str(title or "").strip()
+    match = re.match(r"^(#{1,6})\s+", stripped)
+    if match:
+        return len(match.group(1))
+    numeric = re.match(r"^(?:\d+(?:\.\d+)*)", stripped)
+    if numeric:
+        return min(max(1, numeric.group(0).count(".") + 1), 6)
+    return 1
+
+
+def _split_reader_markdown_paragraphs(text: str) -> list[str]:
+    blocks = [part.strip() for part in re.split(r"\n\s*\n+", str(text or "").strip()) if part.strip()]
+    return blocks[:240]
+
+
+def _build_reader_markdown_document(bundle) -> dict[str, Any] | None:  # noqa: ANN001
+    from packages.ai.paper.mineru_runtime import MinerUOcrRuntime
+
+    markdown = str(getattr(bundle, "markdown_text", "") or "").strip()
+    if not markdown:
+        return None
+
+    raw_sections = MinerUOcrRuntime._split_markdown_sections(markdown)
+    if not raw_sections:
+        return None
+
+    sections: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
+    block_order = 0
+    for section_order, (raw_title, raw_body) in enumerate(raw_sections):
+        title = re.sub(r"^#+\s*", "", str(raw_title or "")).strip() or f"章节 {section_order + 1}"
+        level = _reader_markdown_heading_level(raw_title)
+        section_id = f"section_{section_order}"
+        sections.append(
+            {
+                "id": section_id,
+                "title": title,
+                "level": level,
+                "order": section_order,
+                "page_start": None,
+            }
+        )
+        blocks.append(
+            {
+                "id": f"block_{block_order}",
+                "section_id": section_id,
+                "page_number": None,
+                "order": block_order,
+                "type": "heading",
+                "text": title,
+                "markdown": f"{'#' * max(1, level)} {title}",
+                "bbox": None,
+                "bbox_normalized": False,
+            }
+        )
+        block_order += 1
+        for paragraph in _split_reader_markdown_paragraphs(_strip_reader_markdown_heading(raw_title, raw_body)):
+            blocks.append(
+                {
+                    "id": f"block_{block_order}",
+                    "section_id": section_id,
+                    "page_number": None,
+                    "order": block_order,
+                    "type": "text",
+                    "text": paragraph,
+                    "markdown": paragraph,
+                    "bbox": None,
+                    "bbox_normalized": False,
+                }
+            )
+            block_order += 1
+
+    return {
+        "available": True,
+        "source": "mineru_markdown",
+        "markdown": markdown,
+        "sections": sections,
+        "blocks": blocks,
+    }
+
+
+def _reader_ocr_asset_url(paper_id: UUID, asset_path: str) -> str:
+    normalized = str(asset_path or "").replace("\\", "/").lstrip("./").lstrip("/")
+    encoded = "/".join(quote(part) for part in normalized.split("/") if part not in {"", ".", ".."})
+    return f"/papers/{paper_id}/ocr/assets/{encoded}" if encoded else ""
+
+
+def _rewrite_reader_markdown_assets(markdown: str, paper_id: UUID) -> str:
+    def _replace_link(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        raw_path = str(match.group(2) or "").strip()
+        suffix = match.group(3)
+        if not raw_path or re.match(r"^(?:[a-z]+:|/|#)", raw_path, flags=re.IGNORECASE):
+            return match.group(0)
+        resolved = _reader_ocr_asset_url(paper_id, raw_path)
+        return f"{prefix}{resolved}{suffix}" if resolved else match.group(0)
+
+    rewritten = re.sub(r"(!?\[[^\]]*\]\()([^) \t]+)([^)]*\))", _replace_link, str(markdown or ""))
+    rewritten = re.sub(
+        r'(<img[^>]+src=["\'])([^"\']+)(["\'])',
+        lambda match: (
+            match.group(0)
+            if re.match(r"^(?:[a-z]+:|/|#)", str(match.group(2) or ""), flags=re.IGNORECASE)
+            else f"{match.group(1)}{_reader_ocr_asset_url(paper_id, match.group(2))}{match.group(3)}"
+        ),
+        rewritten,
+        flags=re.IGNORECASE,
+    )
+    return rewritten
+
+
+def _build_reader_document_payload(paper_id: UUID, bundle) -> dict[str, Any] | PaperReaderDocumentResp:  # noqa: ANN001
+    if bundle is None:
+        return PaperReaderDocumentResp(paper_id=str(paper_id))
+    payload = _build_reader_structured_document(bundle) or _build_reader_markdown_document(bundle)
+    if not payload:
+        return PaperReaderDocumentResp(paper_id=str(paper_id))
+    payload["markdown"] = _rewrite_reader_markdown_assets(str(payload.get("markdown") or ""), paper_id)
+    payload["paper_id"] = str(paper_id)
+    return payload
+
+
+def _load_reader_document_bundle(session, repo: PaperRepository, paper, paper_id: UUID):  # noqa: ANN001
+    from packages.ai.paper.mineru_runtime import MinerUOcrRuntime
+
+    metadata = dict(getattr(paper, "metadata_json", None) or {})
+    ocr_payload = metadata.get("mineru_ocr") if isinstance(metadata.get("mineru_ocr"), dict) else {}
+    pdf_path = ""
+    pdf_sha256 = str((ocr_payload or {}).get("pdf_sha256") or "").strip()
+
+    try:
+        pdf_path = _ensure_paper_pdf(session, repo, paper, paper_id)
+        bundle = MinerUOcrRuntime.get_cached_bundle(paper_id, pdf_path)
+        if bundle is not None:
+            return bundle
+        if not pdf_sha256 and Path(pdf_path).exists():
+            pdf_sha256 = MinerUOcrRuntime._hash_file(Path(pdf_path))
+    except HTTPException:
+        pass
+    except Exception as exc:
+        logger.warning("Reader document cached bundle lookup failed for %s: %s", paper_id, exc)
+
+    output_root_raw = str((ocr_payload or {}).get("output_root") or "").strip()
+    if not output_root_raw:
+        return None
+
+    output_root = Path(output_root_raw).expanduser()
+    if not output_root.exists() or not output_root.is_dir():
+        return None
+
+    manifest = MinerUOcrRuntime._read_manifest(output_root)
+    merged_manifest = dict(manifest or {})
+    for key, value in (ocr_payload or {}).items():
+        merged_manifest.setdefault(str(key), value)
+
+    status = str(merged_manifest.get("status") or "").strip().lower()
+    has_outputs = MinerUOcrRuntime._has_outputs(output_root)
+    if status not in {"success", "completed"} and not has_outputs:
+        return None
+
+    if not pdf_path:
+        resolved_pdf = _resolve_stored_pdf_path(getattr(paper, "pdf_path", None))
+        if resolved_pdf is not None:
+            pdf_path = str(resolved_pdf)
+    if not pdf_sha256:
+        pdf_sha256 = str(merged_manifest.get("pdf_sha256") or "").strip()
+
+    return MinerUOcrRuntime._build_bundle(
+        paper_id=paper_id,
+        pdf_path=pdf_path,
+        pdf_sha256=pdf_sha256,
+        output_root=output_root,
+        extra_manifest=merged_manifest,
+    )
+
+
+def _build_reader_note_draft_prompt(
+    *,
+    title: str,
+    section_title: str | None,
+    text: str,
+    quote: str | None,
+    page_number: int | None,
+) -> str:
+    location = []
+    if section_title:
+        location.append(f"章节：{section_title}")
+    if page_number:
+        location.append(f"页码：第 {page_number} 页")
+    location_text = "\n".join(location) if location else "章节：未定位"
+    quote_text = str(quote or text).strip()[:2500]
+    return (
+        "你是论文精读助手。请基于给定论文片段，生成一条适合研究阅读器保存前查看的“研究笔记草稿”。\n"
+        "只允许输出一个严格 JSON 对象，不要输出 Markdown 代码块，不要输出解释文字。\n"
+        "字段如下：\n"
+        '{"title":"8-24字标题","content":"Markdown 笔记正文","tags":["标签1","标签2"],"color":"amber"}\n'
+        "要求：\n"
+        "1. title 必须直接概括该段最值得记录的研究信息，不要写“这段讲了什么”“AI 批注”等空话。\n"
+        "2. content 必须是一个 Markdown 字符串，使用 2-4 条 '-' 开头的短列表；优先覆盖：核心方法/结论、明确证据、局限或待核实点。\n"
+        "3. 如果这段只是承接句、表格引用、实验提示或结论线索，就如实写成“线索/提示”，不要把它扩写成论文已经证明的结论。\n"
+        "4. 不要写整篇总结，不要杜撰原文没有给出的实验结果、数值、动机或局限。\n"
+        "5. tags 最多 4 个，尽量短；color 只能从 amber / blue / emerald / rose / violet / slate 中选择。\n"
+        "6. 输出必须可直接被前端解析为 JSON，content 不能为空。\n\n"
+        f"论文标题：{title[:300]}\n"
+        f"{location_text}\n\n"
+        f"片段原文：\n{quote_text}\n\n"
+        f"补充上下文：\n{text[:4000]}"
+    )
+
+
+def _build_reader_note_draft_fallback_prompt(
+    *,
+    title: str,
+    section_title: str | None,
+    text: str,
+    quote: str | None,
+    page_number: int | None,
+) -> str:
+    location = []
+    if section_title:
+        location.append(f"章节：{section_title}")
+    if page_number:
+        location.append(f"页码：第 {page_number} 页")
+    location_text = "\n".join(location) if location else "章节：未定位"
+    quote_text = str(quote or text).strip()[:2500]
+    return (
+        "你是论文精读助手。请为下面的论文片段生成一条可直接保存的中文研究笔记草稿。\n"
+        "不要输出 JSON，不要输出解释，只能严格按下面格式输出：\n"
+        "标题：一句标题\n"
+        "标签：标签1, 标签2\n"
+        "颜色：amber\n"
+        "正文：\n"
+        "- 要点 1\n"
+        "- 要点 2\n"
+        "- 要点 3\n\n"
+        "要求：\n"
+        "1. 标题直接概括最值得记录的研究信息。\n"
+        "2. 正文必须是 2-4 条简短要点，优先写方法、证据、限制、待核实点。\n"
+        "3. 如果片段只是表格/图表/实验引用，只能写成线索，不能杜撰结论。\n"
+        "4. 颜色只能从 amber / blue / emerald / rose / violet / slate 中选择。\n"
+        "5. 标签最多 4 个，尽量短。\n\n"
+        f"论文标题：{title[:300]}\n"
+        f"{location_text}\n\n"
+        f"片段原文：\n{quote_text}\n\n"
+        f"补充上下文：\n{text[:4000]}"
+    )
+
+
+def _split_reader_note_text_tags(value: str | None) -> list[str]:
+    if not value:
+        return []
+    parts = re.split(r"[,，/、;；]+", str(value))
+    return _normalize_reader_tags([part.strip() for part in parts if str(part).strip()])
+
+
+def _normalize_reader_note_markdown(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    lines: list[str] = []
+    for raw_line in raw.splitlines():
+        line = str(raw_line).strip()
+        if not line:
+            continue
+        if re.match(r"^(?:标题|title|标签|tags|颜色|color)\s*[:：]", line, flags=re.IGNORECASE):
+            continue
+        line = re.sub(r"^\s*(?:[-*•]\s*|\d+[.)]\s*)", "", line).strip()
+        line = re.sub(r"^(?:正文|内容)\s*[:：]\s*", "", line, flags=re.IGNORECASE).strip()
+        if line:
+            lines.append(line)
+
+    if not lines:
+        chunks = [
+            chunk.strip()
+            for chunk in re.split(r"(?<=[。！？!?；;])\s+|\n+", raw)
+            if chunk.strip()
+        ]
+        lines.extend(chunks)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        compact = _clean_reader_text(line, max_len=220)
+        lowered = compact.lower()
+        if not compact or lowered in seen:
+            continue
+        seen.add(lowered)
+        normalized.append(compact)
+        if len(normalized) >= 4:
+            break
+    return "\n".join(f"- {line}" for line in normalized)
+
+
+def _parse_reader_note_text_payload(raw_text: str | None) -> dict[str, Any]:
+    raw = str(raw_text or "").strip()
+    if not raw:
+        return {}
+
+    title_match = re.search(r"^\s*(?:标题|title)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.MULTILINE)
+    tags_match = re.search(r"^\s*(?:标签|tags)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.MULTILINE)
+    color_match = re.search(r"^\s*(?:颜色|color)\s*[:：]\s*([a-zA-Z_]+)\s*$", raw, flags=re.IGNORECASE | re.MULTILINE)
+    body_match = re.search(r"(?:正文|内容)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.DOTALL)
+
+    body = body_match.group(1).strip() if body_match else raw
+    if not body_match:
+        body_lines = [
+            line
+            for line in raw.splitlines()
+            if not re.match(r"^\s*(?:标题|title|标签|tags|颜色|color)\s*[:：]", line, flags=re.IGNORECASE)
+        ]
+        body = "\n".join(body_lines).strip()
+
+    return {
+        "title": _clean_reader_text(title_match.group(1) if title_match else "", max_len=120),
+        "content": _normalize_reader_note_markdown(body),
+        "tags": _split_reader_note_text_tags(tags_match.group(1) if tags_match else ""),
+        "color": _sanitize_reader_note_color(color_match.group(1) if color_match else ""),
+    }
+
+
+def _derive_reader_note_title(
+    *,
+    title: str | None,
+    quote: str,
+    text: str,
+    section_title: str | None,
+) -> str:
+    explicit = _clean_reader_text(title, max_len=120)
+    if explicit:
+        return explicit
+
+    source = _clean_reader_text(quote or text, max_len=240)
+    if not source:
+        return _clean_reader_text(section_title, max_len=36) or "研究笔记"
+
+    parts = [
+        part.strip(" -:：")
+        for part in re.split(r"[。！？!?；;:\n]", source)
+        if part.strip(" -:：")
+    ]
+    candidate = parts[0] if parts else source
+    candidate = re.sub(r"^(?:we|this paper|the authors?|本文|作者|该段|这一段)\s+", "", candidate, flags=re.IGNORECASE)
+    if section_title and len(candidate) < 8:
+        candidate = f"{section_title} · {candidate}"
+    return candidate[:60]
+
+
+def _derive_reader_note_tags(
+    *,
+    title: str,
+    content: str,
+    quote: str,
+    section_title: str | None,
+) -> list[str]:
+    corpus = " ".join(part for part in [title, content, quote, section_title or ""] if part).lower()
+    rules = [
+        ("方法", r"(method|framework|architecture|module|approach|fusion|training|objective|loss|算法|方法|模块|训练|目标函数)"),
+        ("结果", r"(result|improv|outperform|better|gain|benchmark|accuracy|retrieval|vqa|结果|提升|优于|性能|指标)"),
+        ("实验", r"(experiment|ablation|compare|comparison|baseline|table|figure|fig\.|实验|对比|表\s*\d|图\s*\d)"),
+        ("公式", r"(equation|formula|loss|theorem|proof|公式|定理|证明)"),
+        ("数据", r"(dataset|corpus|data|benchmark|数据集|语料|样本)"),
+        ("局限", r"(limit|weakness|future|todo|unclear|need verify|待核实|局限|不足|进一步)"),
+        ("问题", r"(task|problem|challenge|goal|问题|任务|挑战|目标)"),
+    ]
+    tags: list[str] = []
+    for label, pattern in rules:
+        if re.search(pattern, corpus, flags=re.IGNORECASE):
+            tags.append(label)
+        if len(tags) >= 4:
+            break
+    return _normalize_reader_tags(tags)
+
+
+def _derive_reader_note_color(*, content: str, tags: list[str]) -> str:
+    corpus = " ".join([content, *tags]).lower()
+    if re.search(r"(局限|不足|待核实|future|todo|unclear|weakness|limit)", corpus, flags=re.IGNORECASE):
+        return "rose"
+    if re.search(r"(结果|实验|benchmark|result|improv|outperform|comparison|ablation)", corpus, flags=re.IGNORECASE):
+        return "emerald"
+    if re.search(r"(公式|theorem|proof|equation|formula)", corpus, flags=re.IGNORECASE):
+        return "violet"
+    if re.search(r"(方法|训练|module|method|framework|architecture|objective|loss)", corpus, flags=re.IGNORECASE):
+        return "blue"
+    if re.search(r"(数据|dataset|corpus|data)", corpus, flags=re.IGNORECASE):
+        return "slate"
+    return "amber"
+
+
+def _looks_like_reader_note_placeholder(content: str, quote: str) -> bool:
+    normalized = _clean_reader_text(content, max_len=600)
+    normalized_quote = _clean_reader_text(quote, max_len=600)
+    if not normalized:
+        return True
+    stripped = re.sub(r"^\s*-\s*该段核心信息[:：]\s*", "", normalized).strip()
+    if stripped and normalized_quote and stripped == normalized_quote:
+        return True
+    return normalized in {"- 该段核心信息", "该段核心信息"}
+
+
+def _build_reader_note_deterministic_fallback(
+    *,
+    quote: str,
+    text: str,
+    section_title: str | None,
+    page_number: int | None,
+) -> str:
+    excerpt = _clean_reader_text(quote or text, max_len=220)
+    bullets = [f"关键信息：{excerpt}"] if excerpt else []
+    if section_title or page_number:
+        location = section_title or "未定位"
+        if page_number:
+            location = f"{location} · 第 {page_number} 页"
+        bullets.append(f"位置：{location}")
+    if re.search(r"(table|figure|fig\.|表\s*\d|图\s*\d|comparison|ablation|benchmark)", quote or text, flags=re.IGNORECASE):
+        bullets.append("阅读提示：该段更像图表或实验结果线索，建议结合对应表格/图像继续核对。")
+    else:
+        bullets.append("阅读提示：建议结合前后文继续核对证据范围、方法条件和适用边界。")
+    return "\n".join(f"- {item}" for item in bullets if item)
 
 
 def _build_reader_paper_context(session, repo: PaperRepository, paper, paper_id: UUID) -> str:  # noqa: ANN001
@@ -1453,6 +2125,22 @@ def paper_reader_query(paper_id: UUID, body: PaperReaderQueryReq) -> dict:
     }
 
 
+@router.get("/papers/{paper_id}/reader/document")
+def get_paper_reader_document(paper_id: UUID) -> dict | PaperReaderDocumentResp:
+    with session_scope() as session:
+        repo = _paper_data(session).papers
+        try:
+            paper = repo.get_by_id(paper_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        try:
+            bundle = _load_reader_document_bundle(session, repo, paper, paper_id)
+        except Exception as exc:
+            logger.warning("Reader document unavailable for %s: %s", paper_id, exc)
+            return PaperReaderDocumentResp(paper_id=str(paper_id))
+    return _build_reader_document_payload(paper_id, bundle)
+
+
 @router.get("/papers/{paper_id}/reader/notes")
 def list_paper_reader_notes(paper_id: UUID) -> dict:
     with session_scope() as session:
@@ -1495,6 +2183,16 @@ def save_paper_reader_note(paper_id: UUID, body: PaperReaderNoteReq) -> dict:
                 "color": body.color,
                 "tags": body.tags,
                 "pinned": body.pinned,
+                "status": "saved",
+                "source": (
+                    body.source
+                    or (existing or {}).get("source")
+                    or "manual"
+                ),
+                "anchor_source": body.anchor_source if body.anchor_source is not None else (existing or {}).get("anchor_source"),
+                "anchor_id": body.anchor_id if body.anchor_id is not None else (existing or {}).get("anchor_id"),
+                "section_id": body.section_id if body.section_id is not None else (existing or {}).get("section_id"),
+                "section_title": body.section_title if body.section_title is not None else (existing or {}).get("section_title"),
                 "created_at": created_at,
                 "updated_at": _utc_iso(),
             }
@@ -1532,6 +2230,143 @@ def delete_paper_reader_note(paper_id: UUID, note_id: str) -> dict:
         return {"deleted": target_id, "items": metadata["reader_notes"]}
 
 
+@router.post("/papers/{paper_id}/reader/note-draft")
+def generate_paper_reader_note_draft(paper_id: UUID, body: PaperReaderNoteDraftReq) -> dict:
+    with session_scope() as session:
+        repo = _paper_data(session).papers
+        try:
+            paper = repo.get_by_id(paper_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        title = str(getattr(paper, "title", "") or "").strip()
+
+    text = _clean_reader_text(body.text, max_len=5000)
+    quote = _clean_reader_text(body.quote or body.text, max_len=2500)
+    if not text and not quote:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    llm = LLMClient()
+    result = llm.complete_json(
+        _build_reader_note_draft_prompt(
+            title=title,
+            section_title=body.section_title,
+            text=text,
+            quote=quote,
+            page_number=body.page_number,
+        ),
+        stage="paper_reader_note_draft",
+        max_tokens=1000,
+        max_retries=2,
+    )
+    parsed: dict[str, Any] = result.parsed_json or {}
+    if not parsed:
+        for candidate in (result.content, result.reasoning_content or ""):
+            reparsed = LLMClient._try_parse_json(candidate)
+            if isinstance(reparsed, dict) and reparsed:
+                parsed = reparsed
+                break
+
+    structured_text = _parse_reader_note_text_payload(result.content)
+    if not structured_text.get("content") and result.reasoning_content:
+        reasoning_text = _parse_reader_note_text_payload(result.reasoning_content)
+        if reasoning_text.get("content"):
+            structured_text = reasoning_text
+
+    content_value = parsed.get("content")
+    if isinstance(content_value, list):
+        content_lines = [_clean_reader_text(item, max_len=500) for item in content_value]
+        content = "\n".join(f"- {line}" for line in content_lines if line)
+    else:
+        content = _normalize_reader_note_markdown(str(content_value or ""))
+
+    title_value = _clean_reader_text(parsed.get("title"), max_len=120) or str(structured_text.get("title") or "").strip()
+    tags_value = parsed.get("tags") if isinstance(parsed.get("tags"), list) else structured_text.get("tags")
+    color_value = parsed.get("color") or structured_text.get("color")
+    provider_error_message = result.content if LLMClient._is_provider_error_text(result.content) else ""
+
+    needs_fallback = not content or _looks_like_reader_note_placeholder(content, quote or text)
+    if needs_fallback:
+        logger.info(
+            "reader note draft: structured JSON unavailable, fallback summarize_text (paper_id=%s, page=%s)",
+            paper_id,
+            body.page_number,
+        )
+        fallback = llm.summarize_text(
+            _build_reader_note_draft_fallback_prompt(
+                title=title,
+                section_title=body.section_title,
+                text=text,
+                quote=quote,
+                page_number=body.page_number,
+            ),
+            stage="paper_reader_note_draft_fallback",
+            max_tokens=700,
+        )
+        if LLMClient._is_provider_error_text(fallback.content):
+            provider_error_message = fallback.content
+            fallback_text = {}
+        else:
+            fallback_text = _parse_reader_note_text_payload(fallback.content)
+        title_value = title_value or str(fallback_text.get("title") or "").strip()
+        content = str(fallback_text.get("content") or "").strip() or content
+        if not tags_value:
+            tags_value = fallback_text.get("tags")
+        if not color_value:
+            color_value = fallback_text.get("color")
+
+    if (not content or _looks_like_reader_note_placeholder(content, quote or text)) and provider_error_message:
+        raise HTTPException(status_code=503, detail=provider_error_message)
+
+    final_title = _derive_reader_note_title(
+        title=title_value,
+        quote=quote,
+        text=text,
+        section_title=body.section_title,
+    )
+    final_content = content or _build_reader_note_deterministic_fallback(
+        quote=quote,
+        text=text,
+        section_title=body.section_title,
+        page_number=body.page_number,
+    )
+    final_tags = _normalize_reader_tags(tags_value if isinstance(tags_value, list) else [])
+    if not final_tags:
+        final_tags = _derive_reader_note_tags(
+            title=final_title,
+            content=final_content,
+            quote=quote,
+            section_title=body.section_title,
+        )
+    final_color = str(color_value or "").strip().lower()
+    if final_color not in _READER_NOTE_COLORS:
+        final_color = _derive_reader_note_color(content=final_content, tags=final_tags)
+
+    note = _normalize_reader_note_dict(
+        {
+            "id": f"draft_{uuid4().hex[:12]}",
+            "kind": "text",
+            "title": final_title,
+            "content": final_content,
+            "quote": quote,
+            "page_number": body.page_number,
+            "figure_id": None,
+            "color": final_color,
+            "tags": final_tags,
+            "pinned": False,
+            "status": "draft",
+            "source": "ai_draft",
+            "anchor_source": body.anchor_source,
+            "anchor_id": body.anchor_id,
+            "section_id": body.section_id,
+            "section_title": body.section_title,
+            "created_at": _utc_iso(),
+            "updated_at": _utc_iso(),
+        }
+    )
+    assert note is not None
+    return {"item": note}
+
+
 # ---------- 鍥捐〃瑙ｈ ----------
 
 
@@ -1545,6 +2380,32 @@ def get_paper_ocr_status(paper_id: UUID) -> dict:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         metadata = dict(getattr(paper, "metadata_json", None) or {})
     return {"paper_id": str(paper_id), **_paper_ocr_status_payload(metadata)}
+
+
+@router.get("/papers/{paper_id}/ocr/assets/{asset_path:path}")
+def get_paper_ocr_asset(paper_id: UUID, asset_path: str):
+    normalized = str(asset_path or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="asset_path is required")
+
+    with session_scope() as session:
+        repo = _paper_data(session).papers
+        try:
+            paper = repo.get_by_id(paper_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        bundle = _load_reader_document_bundle(session, repo, paper, paper_id)
+
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="ocr bundle not found")
+
+    output_root = Path(bundle.output_root).resolve()
+    candidate = (output_root / normalized).resolve(strict=False)
+    if candidate != output_root and output_root not in candidate.parents:
+        raise HTTPException(status_code=400, detail="invalid asset path")
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="ocr asset not found")
+    return FileResponse(candidate)
 
 
 @router.post("/papers/{paper_id}/ocr/process-async")
