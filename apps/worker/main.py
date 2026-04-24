@@ -20,6 +20,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from packages.ai.ops.daily_runner import (
+    run_daily_arxiv_trends,
     run_daily_brief,
     run_topic_ingest,
     run_weekly_graph_maintenance,
@@ -225,6 +226,26 @@ def brief_job() -> None:
     _write_heartbeat()
 
 
+def dashboard_trend_job() -> None:
+    """首页 arXiv 趋势预计算任务。"""
+    logger.info("📈 开始预计算首页 arXiv 子域趋势...")
+    try:
+        result = _retry_with_backoff(
+            run_daily_arxiv_trends,
+            max_retries=_RETRY_MAX,
+            base_delay=_RETRY_DELAY,
+        )
+        completed = [
+            item
+            for item in (result or {}).get("subdomains", [])
+            if isinstance(item, dict) and str(item.get("status") or "") == "ok"
+        ]
+        logger.info("✅ 首页趋势预计算完成：%d 个子域", len(completed))
+    except Exception:
+        logger.exception("Dashboard trend job failed after retries")
+    _write_heartbeat()
+
+
 def weekly_graph_job() -> None:
     logger.info("Starting weekly graph job")
     try:
@@ -259,9 +280,22 @@ def run_worker() -> None:
     )
     logger.info("✅ 已添加：主题分发任务（每小时整点，UTC）")
 
+    dashboard_trend_cron = getattr(settings, "dashboard_trend_cron", "0 16 * * *")
     daily_cron = getattr(settings, "daily_cron", "0 21 * * *")
     weekly_cron = getattr(settings, "weekly_cron", "0 22 * * 0")
     user_timezone = getattr(settings, "user_timezone", "Asia/Shanghai")
+
+    trend_trigger = CronTrigger.from_crontab(dashboard_trend_cron)
+    scheduler.add_job(
+        dashboard_trend_job,
+        trigger=trend_trigger,
+        id="dashboard_trend",
+        replace_existing=True,
+    )
+    logger.info(
+        "✅ 已添加：首页趋势预计算任务（%s）",
+        _cron_display(dashboard_trend_cron, user_timezone=user_timezone),
+    )
 
     daily_trigger = CronTrigger.from_crontab(daily_cron)
     scheduler.add_job(
@@ -311,6 +345,7 @@ def run_worker() -> None:
     logger.info("=" * 60)
     logger.info("调度时间表（UTC → %s）:", user_timezone)
     logger.info("  • 主题抓取：每小时整点 → 每小时整点")
+    logger.info("  • 首页趋势：%s", _cron_display(dashboard_trend_cron, user_timezone=user_timezone))
     logger.info("  • 每日简报：%s", _cron_display(daily_cron, user_timezone=user_timezone))
     logger.info("  • 每周图谱：%s", _cron_display(weekly_cron, user_timezone=user_timezone))
     logger.info("  • 闲时处理：全天自动检测 → 全天自动检测")

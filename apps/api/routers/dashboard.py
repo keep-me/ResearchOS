@@ -23,12 +23,18 @@ from packages.storage.repository_facades import PaperDataFacade, ProjectDataFaca
 router = APIRouter()
 
 
-def _get_arxiv_trend() -> dict:
-    cache_key = "dashboard_arxiv_trend_cs_recent_non_empty_v6"
+def _get_arxiv_trend(subdomain_key: str = "all") -> dict:
+    normalized_subdomain = str(subdomain_key or "all").strip().lower() or "all"
+    cache_key = f"dashboard_arxiv_trend_{normalized_subdomain}_v11"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
-    result = ArxivTrendService().today_snapshot(sample_limit=1000, fallback_days=7)
+    result = ArxivTrendService().get_snapshot(
+        subdomain_key=normalized_subdomain,
+        sample_limit=160,
+        fallback_days=7,
+        allow_compute=True,
+    )
     cache.set(cache_key, result, ttl=60 * 60 if result.get("available") else 5 * 60)
     return result
 
@@ -139,6 +145,7 @@ def _library_focus_snapshot(session, paper_repo) -> dict:
 def dashboard_home(
     project_limit: int = Query(default=4, ge=1, le=20),
     task_limit: int = Query(default=8, ge=1, le=50),
+    trend_subdomain: str = Query(default="all"),
 ) -> dict:
     """Aggregated home-page snapshot.
 
@@ -146,7 +153,8 @@ def dashboard_home(
     aggregation here avoids a burst of parallel browser requests on first load.
     """
 
-    cache_key = f"dashboard_home_v8_{project_limit}_{task_limit}"
+    normalized_subdomain = str(trend_subdomain or "all").strip().lower() or "all"
+    cache_key = f"dashboard_home_v13_{project_limit}_{task_limit}_{normalized_subdomain}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -154,7 +162,7 @@ def dashboard_home(
     today = TrendService().get_today_summary()
     tasks = enrich_tasks_with_token_usage(global_tracker.list_tasks(limit=max(task_limit, 1)))
     graph = graph_service.library_overview()
-    arxiv_trend = _get_arxiv_trend()
+    arxiv_trend = _get_arxiv_trend(normalized_subdomain)
 
     with session_scope() as session:
         paper_repo = PaperDataFacade.from_session(session).papers
@@ -204,3 +212,10 @@ def dashboard_home(
     }
     cache.set(cache_key, result, ttl=30)
     return result
+
+
+@router.get("/dashboard/arxiv-trend")
+def dashboard_arxiv_trend(
+    subdomain: str = Query(default="all"),
+) -> dict:
+    return _get_arxiv_trend(subdomain)

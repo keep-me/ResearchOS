@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     agent_compaction_fallback_context_window: int = 128000
     agent_retry_max_attempts: int = 2
     skim_score_threshold: float = 0.65
+    dashboard_trend_cron: str = "0 16 * * *"
     daily_cron: str = "0 21 * * *"
     weekly_cron: str = "0 22 * * 0"
     cors_allow_origins: str = (

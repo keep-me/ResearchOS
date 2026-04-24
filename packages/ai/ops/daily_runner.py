@@ -13,6 +13,7 @@ from typing import Callable, Optional
 from uuid import UUID
 
 from packages.ai.research.brief_service import DailyBriefService
+from packages.ai.research.arxiv_trend_service import ArxivTrendService
 from packages.ai.research.graph_service import GraphService
 from packages.ai.paper.pipelines import PaperPipelines
 from packages.ai.ops.rate_limiter import acquire_api
@@ -474,6 +475,13 @@ def run_daily_ingest() -> dict:
 def run_daily_brief() -> dict:
     settings = get_settings()
     return DailyBriefService().publish(recipient=settings.notify_default_to)
+
+
+def run_daily_arxiv_trends() -> dict:
+    return ArxivTrendService().precompute_all_subdomains(
+        sample_limit=160,
+        fallback_days=7,
+    )
 
 
 def run_weekly_graph_maintenance() -> dict:

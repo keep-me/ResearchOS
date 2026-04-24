@@ -754,6 +754,39 @@ class GeneratedContentRepository:
         )
         return list(self.session.execute(q).scalars())
 
+    def list_by_type_and_keyword(
+        self,
+        content_type: str,
+        keyword: str,
+        limit: int = 50,
+    ) -> list[GeneratedContent]:
+        q = (
+            select(GeneratedContent)
+            .where(
+                GeneratedContent.content_type == content_type,
+                GeneratedContent.keyword == keyword,
+            )
+            .order_by(GeneratedContent.created_at.desc())
+            .limit(limit)
+        )
+        return list(self.session.execute(q).scalars())
+
+    def get_latest_by_type_and_keyword(
+        self,
+        content_type: str,
+        keyword: str,
+    ) -> GeneratedContent | None:
+        q = (
+            select(GeneratedContent)
+            .where(
+                GeneratedContent.content_type == content_type,
+                GeneratedContent.keyword == keyword,
+            )
+            .order_by(GeneratedContent.created_at.desc())
+            .limit(1)
+        )
+        return self.session.execute(q).scalars().first()
+
     def get_by_id(self, content_id: str) -> GeneratedContent:
         gc = self.session.get(GeneratedContent, content_id)
         if gc is None:
@@ -1135,4 +1168,3 @@ class FeishuConfigRepository:
             config.is_active = True
         self.session.flush()
         return config
-

@@ -6,6 +6,7 @@ import {
   dashboardApi,
   type DashboardHomeSnapshot,
   type ArxivTrendDirection,
+  type ArxivTrendSubdomainOption,
   type LibraryFeaturedTopic,
 } from "@/services/api";
 import { cn } from "@/lib/utils";
@@ -107,23 +108,25 @@ export default function DashboardHome() {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [trendSubdomain, setTrendSubdomain] = useState("all");
 
   const loadSnapshot = useCallback(async () => {
     setRefreshing(true);
     try {
-      const result = await dashboardApi.home({ projectLimit: 4, taskLimit: 8 });
+      const result = await dashboardApi.home({ projectLimit: 4, taskLimit: 8, trendSubdomain });
       setSnapshot(result);
+      setTrendSubdomain(result.arxiv_trend?.subdomain_key || trendSubdomain || "all");
       setLoadError("");
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "首页数据暂时不可用，请稍后重试。");
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [trendSubdomain]);
 
   useEffect(() => {
     void loadSnapshot();
-  }, [loadSnapshot]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortedConversations = useMemo(
     () => [...metas].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
@@ -131,6 +134,7 @@ export default function DashboardHome() {
   );
   const currentConversation = activeConv || sortedConversations[0] || null;
   const arxivTrend = snapshot.arxiv_trend;
+  const arxivSubdomains = (arxivTrend?.subdomains || []) as ArxivTrendSubdomainOption[];
   const arxivKeywords = ((arxivTrend?.keywords?.length ? arxivTrend.keywords : arxivTrend?.top_terms || []) as ArxivKeyword[]).slice(0, 12);
   const arxivDirections = (arxivTrend?.directions || []).slice(0, 8);
   const arxivSubmissionCount = arxivTrend?.available && typeof arxivTrend.total_submissions === "number"
@@ -164,6 +168,22 @@ export default function DashboardHome() {
     }
     navigate("/assistant");
   }, [currentConversation, handleOpenConversation, navigate]);
+
+  const handleSelectTrendSubdomain = useCallback(async (key: string) => {
+    const normalized = String(key || "all").trim() || "all";
+    if (normalized === trendSubdomain) return;
+    setTrendSubdomain(normalized);
+    setRefreshing(true);
+    try {
+      const trend = await dashboardApi.arxivTrend(normalized);
+      setSnapshot((prev) => ({ ...prev, arxiv_trend: trend }));
+      setLoadError("");
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "趋势切换失败，请稍后重试。");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [trendSubdomain]);
 
   return (
     <div className="animate-fade-in space-y-4 pb-8 sm:space-y-5 sm:pb-10">
@@ -222,13 +242,17 @@ export default function DashboardHome() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="dashboard-kpi-label">arXiv CS Signal</p>
-            <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-ink">arXiv CS 今日趋势</h2>
+            <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-ink">
+              arXiv {arxivTrend?.subdomain_label || "CS"} 今日趋势
+            </h2>
             <p className="mt-1 text-xs text-ink-secondary">{arxivTrend?.window_label || "等待 arXiv 同步"}</p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
-            <span className="inline-flex h-10 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-page px-3 text-sm font-semibold text-ink sm:flex-none">
+            <span className="inline-flex min-w-0 flex-1 flex-col items-start justify-center rounded-md border border-border bg-page px-3 py-2 sm:flex-none">
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-ink">
               <FileStack className="h-4 w-4 text-primary" />
-              {arxivSubmissionCount !== null ? `${formatCount(arxivSubmissionCount)} 篇论文` : "等待统计"}
+                {arxivSubmissionCount !== null ? `当日投稿 ${formatCount(arxivSubmissionCount)} 篇` : "等待统计"}
+              </span>
             </span>
             <button
               type="button"
@@ -243,6 +267,30 @@ export default function DashboardHome() {
         </div>
 
         <div className="mt-4 grid gap-3">
+          {arxivSubdomains.length > 0 ? (
+            <div className="-mx-1 overflow-x-auto px-1 pb-1">
+              <div className="flex min-w-max gap-2">
+              {arxivSubdomains.map((item) => {
+                const active = item.key === (arxivTrend?.subdomain_key || trendSubdomain);
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => void handleSelectTrendSubdomain(item.key)}
+                    className={cn(
+                      "inline-flex h-9 items-center rounded-full border px-3 text-xs font-medium transition-colors",
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-page text-ink-secondary hover:bg-hover hover:text-ink",
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+              </div>
+            </div>
+          ) : null}
           <DirectionGrid directions={arxivDirections} compact />
           <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
             <div className="rounded-2xl border border-border bg-page p-3">
@@ -369,11 +417,18 @@ function DirectionGrid({ directions, compact = false }: { directions: ArxivTrend
         >
           <div className="flex items-center justify-between gap-2">
             <span className={cn("font-semibold leading-5 text-ink", compact ? "text-xs" : "text-sm")}>{item.label}</span>
-            <span className="shrink-0 text-[11px] text-ink-tertiary">{Math.round(item.sample_ratio * 100)}%</span>
+            <span className="shrink-0 text-[11px] text-ink-tertiary">
+              {item.count} 篇 · {Math.round(item.sample_ratio * 100)}%
+            </span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border-light">
             <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.max(5, item.sample_ratio * 100)}%`, backgroundColor: accent }} />
           </div>
+          {item.summary ? (
+            <div className="mt-2 text-[11px] leading-4 text-ink-secondary">
+              {item.summary}
+            </div>
+          ) : null}
           {!compact && item.keywords && item.keywords.length > 0 ? (
             <div className="mt-2 text-[11px] leading-4 text-ink-secondary">
               {item.keywords.slice(0, 2).map((keyword) => keyword.keyword).join(" / ")}

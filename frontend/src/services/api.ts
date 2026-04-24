@@ -227,8 +227,14 @@ export interface ArxivTrendDirection {
   label: string;
   count: number;
   sample_ratio: number;
+  summary?: string;
   keywords?: { keyword: string; count: number }[];
   example_title?: string | null;
+}
+
+export interface ArxivTrendSubdomainOption {
+  key: string;
+  label: string;
 }
 
 export interface ArxivTrendSnapshot {
@@ -236,6 +242,9 @@ export interface ArxivTrendSnapshot {
   source: string;
   scope?: string;
   query?: string;
+  subdomain_key?: string;
+  subdomain_label?: string;
+  subdomains?: ArxivTrendSubdomainOption[];
   query_date: string;
   window_label: string;
   total_submissions: number;
@@ -252,12 +261,18 @@ export interface ArxivTrendSnapshot {
 }
 
 export const dashboardApi = {
-  home: (params?: { projectLimit?: number; taskLimit?: number }) => {
+  home: (params?: { projectLimit?: number; taskLimit?: number; trendSubdomain?: string }) => {
     const query = new URLSearchParams();
     if (params?.projectLimit) query.set("project_limit", String(params.projectLimit));
     if (params?.taskLimit) query.set("task_limit", String(params.taskLimit));
+    if (params?.trendSubdomain) query.set("trend_subdomain", String(params.trendSubdomain));
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return get<DashboardHomeSnapshot>(`/dashboard/home${suffix}`);
+  },
+  arxivTrend: (subdomain = "all") => {
+    const query = new URLSearchParams();
+    query.set("subdomain", subdomain);
+    return get<ArxivTrendSnapshot>(`/dashboard/arxiv-trend?${query.toString()}`);
   },
 };
 
