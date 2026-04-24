@@ -3,7 +3,7 @@
  * @author Color2333
  */
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ImagePlus, X, Upload } from "lucide-react";
+import { ImagePlus, X, Upload } from "@/lib/lucide";
 
 interface ImageUploaderProps {
   value: string | null;

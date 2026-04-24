@@ -22,7 +22,7 @@ import {
   isPreviewableArtifact,
   normalizeServerId,
 } from "@/lib/workspaceArtifacts";
-import { Activity, CheckCircle2, Clock3, Eye, FileText, FolderOpen, ListTodo, PieChart, RefreshCw, StopCircle, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, Clock3, Eye, FileText, FolderOpen, ListTodo, PieChart, RefreshCw, StopCircle, XCircle } from "@/lib/lucide";
 
 const FILTERS = [
   { key: "all", label: "全部" },

@@ -11,7 +11,7 @@ import ForceGraph2D from "react-force-graph-2d";
 import {
   FileText, Network, Layers, Tag, Share2, Star, Zap,
   Compass, RotateCw,
-} from "lucide-react";
+} from "@/lib/lucide";
 import type {
   LibraryOverview, OverviewNode, BridgesResponse,
   FrontierResponse, CocitationResponse, SimilarityMapData,

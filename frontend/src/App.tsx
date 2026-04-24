@@ -8,7 +8,7 @@ import Layout from "@/components/Layout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/contexts/ToastContext";
 import ToastContainer from "@/components/Toast";
-import { Loader2, FileQuestion, Sparkles } from "lucide-react";
+import { Loader2, FileQuestion, Sparkles } from "@/lib/lucide";
 
 /* 其余页面全部懒加载，按需拆 chunk */
 const Agent = lazy(() => import("@/pages/Agent"));

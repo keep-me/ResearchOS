@@ -92,7 +92,7 @@ import {
   Globe,
   BadgeCheck,
   GripVertical,
-} from "lucide-react";
+} from "@/lib/lucide";
 import { useAssistantInstance, type ChatItem, type StepItem } from "@/contexts/AssistantInstanceContext";
 import {
   assistantExecPolicyApi,

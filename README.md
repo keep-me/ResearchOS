@@ -121,6 +121,7 @@ cp .env.example .env
 - `AUTH_PASSWORD_HASH`: 推荐生产环境使用 bcrypt 哈希
 - `AUTH_SECRET_KEY`: JWT 签名密钥
 - `DAILY_CRON`
+- `DASHBOARD_TREND_CRON`
 - `WEEKLY_CRON`
 - `IDLE_PROCESSOR_ENABLED`
 
@@ -152,7 +153,7 @@ cp .env.example .env
 本地开发推荐至少修改：
 
 ```env
-APP_ENV=production
+APP_ENV=dev
 SITE_URL=http://127.0.0.1:5173
 CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
 LLM_PROVIDER=zhipu
@@ -212,6 +213,7 @@ MINERU_API_BASE_URL=https://mineru.net
 MINERU_API_TOKEN=你的token
 
 AUTH_SECRET_KEY=请改成随机字符串
+DASHBOARD_TREND_CRON=0 16 * * *
 ```
 
 如果要开放匿名访问，保持：

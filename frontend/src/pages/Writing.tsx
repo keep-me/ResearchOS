@@ -36,7 +36,7 @@ import {
   ScanText,
   ImagePlus,
   type LucideIcon,
-} from "lucide-react";
+} from "@/lib/lucide";
 import ReactMarkdown from "react-markdown";
 import ImageUploader from "@/components/ImageUploader";
 

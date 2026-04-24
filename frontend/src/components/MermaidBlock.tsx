@@ -6,10 +6,14 @@ interface MermaidBlockProps {
   className?: string;
 }
 
-type MermaidApi = Awaited<typeof import("mermaid")>["default"];
+type MermaidApi = {
+  initialize: (config: Record<string, unknown>) => void;
+  render: (id: string, chart: string) => Promise<{ svg: string }>;
+};
 
 let initializedTheme: "default" | "dark" | null = null;
 let mermaidPromise: Promise<MermaidApi> | null = null;
+const MERMAID_ESM_URL = "https://esm.sh/mermaid@11.12.0";
 
 function getMermaidModule(mod: unknown): MermaidApi {
   if (mod && typeof mod === "object" && "default" in mod) {
@@ -28,16 +32,7 @@ function isDynamicImportFetchError(error: unknown): boolean {
 
 async function loadMermaid(): Promise<MermaidApi> {
   if (!mermaidPromise) {
-    mermaidPromise = import("mermaid/dist/mermaid.esm.mjs")
-      .then(getMermaidModule)
-      .catch(async (distError) => {
-        try {
-          return getMermaidModule(await import("mermaid"));
-        } catch (moduleError) {
-          mermaidPromise = null;
-          throw isDynamicImportFetchError(moduleError) ? moduleError : distError;
-        }
-      });
+    mermaidPromise = import(/* @vite-ignore */ MERMAID_ESM_URL).then(getMermaidModule);
   }
   try {
     return await mermaidPromise;

@@ -3,7 +3,7 @@
  * @author Color2333
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "@/lib/lucide";
 
 interface ConfirmDialogProps {
   open: boolean;

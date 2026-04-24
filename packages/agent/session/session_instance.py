@@ -15,6 +15,7 @@ from typing import Any
 from packages.agent import global_bus
 from packages.agent.session.session_lifecycle import list_prompt_session_ids
 from packages.agent.session.session_runtime import get_session_record, request_session_abort
+from packages.path_utils import normalize_local_path_string, path_name_string
 from packages.storage.db import session_scope
 from packages.storage.repositories import AgentProjectRepository, AgentSessionRepository
 
@@ -23,20 +24,14 @@ def _normalize_directory(directory: str | None) -> str:
     raw = str(directory or "").strip()
     if not raw:
         raw = str(Path.cwd())
-    try:
-        return str(Path(raw).expanduser().resolve())
-    except OSError:
-        return raw
+    return normalize_local_path_string(raw)
 
 
 def _normalize_path(path: str | None) -> str:
     raw = str(path or "").strip()
     if not raw:
         return ""
-    try:
-        return str(Path(raw).expanduser().resolve())
-    except OSError:
-        return raw
+    return normalize_local_path_string(raw)
 
 
 def _contains(root: str, candidate: str) -> bool:
@@ -83,7 +78,7 @@ def _classproperty(getter):  # noqa: ANN001, ANN202
 
 def _project_context_for(directory: str) -> InstanceContext:
     normalized_directory = _normalize_directory(directory)
-    default_name = Path(normalized_directory).name or normalized_directory
+    default_name = path_name_string(normalized_directory) or normalized_directory
     with session_scope() as session:
         repo = AgentProjectRepository(session)
         row = repo.get_by_worktree(normalized_directory)
@@ -430,4 +425,3 @@ def dispose_directory(directory: str | None) -> dict[str, Any]:
 
 def dispose_all_instances(*, extra_directories: list[str] | None = None) -> list[str]:
     return Instance.dispose_all(extra_directories=extra_directories)
-

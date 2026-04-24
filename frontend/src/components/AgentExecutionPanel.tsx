@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
-} from "lucide-react";
+} from "@/lib/lucide";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/contexts/ToastContext";
 import { useDesktopRuntime } from "@/contexts/DesktopRuntimeContext";

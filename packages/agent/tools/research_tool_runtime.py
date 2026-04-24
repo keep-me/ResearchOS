@@ -588,14 +588,22 @@ def _search_literature(
         or bool(effective_venue_names)
     )
     if effective_scope in {"hybrid", "arxiv"} and not arxiv_requires_unsupported_filter:
-        arxiv_items = ArxivClient().fetch_latest(
-            cleaned_query,
-            max_results=min(fetch_limit, 50),
-            sort_by=_resolve_arxiv_sort_mode(sort_mode),
-            date_from=date_from,
-            date_to=date_to,
-            enrich_impact=(str(sort_mode or "").strip().lower() == "impact"),
-        )
+        arxiv_client = ArxivClient()
+        if hasattr(arxiv_client, "fetch_latest"):
+            arxiv_items = arxiv_client.fetch_latest(
+                cleaned_query,
+                max_results=min(fetch_limit, 50),
+                sort_by=_resolve_arxiv_sort_mode(sort_mode),
+                date_from=date_from,
+                date_to=date_to,
+                enrich_impact=(str(sort_mode or "").strip().lower() == "impact"),
+            )
+        else:  # pragma: no cover - compatibility for older fakes/extensions
+            arxiv_items = arxiv_client.search_candidates(
+                cleaned_query,
+                max_results=min(fetch_limit, 50),
+                fetch_limit=fetch_limit,
+            )
         for paper in arxiv_items:
             annotated = _paper_to_external_result(paper)
             if effective_from_year is not None:

@@ -47,7 +47,7 @@ import {
   Trash2,
   Upload,
   X,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 type SearchResult = {
   query: string;

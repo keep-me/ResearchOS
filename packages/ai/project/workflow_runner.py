@@ -101,6 +101,7 @@ from packages.domain.task_tracker import TaskCancelledError, TaskPausedError, gl
 from packages.integrations.arxiv_client import ArxivClient
 from packages.integrations.llm_engine_profiles import resolve_llm_engine_profile
 from packages.integrations.llm_client import LLMClient, LLMResult
+from packages.path_utils import local_relative_path
 from packages.storage.db import session_scope
 from packages.storage.repositories import (
     GeneratedContentRepository,
@@ -6342,9 +6343,7 @@ def _write_absolute_run_file(
             size_bytes = payload.get("size_bytes")
             rel = payload.get("relative_path")
         else:
-            root = Path(workspace_path)
-            normalized_target = Path(absolute_path)
-            relative_path = normalized_target.relative_to(root).as_posix()
+            relative_path = local_relative_path(workspace_path, absolute_path)
             payload = write_workspace_file(
                 workspace_path,
                 relative_path,
@@ -6352,7 +6351,7 @@ def _write_absolute_run_file(
                 create_dirs=True,
                 overwrite=True,
             )
-            final_path = str(normalized_target)
+            final_path = absolute_path
             size_bytes = payload.get("size_bytes")
             rel = payload.get("relative_path")
     except Exception as exc:
@@ -8922,4 +8921,3 @@ def _fit_character_limit(text: str, character_limit: int) -> str:
     if character_limit <= 0 or len(normalized) <= character_limit:
         return normalized
     return normalized[:character_limit].rstrip()
-

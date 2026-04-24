@@ -7,6 +7,7 @@ from typing import Any
 
 from packages.ai.project.aris_skill_templates import render_aris_skill_reference
 from packages.domain.enums import ProjectRunActionType, ProjectWorkflowType
+from packages.path_utils import is_foreign_windows_path, join_path_string
 
 _WORKFLOW_COMPAT: dict[str, dict[str, Any]] = {
     ProjectWorkflowType.init_repo.value: {
@@ -319,6 +320,8 @@ def build_run_directory(workspace_path: str | None, run_id: str, *, remote: bool
     if remote:
         normalized = base.rstrip("/\\")
         return posixpath.join(normalized, ".auto-researcher", "aris-runs", str(run_id))
+    if is_foreign_windows_path(base):
+        return join_path_string(base, ".auto-researcher", "aris-runs", str(run_id))
     root = Path(base).expanduser()
     if not root.is_absolute():
         root = root.resolve()
@@ -331,6 +334,8 @@ def build_run_log_path(run_directory: str | None, *, remote: bool) -> str | None
         return None
     if remote:
         return posixpath.join(base.rstrip("/\\"), "run.log")
+    if is_foreign_windows_path(base):
+        return join_path_string(base, "run.log")
     return str(Path(base) / "run.log")
 
 
@@ -340,6 +345,8 @@ def build_run_workspace_path(run_directory: str | None, *, remote: bool) -> str 
         return None
     if remote:
         return posixpath.join(base.rstrip("/\\"), "workspace")
+    if is_foreign_windows_path(base):
+        return join_path_string(base, "workspace")
     return str(Path(base) / "workspace")
 
 

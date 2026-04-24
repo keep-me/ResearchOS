@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { Sparkles } from "@/lib/lucide";
 
 import { Button } from "@/components/ui";
 import type { KeywordSuggestion } from "@/types";

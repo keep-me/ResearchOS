@@ -13,7 +13,7 @@ import type { GeneratedContentListItem, GeneratedContent } from "@/types";
 import {
   Newspaper, Send, CheckCircle2, Mail, FileText, Calendar, Clock,
   Trash2, Sparkles, Plus, RefreshCw, X,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 function getBriefTitle(title: string): string {
   return title.replace(/^(Daily Brief|My Day|研究日报)\s*:\s*/i, "").trim() || title;

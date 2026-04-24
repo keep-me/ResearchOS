@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BadgeCheck, Loader2, RefreshCw } from "lucide-react";
+import { BadgeCheck, Loader2, RefreshCw } from "@/lib/lucide";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";

@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui";
 import {
   ChevronDown, ChevronRight, Zap, Flame, ArrowDown,
   AlertTriangle, Target,
-} from "lucide-react";
+} from "@/lib/lucide";
 import type { ResearchGapsResponse } from "@/types";
 
 export function Section({ title, icon, desc, children, action }: {

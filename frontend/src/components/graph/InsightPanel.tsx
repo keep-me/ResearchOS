@@ -12,7 +12,7 @@ import {
   ArrowDown, ArrowRight, Layers, Lightbulb, HelpCircle,
   Tag, Target, AlertTriangle, Zap,
   ChevronDown, ChevronRight, SlidersHorizontal, Compass, RotateCw, History, Trash2, Flame,
-} from "lucide-react";
+} from "@/lib/lucide";
 import type {
   TimelineResponse, GraphQuality, EvolutionResponse, ResearchGapsResponse, GeneratedContent, GeneratedContentListItem,
 } from "@/types";

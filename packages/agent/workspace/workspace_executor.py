@@ -1426,6 +1426,7 @@ def run_local_shell_command(
     parts = normalize_local_shell_command_parts(command_parts)
     command_display = local_shell_command_to_string(parts)
     command_script = build_local_shell_command(parts)
+    command_script = _translate_powershell_compat_command(command_script) or command_script
     if not command_script:
         raise WorkspaceAccessError("命令为空")
 
@@ -1666,7 +1667,8 @@ def run_workspace_command(
     if not (command or "").strip():
         raise WorkspaceAccessError("命令为空")
 
-    wrapped_command = _wrap_shell_command_for_cwd_capture(command)
+    effective_command = _translate_powershell_compat_command(command) or command
+    wrapped_command = _wrap_shell_command_for_cwd_capture(effective_command)
     shell_cmd = _build_shell_command(wrapped_command)
     completed = subprocess.run(
         shell_cmd,
@@ -1797,6 +1799,86 @@ def _build_shell_command(command: str) -> list[str]:
         encoded = base64.b64encode(command.encode("utf-16-le")).decode("ascii")
         return ["pwsh", "-NoLogo", "-EncodedCommand", encoded]
     return ["/bin/bash", "-lc", command]
+
+
+def _ps_unquote(value: str) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        return text[1:-1]
+    return text
+
+
+def _ps_arg(statement: str, name: str) -> str | None:
+    match = re.search(
+        rf"(?i)(?:^|\s)-{re.escape(name)}\s+(\"[^\"]*\"|'[^']*'|[^\s;|]+)",
+        statement,
+    )
+    return _ps_unquote(match.group(1)) if match else None
+
+
+def _ps_first_positional(statement: str) -> str | None:
+    try:
+        parts = shlex.split(statement, posix=False)
+    except ValueError:
+        return None
+    for part in parts[1:]:
+        if str(part).startswith("-"):
+            continue
+        return _ps_unquote(str(part))
+    return None
+
+
+def _mkdir_parent_prefix(path: str) -> str:
+    parent = os.path.dirname(path.replace("\\", "/"))
+    if not parent:
+        return ""
+    return f"mkdir -p {shlex.quote(parent)} && "
+
+
+def _translate_powershell_compat_command(command: str) -> str | None:
+    if os.name == "nt":
+        return None
+    raw = str(command or "").strip()
+    if not raw:
+        return None
+    statements = [item.strip() for item in raw.split(";") if item.strip()]
+    if not statements:
+        return None
+
+    translated: list[str] = []
+    for statement in statements:
+        statement = re.sub(r"(?i)\s*\|\s*Out-Null\s*$", "", statement).strip()
+        if re.fullmatch(r"(?i)Get-Location", statement):
+            translated.append("pwd")
+            continue
+        match = re.fullmatch(r"(?is)Write-Output\s+(.+)", statement)
+        if match:
+            translated.append(f"printf '%s\\n' {shlex.quote(_ps_unquote(match.group(1)))}")
+            continue
+        if re.match(r"(?i)^New-Item\b", statement):
+            item_type = (_ps_arg(statement, "ItemType") or "").strip().lower()
+            path = _ps_arg(statement, "Path") or _ps_first_positional(statement)
+            if not path:
+                return None
+            quoted = shlex.quote(path)
+            if item_type == "directory":
+                translated.append(f"mkdir -p {quoted}")
+                continue
+            if item_type in {"file", ""}:
+                translated.append(f"{_mkdir_parent_prefix(path)}touch {quoted}")
+                continue
+            return None
+        if re.match(r"(?i)^Set-Content\b", statement):
+            path = _ps_arg(statement, "Path")
+            value = _ps_arg(statement, "Value")
+            if not path or value is None:
+                return None
+            translated.append(
+                f"{_mkdir_parent_prefix(path)}printf '%s' {shlex.quote(value)} > {shlex.quote(path)}"
+            )
+            continue
+        return None
+    return " && ".join(translated)
 
 
 def _wrap_shell_command_for_cwd_capture(command: str) -> str:

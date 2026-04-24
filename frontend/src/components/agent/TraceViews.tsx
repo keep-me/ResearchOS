@@ -40,7 +40,7 @@ import {
   Upload,
   X,
   XCircle,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 const Markdown = lazy(() => import("@/components/Markdown"));
 

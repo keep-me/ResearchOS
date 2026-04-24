@@ -3,7 +3,7 @@
  * @author Bamzc
  */
 import { useState } from "react";
-import { Compass, TrendingUp } from "lucide-react";
+import { Compass, TrendingUp } from "@/lib/lucide";
 import { Tabs } from "@/components/ui";
 import OverviewPanel from "@/components/graph/OverviewPanel";
 import InsightPanel from "@/components/graph/InsightPanel";

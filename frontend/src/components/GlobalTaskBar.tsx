@@ -3,7 +3,7 @@
  * @author Color2333
  */
 import { useGlobalTasks, type ActiveTask } from "@/contexts/GlobalTaskContext";
-import { Loader2, CheckCircle2, XCircle, ChevronUp, ChevronDown } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ChevronUp, ChevronDown } from "@/lib/lucide";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";

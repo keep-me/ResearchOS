@@ -37,6 +37,7 @@ class ExternalPaperPreviewService:
         self._client = httpx.Client(
             timeout=timeout,
             follow_redirects=True,
+            trust_env=False,
             headers={
                 "User-Agent": "ResearchOS/1.0 (+https://arxiv.org)",
             },

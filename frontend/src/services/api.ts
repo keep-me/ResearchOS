@@ -269,9 +269,10 @@ export const dashboardApi = {
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return get<DashboardHomeSnapshot>(`/dashboard/home${suffix}`);
   },
-  arxivTrend: (subdomain = "all") => {
+  arxivTrend: (subdomain = "all", refresh = false) => {
     const query = new URLSearchParams();
     query.set("subdomain", subdomain);
+    if (refresh) query.set("refresh", "true");
     return get<ArxivTrendSnapshot>(`/dashboard/arxiv-trend?${query.toString()}`);
   },
 };

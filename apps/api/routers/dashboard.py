@@ -23,17 +23,17 @@ from packages.storage.repository_facades import PaperDataFacade, ProjectDataFaca
 router = APIRouter()
 
 
-def _get_arxiv_trend(subdomain_key: str = "all") -> dict:
+def _get_arxiv_trend(subdomain_key: str = "all", *, allow_compute: bool = False) -> dict:
     normalized_subdomain = str(subdomain_key or "all").strip().lower() or "all"
     cache_key = f"dashboard_arxiv_trend_{normalized_subdomain}_v11"
-    cached = cache.get(cache_key)
+    cached = None if allow_compute else cache.get(cache_key)
     if cached is not None:
         return cached
     result = ArxivTrendService().get_snapshot(
         subdomain_key=normalized_subdomain,
         sample_limit=160,
         fallback_days=7,
-        allow_compute=True,
+        allow_compute=allow_compute,
     )
     cache.set(cache_key, result, ttl=60 * 60 if result.get("available") else 5 * 60)
     return result
@@ -217,5 +217,6 @@ def dashboard_home(
 @router.get("/dashboard/arxiv-trend")
 def dashboard_arxiv_trend(
     subdomain: str = Query(default="all"),
+    refresh: bool = Query(default=False),
 ) -> dict:
-    return _get_arxiv_trend(subdomain)
+    return _get_arxiv_trend(subdomain, allow_compute=refresh)

@@ -41,7 +41,7 @@ import {
   Link2,
   ExternalLink,
   Quote,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 const wikiTabs = [
   { id: "topic", label: "主题综述" },

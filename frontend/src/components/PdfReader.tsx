@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
+import { Document, Page } from "@/components/PdfDocument";
 import Markdown from "@/components/Markdown";
 import { timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -37,9 +35,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
-} from "lucide-react";
-
-pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+} from "@/lib/lucide";
 
 interface PdfReaderProps {
   paperId: string;

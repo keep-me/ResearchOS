@@ -2,11 +2,11 @@
  * 统一 Markdown 渲染组件（含 LaTeX 支持）
  * @author Color2333
  */
-import { Children, isValidElement, memo, useMemo, type ReactNode } from "react";
+import { Children, isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
+import katexScriptUrl from "katex/dist/katex.min.js?url";
 import MermaidBlock from "@/components/MermaidBlock";
 import { resolveApiAssetUrl } from "@/services/api";
 import "katex/dist/katex.min.css";
@@ -22,6 +22,57 @@ const LATEX_SYMBOL_RE = /(?:[A-Za-z][A-Za-z0-9]*_(?:\{[^}]+\}|[A-Za-z0-9]+))|(?:
 const EQUATION_OPERATOR_RE = /(?:=|\\approx|\\leq|\\geq|\\neq|\\to|\\mapsto|\\cdot|\\times|\\sum|\\prod|\\max|\\min|\\argmax|\\argmin)/;
 const DISPLAY_ENV_RE = /(^|\n)(\\begin\{(?:equation|align|aligned|gather|multline)\*?\}[\s\S]*?\\end\{(?:equation|align|aligned|gather|multline)\*?\})(?=\n|$)/g;
 const DISPLAY_ENV_DOUBLE_ESCAPED_RE = /(^|\n)(\\\\begin\{(?:equation|align|aligned|gather|multline)\*?\}[\s\S]*?\\\\end\{(?:equation|align|aligned|gather|multline)\*?\})(?=\n|$)/g;
+
+type KatexApi = {
+  renderToString: (
+    expression: string,
+    options?: {
+      displayMode?: boolean;
+      strict?: boolean;
+      throwOnError?: boolean;
+      trust?: boolean;
+    },
+  ) => string;
+};
+
+declare global {
+  interface Window {
+    katex?: KatexApi;
+  }
+}
+
+let katexPromise: Promise<KatexApi> | null = null;
+
+function loadKatex() {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("KaTeX is only available in the browser"));
+  }
+  if (window.katex) {
+    return Promise.resolve(window.katex);
+  }
+  if (!katexPromise) {
+    katexPromise = new Promise<KatexApi>((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>("script[data-researchos-katex]");
+      if (existing) {
+        existing.addEventListener("load", () => window.katex ? resolve(window.katex) : reject(new Error("KaTeX failed to load")), { once: true });
+        existing.addEventListener("error", () => reject(new Error("KaTeX failed to load")), { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = katexScriptUrl;
+      script.async = true;
+      script.dataset.researchosKatex = "true";
+      script.onload = () => window.katex ? resolve(window.katex) : reject(new Error("KaTeX failed to load"));
+      script.onerror = () => reject(new Error("KaTeX failed to load"));
+      document.head.append(script);
+    }).catch((error) => {
+      katexPromise = null;
+      throw error;
+    });
+  }
+  return katexPromise;
+}
 
 function normalizeMathExpression(expr: string): string {
   return String(expr || "")
@@ -116,6 +167,47 @@ function extractText(node: ReactNode): string {
     .join("");
 }
 
+function KatexMath({ formula, displayMode }: { formula: string; displayMode: boolean }) {
+  const normalizedFormula = useMemo(() => normalizeMathExpression(formula), [formula]);
+  const [html, setHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHtml(null);
+    loadKatex()
+      .then((katex) => {
+        const rendered = katex.renderToString(normalizedFormula, {
+          displayMode,
+          strict: false,
+          throwOnError: false,
+          trust: true,
+        });
+        if (!cancelled) {
+          setHtml(rendered);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHtml(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [displayMode, normalizedFormula]);
+
+  if (!html) {
+    return displayMode ? <pre><code>{normalizedFormula}</code></pre> : <code>{normalizedFormula}</code>;
+  }
+
+  return (
+    <span
+      dangerouslySetInnerHTML={{ __html: html }}
+      className={displayMode ? "katex-display-host" : "katex-inline-host"}
+    />
+  );
+}
+
 /**
  * 带 GFM + LaTeX 的 Markdown 渲染
  */
@@ -132,7 +224,6 @@ const Markdown = memo(function Markdown({ children, className, autoMath = false 
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, trust: true }]]}
         components={{
           pre({ children: preChildren, ...props }) {
             const firstChild = Children.toArray(preChildren)[0];
@@ -141,8 +232,24 @@ const Markdown = memo(function Markdown({ children, className, autoMath = false 
               if (language === "mermaid") {
                 return <MermaidBlock chart={extractText(firstChild.props.children).trim()} />;
               }
+              if (language === "math") {
+                return <KatexMath formula={extractText(firstChild.props.children)} displayMode />;
+              }
             }
             return <pre {...props}>{preChildren}</pre>;
+          },
+          code({ className: codeClassName, children: codeChildren, ...props }) {
+            const language = getCodeLanguage(codeClassName);
+            const classText = String(codeClassName || "");
+            if (language === "math") {
+              return (
+                <KatexMath
+                  formula={extractText(codeChildren)}
+                  displayMode={classText.includes("math-display")}
+                />
+              );
+            }
+            return <code {...props} className={codeClassName}>{codeChildren}</code>;
           },
           table({ children: tableChildren, ...props }) {
             return (

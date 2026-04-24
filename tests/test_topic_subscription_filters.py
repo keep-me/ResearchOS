@@ -148,6 +148,9 @@ def test_run_topic_ingest_uses_persisted_external_filters(monkeypatch):
         "venue_type": "conference",
         "venue_names": ["NeurIPS", "ICML"],
         "from_year": 2021,
+        "sort_mode": "time",
+        "date_from": None,
+        "date_to": None,
     }
     assert captured["topic_id"] == topic_id
     assert captured["entries"][0]["title"] == "Filtered Paper"

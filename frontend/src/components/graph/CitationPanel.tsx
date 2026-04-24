@@ -17,7 +17,7 @@ import {
   Share2, List, RotateCw, ExternalLink, Layers, Bot,
   Download, CalendarClock, PackagePlus, CheckCircle2,
   XCircle, SkipForward, X,
-} from "lucide-react";
+} from "@/lib/lucide";
 import type {
   Paper, Topic, CitationTree, CitationDetail, RichCitationEntry,
   TopicCitationNetwork, NetworkNode,

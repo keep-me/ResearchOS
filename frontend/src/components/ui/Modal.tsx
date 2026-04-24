@@ -4,7 +4,7 @@
  */
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-import { X } from "lucide-react";
+import { X } from "@/lib/lucide";
 import { useEffect } from "react";
 
 type MaxWidth = "sm" | "md" | "lg" | "xl";

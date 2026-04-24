@@ -4,7 +4,7 @@ import { Badge, Button, Spinner } from "@/components/ui";
 import { useToast } from "@/contexts/ToastContext";
 import { graphApi, ingestApi } from "@/services/api";
 import type { CitationDetail, Paper, RichCitationEntry } from "@/types";
-import { BookOpen, ExternalLink, Library, Loader2, PackagePlus, RefreshCw } from "lucide-react";
+import { BookOpen, ExternalLink, Library, Loader2, PackagePlus, RefreshCw } from "@/lib/lucide";
 
 const TOP_OPTIONS = [10, 15, 20, 30, 50];
 

@@ -3,7 +3,7 @@
  * @author Color2333
  */
 import { useToast, type ToastType } from "@/contexts/ToastContext";
-import { CheckCircle2, XCircle, Info, AlertTriangle, X } from "lucide-react";
+import { CheckCircle2, XCircle, Info, AlertTriangle, X } from "@/lib/lucide";
 
 const ICON: Record<ToastType, React.ReactNode> = {
   success: <CheckCircle2 className="h-4 w-4 text-success" />,

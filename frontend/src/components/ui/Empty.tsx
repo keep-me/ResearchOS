@@ -4,7 +4,7 @@
  */
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-import { Inbox } from "lucide-react";
+import { Inbox } from "@/lib/lucide";
 
 interface EmptyProps {
   icon?: ReactNode;

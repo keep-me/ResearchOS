@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, FolderPlus, Loader2, Play, Sparkles } from "lucide-react";
+import { ArrowRight, FolderPlus, Loader2, Play, Sparkles } from "@/lib/lucide";
 import { Badge, Button, Input, Textarea } from "@/components/ui";
 import { useToast } from "@/contexts/ToastContext";
 import { cn } from "@/lib/utils";

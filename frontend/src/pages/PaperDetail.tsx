@@ -42,7 +42,7 @@ import {
   Link2, Tag, Folder, Heart, Image as ImageIcon, BarChart3, Table2,
   FileCode2, Brain, ChevronDown, ChevronRight, TrendingUp, Target,
   ThumbsUp, ThumbsDown, Zap, FileSearch, X, Loader2, Check, Download, Trash2, Plus, Upload, PencilLine, RefreshCw,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 type EmbeddingStatusMeta = {
   source?: string;

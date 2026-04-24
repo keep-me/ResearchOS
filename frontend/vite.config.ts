@@ -20,11 +20,26 @@ export default defineConfig(({ mode }) => {
   const forceOptimizeDeps = envValue("VITE_FORCE_OPTIMIZE_DEPS") === "true";
 
   return {
-    plugins: [react(), tailwindcss(), svgr()],
+    plugins: [mode === "production" ? null : react(), tailwindcss(), svgr()].filter(Boolean),
+    esbuild: {
+      jsx: "automatic",
+    },
     resolve: {
-      alias: {
-        "@": path.resolve(__dirname, "./src"),
-      },
+      alias: [
+        { find: "@", replacement: path.resolve(__dirname, "./src") },
+        ...(mode === "production"
+          ? [
+              {
+                find: /^react-router$/,
+                replacement: path.resolve(__dirname, "./node_modules/react-router/dist/production/index.mjs"),
+              },
+              {
+                find: /^react-router\/dom$/,
+                replacement: path.resolve(__dirname, "./node_modules/react-router/dist/production/dom-export.mjs"),
+              },
+            ]
+          : []),
+      ],
     },
     server: {
       port,
@@ -71,6 +86,8 @@ export default defineConfig(({ mode }) => {
       force: mode === "development" && forceOptimizeDeps,
     },
     build: {
+      modulePreload: false,
+      reportCompressedSize: false,
       rollupOptions: {
         output: {
           manualChunks(id) {

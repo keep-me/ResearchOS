@@ -191,7 +191,7 @@ class PaperAnalysisService:
                 "必须覆盖：论文结构、核心页面/章节、元数据、图表与公式分布、最重要的 3 个观察。\n\n"
                 f"{evidence_notice}\n\n"
                 f"{context_text}\n\n"
-                f"[第 1 轮论文证据]\n{overview_evidence}"
+                f"[第 1 轮结构化证据包]\n{overview_evidence}"
             ),
             reasoning_level=normalized_reasoning,
             max_tokens=min(int(profile["max_tokens"]), 1800),
@@ -216,7 +216,7 @@ class PaperAnalysisService:
                 "第 1 轮结果仅作中间草稿；如果与本轮论文证据冲突，必须直接纠正，不要盲从前一轮。\n\n"
                 f"{evidence_notice}\n\n"
                 f"{context_text}\n\n"
-                f"[第 2 轮论文证据]\n{comprehension_evidence}\n\n"
+                f"[第 2 轮结构化证据包]\n{comprehension_evidence}\n\n"
                 f"[第 1 轮结果]\n{rounds['round_1']['markdown']}"
             ),
             reasoning_level=normalized_reasoning,
@@ -243,7 +243,7 @@ class PaperAnalysisService:
                 "第 1 / 2 轮结果仅作中间草稿；如果与本轮论文证据冲突，必须以本轮论文证据为准并显式纠正。\n\n"
                 f"{evidence_notice}\n\n"
                 f"{context_text}\n\n"
-                f"[第 3 轮论文证据]\n{deep_analysis_evidence}\n\n"
+                f"[第 3 轮结构化证据包]\n{deep_analysis_evidence}\n\n"
                 f"[第 1 轮结果]\n{rounds['round_1']['markdown']}\n\n"
                 f"[第 2 轮结果]\n{rounds['round_2']['markdown']}"
             ),

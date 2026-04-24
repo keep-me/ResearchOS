@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import re
 from collections import Counter
@@ -696,13 +697,8 @@ class ArxivTrendService:
         for offset in range(max(1, fallback_days + 1)):
             target_day = today_utc - timedelta(days=offset)
             try:
-                total, papers = self._fetch_day(
-                    target_day,
-                    limit,
-                    query=preset.query,
-                    primary_categories=preset.primary_categories,
-                )
-            except Exception as exc:  # pragma: no cover - external dependency
+                total, papers = self._fetch_day_for_preset(target_day, limit, preset=preset)
+            except (httpx.HTTPError, ElementTree.ParseError) as exc:  # pragma: no cover - external dependency
                 last_error = str(exc)
                 continue
             if papers:
@@ -711,6 +707,23 @@ class ArxivTrendService:
         return self._empty_snapshot(
             preset,
             message=last_error or f"最近 {fallback_days + 1} 天暂未解析到 {preset.label} 投稿",
+        )
+
+    def _fetch_day_for_preset(
+        self,
+        day: date,
+        sample_limit: int,
+        *,
+        preset: _TrendSubdomainPreset,
+    ) -> tuple[int, list[dict]]:
+        parameters = inspect.signature(self._fetch_day).parameters
+        if "query" not in parameters:
+            return self._fetch_day(day, sample_limit)  # type: ignore[call-arg]
+        return self._fetch_day(
+            day,
+            sample_limit,
+            query=preset.query,
+            primary_categories=preset.primary_categories,
         )
 
     def _empty_snapshot(self, preset: _TrendSubdomainPreset, *, message: str) -> dict:

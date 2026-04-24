@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { X } from "@/lib/lucide";
 import { cn } from "@/lib/utils";
 
 type DrawerWidth = "md" | "lg" | "xl";

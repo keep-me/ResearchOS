@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { LucideIcon } from "@/lib/lucide";
 import {
   BookCopy,
   FileStack,
@@ -10,7 +10,7 @@ import {
   PenTool,
   Search,
   Settings,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 export type ShellNavGroup = "research-input" | "research-analysis" | "execution" | "system";
 

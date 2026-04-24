@@ -39,6 +39,12 @@ from packages.agent.mcp.researchos_mcp_registry import (
     RESEARCHOS_MCP_SERVER_NAME,
     bridge_qualified_tool_names,
 )
+from packages.path_utils import (
+    is_foreign_windows_path,
+    join_path_string,
+    parent_path_string,
+    sqlite_url_for_path,
+)
 from packages.agent.mcp.mcp_service import get_mcp_registry_service
 from packages.ai.project.workflow_catalog import list_project_agent_templates
 from packages.config import get_settings
@@ -480,18 +486,34 @@ def _chunk_items(items: list[str], size: int) -> list[list[str]]:
     return [items[index : index + normalized_size] for index in range(0, len(items), normalized_size)]
 
 
-def _researchos_data_dir() -> Path | None:
+def _researchos_data_dir_value() -> str | None:
     explicit_data_dir = clean_text(os.environ.get("RESEARCHOS_DATA_DIR"))
     if explicit_data_dir:
-        return Path(explicit_data_dir).expanduser().resolve()
+        if is_foreign_windows_path(explicit_data_dir):
+            return explicit_data_dir
+        return str(Path(explicit_data_dir).expanduser().resolve())
     try:
         settings = get_settings()
     except Exception:
         return None
+    raw_pdf_root = clean_text(getattr(settings, "pdf_storage_root", None))
+    if raw_pdf_root:
+        parent = parent_path_string(raw_pdf_root)
+        if parent and parent != ".":
+            if is_foreign_windows_path(parent):
+                return parent
+            return str(Path(parent).expanduser().resolve())
     try:
-        return settings.pdf_storage_root.parent.resolve()
+        return str(settings.pdf_storage_root.parent.resolve())
     except Exception:
         return None
+
+
+def _researchos_data_dir() -> Path | None:
+    value = _researchos_data_dir_value()
+    if not value or is_foreign_windows_path(value):
+        return None
+    return Path(value).expanduser()
 
 
 def _researchos_runtime_env_overrides() -> dict[str, str]:
@@ -512,19 +534,22 @@ def _researchos_runtime_env_overrides() -> dict[str, str]:
     except Exception:
         return inherited_env
 
-    data_dir = _researchos_data_dir()
+    data_dir = _researchos_data_dir_value()
     if data_dir is None:
         return inherited_env
-    configured_database_url = clean_text(os.environ.get("DATABASE_URL")) or str(settings.database_url)
-    if configured_database_url.lower().startswith("sqlite:///"):
-        database_url = f"sqlite:///{(data_dir / 'researchos.db').resolve().as_posix()}"
+    explicit_database_url = clean_text(os.environ.get("DATABASE_URL"))
+    configured_database_url = explicit_database_url or clean_text(getattr(settings, "database_url", None))
+    if explicit_database_url:
+        database_url = explicit_database_url
+    elif clean_text(os.environ.get("RESEARCHOS_DATA_DIR")) and configured_database_url.lower().startswith("sqlite:///"):
+        database_url = sqlite_url_for_path(join_path_string(data_dir, "researchos.db"))
     else:
         database_url = configured_database_url
     resolved_env = {
-        "RESEARCHOS_DATA_DIR": str(data_dir),
+        "RESEARCHOS_DATA_DIR": data_dir,
         "DATABASE_URL": database_url,
-        "PDF_STORAGE_ROOT": clean_text(os.environ.get("PDF_STORAGE_ROOT")) or str((data_dir / "papers").resolve()),
-        "BRIEF_OUTPUT_ROOT": clean_text(os.environ.get("BRIEF_OUTPUT_ROOT")) or str((data_dir / "briefs").resolve()),
+        "PDF_STORAGE_ROOT": clean_text(os.environ.get("PDF_STORAGE_ROOT")) or join_path_string(data_dir, "papers"),
+        "BRIEF_OUTPUT_ROOT": clean_text(os.environ.get("BRIEF_OUTPUT_ROOT")) or join_path_string(data_dir, "briefs"),
     }
     env_file = clean_text(os.environ.get("RESEARCHOS_ENV_FILE"))
     if env_file:
@@ -2154,4 +2179,3 @@ class CliAgentService:
 @lru_cache(maxsize=1)
 def get_cli_agent_service() -> CliAgentService:
     return CliAgentService()
-

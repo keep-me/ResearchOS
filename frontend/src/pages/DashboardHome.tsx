@@ -25,7 +25,7 @@ import {
   Settings,
   Sparkles,
   TrendingUp,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 const MODULE_LINKS = [
   { title: "研究助手", subtitle: "继续对话与执行", to: "/assistant", icon: Bot },

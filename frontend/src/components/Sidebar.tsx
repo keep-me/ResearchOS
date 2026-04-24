@@ -13,7 +13,7 @@ import {
   Settings,
   Trash2,
   X,
-} from "lucide-react";
+} from "@/lib/lucide";
 import { cn, timeAgo } from "@/lib/utils";
 import { useConversationCtx } from "@/contexts/ConversationContext";
 import { workspaceRootApi } from "@/services/api";

@@ -59,7 +59,7 @@ import {
   Zap,
   Trash2,
   ImagePlus,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 type SectionId =
   | "models"

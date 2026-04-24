@@ -45,7 +45,7 @@ import {
   ArrowDown,
   TrendingUp,
   Trash2,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 /* ========== 类型 ========== */
 interface FolderItem {

@@ -39,7 +39,7 @@ import {
   Sparkles,
   TrendingUp,
   Upload,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 export const AGENT_DRAFT_PROMPT_KEY = "researchos.agent.draftPrompt";
 export const LEGACY_AGENT_DRAFT_PROMPT_KEY = "researchos.agent.draftPrompt";

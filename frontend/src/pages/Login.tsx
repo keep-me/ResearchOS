@@ -3,7 +3,7 @@
  * @author Color2333
  */
 import { useState } from "react";
-import { Lock, Loader2, Eye, EyeOff, Sparkles, ArrowRight } from "lucide-react";
+import { Lock, Loader2, Eye, EyeOff, Sparkles, ArrowRight } from "@/lib/lucide";
 import { authApi } from "@/services/api";
 
 interface LoginPageProps {

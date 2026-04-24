@@ -1,4 +1,4 @@
-import { ExternalLink, Loader2, Play, RefreshCw, X } from "lucide-react";
+import { ExternalLink, Loader2, Play, RefreshCw, X } from "@/lib/lucide";
 import { Badge, Button } from "@/components/ui";
 import type { ProjectRun } from "@/types";
 

@@ -280,22 +280,23 @@ def run_worker() -> None:
     )
     logger.info("✅ 已添加：主题分发任务（每小时整点，UTC）")
 
-    dashboard_trend_cron = getattr(settings, "dashboard_trend_cron", "0 16 * * *")
+    dashboard_trend_cron = getattr(settings, "dashboard_trend_cron", None)
     daily_cron = getattr(settings, "daily_cron", "0 21 * * *")
     weekly_cron = getattr(settings, "weekly_cron", "0 22 * * 0")
     user_timezone = getattr(settings, "user_timezone", "Asia/Shanghai")
 
-    trend_trigger = CronTrigger.from_crontab(dashboard_trend_cron)
-    scheduler.add_job(
-        dashboard_trend_job,
-        trigger=trend_trigger,
-        id="dashboard_trend",
-        replace_existing=True,
-    )
-    logger.info(
-        "✅ 已添加：首页趋势预计算任务（%s）",
-        _cron_display(dashboard_trend_cron, user_timezone=user_timezone),
-    )
+    if dashboard_trend_cron:
+        trend_trigger = CronTrigger.from_crontab(dashboard_trend_cron)
+        scheduler.add_job(
+            dashboard_trend_job,
+            trigger=trend_trigger,
+            id="dashboard_trend",
+            replace_existing=True,
+        )
+        logger.info(
+            "✅ 已添加：首页趋势预计算任务（%s）",
+            _cron_display(dashboard_trend_cron, user_timezone=user_timezone),
+        )
 
     daily_trigger = CronTrigger.from_crontab(daily_cron)
     scheduler.add_job(
@@ -345,7 +346,8 @@ def run_worker() -> None:
     logger.info("=" * 60)
     logger.info("调度时间表（UTC → %s）:", user_timezone)
     logger.info("  • 主题抓取：每小时整点 → 每小时整点")
-    logger.info("  • 首页趋势：%s", _cron_display(dashboard_trend_cron, user_timezone=user_timezone))
+    if dashboard_trend_cron:
+        logger.info("  • 首页趋势：%s", _cron_display(dashboard_trend_cron, user_timezone=user_timezone))
     logger.info("  • 每日简报：%s", _cron_display(daily_cron, user_timezone=user_timezone))
     logger.info("  • 每周图谱：%s", _cron_display(weekly_cron, user_timezone=user_timezone))
     logger.info("  • 闲时处理：全天自动检测 → 全天自动检测")

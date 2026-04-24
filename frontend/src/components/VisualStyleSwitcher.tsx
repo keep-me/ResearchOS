@@ -1,4 +1,4 @@
-import { Check, Palette } from "lucide-react";
+import { Check, Palette } from "@/lib/lucide";
 import { useVisualStyle } from "@/contexts/VisualStyleContext";
 import { cn } from "@/lib/utils";
 import { getNextVisualStyle, visualStyles } from "@/lib/visualStyle";

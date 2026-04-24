@@ -16,7 +16,7 @@ import {
   RefreshCw,
   RotateCcw,
   Trash2,
-} from "lucide-react";
+} from "@/lib/lucide";
 import ArtifactPreviewModal from "@/components/ArtifactPreviewModal";
 import { Badge, Button, Empty, Input, Modal, Textarea } from "@/components/ui";
 import { Drawer } from "@/components/ui/Drawer";

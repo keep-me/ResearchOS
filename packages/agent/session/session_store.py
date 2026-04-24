@@ -13,6 +13,7 @@ from uuid import uuid4
 from sqlalchemy.exc import IntegrityError
 
 from packages.agent.runtime.agent_backends import DEFAULT_AGENT_BACKEND_ID
+from packages.path_utils import normalize_local_path_string, path_name_string
 from packages.storage.db import session_scope
 from packages.storage.repositories import (
     AgentProjectRepository,
@@ -60,10 +61,7 @@ def _normalize_path(value: str | None, *, remote: bool = False) -> str:
         return ""
     if remote:
         return raw
-    try:
-        return str(Path(raw).expanduser().resolve())
-    except OSError:
-        return raw
+    return normalize_local_path_string(raw)
 
 
 def _project_key(directory: str, workspace_server_id: str | None) -> str:
@@ -83,10 +81,7 @@ def _session_title(session_id: str, title: str | None, directory: str) -> str:
     if explicit:
         return explicit[:256]
     if directory:
-        if directory.startswith("/") and ":" not in directory:
-            candidate = directory.rstrip("/").split("/")[-1]
-        else:
-            candidate = Path(directory).name
+        candidate = path_name_string(directory)
         candidate = _clean_text(candidate)
         if candidate:
             return candidate[:256]
@@ -116,7 +111,7 @@ def _ensure_project(
             repo.upsert(
                 project_id=project_id,
                 worktree=directory,
-                name=Path(directory).name if not directory.startswith("/") or ":" in directory else directory.rstrip("/").split("/")[-1],
+                name=path_name_string(directory),
                 sandboxes=[directory],
             )
         else:
@@ -124,12 +119,7 @@ def _ensure_project(
             repo.upsert(
                 project_id=project_id,
                 worktree=directory,
-                name=row.name
-                or (
-                    Path(directory).name
-                    if not directory.startswith("/") or ":" in directory
-                    else directory.rstrip("/").split("/")[-1]
-                ),
+                name=row.name or path_name_string(directory),
                 sandboxes=list(dict.fromkeys([directory, *(row.sandboxes_json or [])])),
                 initialized_at=row.initialized_at,
                 vcs=row.vcs,
@@ -986,4 +976,3 @@ def update_message_parts(
             raise RuntimeError(f"Session message not found: {message_id}")
         AgentSessionRepository(session).touch(session_id)
         return _serialize_message_row(updated, sorted(stored_parts, key=_part_sort_key))
-
