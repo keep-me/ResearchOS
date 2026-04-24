@@ -51,7 +51,10 @@ pwsh -NoLogo -Command "Set-Location -LiteralPath 'D:\Desktop\ResearchOS'; Copy-I
   - 本地开发：`http://127.0.0.1:5173`
   - Docker 部署：`http://127.0.0.1:3002`（或你的公网域名）
 - `CORS_ALLOW_ORIGINS`：
-  - 本地建议：`*` 或具体地址（如 `http://127.0.0.1:5173`）
+  - 本地建议：使用具体地址（如 `http://127.0.0.1:5173`）
+- Docker Compose 默认只绑定 `127.0.0.1`；公网部署前先设置 `APP_ENV=prod`、
+  `AUTH_PASSWORD_HASH`、`AUTH_SECRET_KEY`，再调整 `BACKEND_PORT_BIND` /
+  `FRONTEND_PORT_BIND`。
 - 如启用登录认证：
   - `AUTH_PASSWORD`（或 `AUTH_PASSWORD_HASH`）
   - `AUTH_SECRET_KEY`（生产务必替换为随机长字符串）

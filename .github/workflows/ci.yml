@@ -5,23 +5,35 @@ on:
   push:
     paths:
       - ".github/workflows/**"
+      - ".env.example"
+      - "Dockerfile*"
       - "apps/**"
+      - "constraints.txt"
+      - "docker-compose*.yml"
       - "packages/**"
+      - "infra/**"
       - "tests/**"
       - "frontend/**"
       - "pyproject.toml"
       - "package.json"
+      - "package-lock.json"
       - "frontend/package.json"
       - "frontend/package-lock.json"
   pull_request:
     paths:
       - ".github/workflows/**"
+      - ".env.example"
+      - "Dockerfile*"
       - "apps/**"
+      - "constraints.txt"
+      - "docker-compose*.yml"
       - "packages/**"
+      - "infra/**"
       - "tests/**"
       - "frontend/**"
       - "pyproject.toml"
       - "package.json"
+      - "package-lock.json"
       - "frontend/package.json"
       - "frontend/package-lock.json"
 
@@ -36,7 +48,7 @@ jobs:
       - name: Install backend
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,llm,pdf]"
+          python -m pip install -c constraints.txt -e ".[dev,llm,pdf]"
       - name: Test backend
         run: pytest -q
 
@@ -81,6 +93,7 @@ jobs:
         run: npm audit --audit-level=moderate --registry=https://registry.npmjs.org
       - name: Python audit
         run: |
-          python -m pip install --upgrade pip pip-audit
-          python -m pip install -e ".[llm,pdf]"
+          python -m pip install --upgrade pip
+          python -m pip install -c constraints.txt pip-audit
+          python -m pip install -c constraints.txt -e ".[llm,pdf]"
           pip-audit

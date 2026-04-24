@@ -78,5 +78,8 @@ async def create_path_token(request: PathTokenRequest):
     """
     if not auth_enabled():
         raise HTTPException(status_code=403, detail="Authentication is disabled")
-    token = create_asset_access_token(request.path)
+    try:
+        token = create_asset_access_token(request.path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PathTokenResponse(access_token=token)

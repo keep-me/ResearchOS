@@ -60,7 +60,8 @@ if not exist .env copy .env.example .env
 - `PDF_STORAGE_ROOT`
 - `BRIEF_OUTPUT_ROOT`
 - 一个可用的 LLM Key，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 或 `ZHIPU_API_KEY`
-- 如果启用站点登录：`AUTH_PASSWORD`、`AUTH_SECRET_KEY`
+- 如果启用站点登录：`AUTH_PASSWORD_HASH`、`AUTH_SECRET_KEY`
+- Docker Compose 默认只监听 `127.0.0.1`；公网部署前先设置 `APP_ENV=prod` 和认证配置。
 
 ## 4. 本地启动
 

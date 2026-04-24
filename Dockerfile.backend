@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制项目文件
-COPY pyproject.toml ./
+COPY pyproject.toml constraints.txt ./
 COPY packages/ packages/
 COPY apps/ apps/
 COPY scripts/ scripts/
@@ -41,8 +41,8 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 
-RUN python -m pip install --no-cache-dir --retries 6 --no-build-isolation ".[llm,pdf]" \
-    && python -m pip install --no-cache-dir --retries 6 \
+RUN python -m pip install --no-cache-dir --retries 6 --no-build-isolation -c constraints.txt ".[llm,pdf]" \
+    && python -m pip install --no-cache-dir --retries 6 -c constraints.txt \
         umap-learn \
         psutil \
         supervisor

@@ -8,7 +8,6 @@ type ErrorHandler = (error: Error) => void;
 interface GlobalBusClientState {
   closed: boolean;
   abortController: AbortController | null;
-  eventSource: EventSource | null;
   websocket: WebSocket | null;
   envelopeHandlers: Set<EnvelopeHandler>;
   errorHandlers: Set<ErrorHandler>;
@@ -34,17 +33,6 @@ function parseEventBlocks(chunk: string): GlobalBusEnvelope[] {
     }
   }
   return envelopes;
-}
-
-function parseEventSourceEnvelope(data: string): GlobalBusEnvelope | null {
-  const payload = String(data || "").trim();
-  if (!payload) return null;
-  try {
-    return JSON.parse(payload) as GlobalBusEnvelope;
-  } catch (error) {
-    console.warn("[global-bus] failed to parse EventSource envelope", error);
-    return null;
-  }
 }
 
 async function buildWebSocketUrl(): Promise<string> {
@@ -80,7 +68,6 @@ export function subscribeGlobalBus(
 const GLOBAL_BUS_CLIENT: GlobalBusClientState = {
   closed: true,
   abortController: null,
-  eventSource: null,
   websocket: null,
   envelopeHandlers: new Set<EnvelopeHandler>(),
   errorHandlers: new Set<ErrorHandler>(),
@@ -213,7 +200,6 @@ function ensureGlobalBusConnection(): void {
   GLOBAL_BUS_CLIENT.runner = runGlobalBusConnection().finally(() => {
     GLOBAL_BUS_CLIENT.runner = null;
     GLOBAL_BUS_CLIENT.abortController = null;
-    GLOBAL_BUS_CLIENT.eventSource = null;
     GLOBAL_BUS_CLIENT.websocket = null;
   });
 }
@@ -224,8 +210,6 @@ function teardownGlobalBusConnectionIfIdle(): void {
   }
   GLOBAL_BUS_CLIENT.closed = true;
   GLOBAL_BUS_CLIENT.abortController?.abort();
-  GLOBAL_BUS_CLIENT.eventSource?.close();
-  GLOBAL_BUS_CLIENT.eventSource = null;
   GLOBAL_BUS_CLIENT.websocket?.close();
   GLOBAL_BUS_CLIENT.websocket = null;
 }

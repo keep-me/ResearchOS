@@ -1,11 +1,13 @@
 # ResearchOS Docker Compose
 # Ports:
-# - Frontend: 3002
-# - Backend API: 8002
+# - Frontend: 127.0.0.1:3002
+# - Backend API: 127.0.0.1:8002
 # Usage:
 #   1) cp .env.example .env
 #   2) docker compose up -d --build
 #   3) Open http://localhost:3002
+# For public/shared deployments, set APP_ENV=prod plus AUTH_PASSWORD_HASH and
+# AUTH_SECRET_KEY before exposing these ports beyond localhost.
 
 services:
   backend:
@@ -18,7 +20,7 @@ services:
         APT_MIRROR: ${APT_MIRROR:-}
     container_name: researchos-backend
     ports:
-      - "8002:8000"
+      - "${BACKEND_PORT_BIND:-127.0.0.1:8002}:8000"
     volumes:
       - pm_data:/app/data
       - pm_logs:/app/logs
@@ -32,7 +34,7 @@ services:
     env_file:
       - ./.env
     environment:
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV:-dev}
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - SITE_URL=${SITE_URL:-http://localhost:3002}
@@ -70,7 +72,7 @@ services:
     env_file:
       - ./.env
     environment:
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV:-dev}
       - SITE_URL=${SITE_URL:-http://localhost:3002}
     restart: unless-stopped
     depends_on:
@@ -99,7 +101,7 @@ services:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     container_name: researchos-frontend
     ports:
-      - "3002:80"
+      - "${FRONTEND_PORT_BIND:-127.0.0.1:3002}:80"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:80"]

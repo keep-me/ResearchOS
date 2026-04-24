@@ -54,6 +54,20 @@ function SanitizedHtmlPreview({ content, className }: { content: string; classNa
   return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} />;
 }
 
+function safeHttpUrl(value: unknown): string | undefined {
+  const raw = String(value || "").trim();
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.toString();
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export const EmptyState = memo(function EmptyState({
   mountedPaperSummary,
   mountedPaperCount,
@@ -1992,14 +2006,9 @@ export const WebSearchView = memo(function WebSearchView({
         </div>
       )}
       <div className="space-y-1.5">
-        {items.map((item, index) => (
-          <a
-            key={`${String(item.url || "")}_${index}`}
-            href={String(item.url || "#")}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block rounded-lg bg-surface px-2.5 py-2 text-[11px] transition-colors hover:bg-hover"
-          >
+        {items.map((item, index) => {
+          const href = safeHttpUrl(item.url);
+          const content = (
             <div className="flex items-start gap-2">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
                 {index + 1}
@@ -2014,8 +2023,26 @@ export const WebSearchView = memo(function WebSearchView({
                 <p className="mt-1 text-[10px] text-primary">{String(item.display_url || item.url || "")}</p>
               </div>
             </div>
-          </a>
-        ))}
+          );
+          return href ? (
+            <a
+              key={`${href}_${index}`}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-lg bg-surface px-2.5 py-2 text-[11px] transition-colors hover:bg-hover"
+            >
+              {content}
+            </a>
+          ) : (
+            <div
+              key={`${String(item.url || "")}_${index}`}
+              className="block rounded-lg bg-surface px-2.5 py-2 text-[11px]"
+            >
+              {content}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

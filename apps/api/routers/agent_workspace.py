@@ -59,7 +59,7 @@ from packages.agent.workspace.workspace_executor import (
     run_workspace_command,
     write_workspace_file,
 )
-from packages.auth import auth_enabled, decode_access_token, decode_asset_access_token, extract_request_token
+from packages.auth import auth_enabled, decode_request_token, extract_request_token_with_source
 from packages.storage.db import session_scope
 from packages.storage.repositories import ProjectRepository
 
@@ -175,7 +175,7 @@ def _authenticate_terminal_websocket(websocket: WebSocket) -> dict | None:
     if not auth_enabled():
         return None
 
-    token = extract_request_token(
+    token, token_source = extract_request_token_with_source(
         websocket.headers.get("authorization"),
         websocket.query_params.get("token"),
         allow_query_token=True,
@@ -183,9 +183,10 @@ def _authenticate_terminal_websocket(websocket: WebSocket) -> dict | None:
     if not token:
         raise WorkspaceAccessError("未认证，终端连接被拒绝")
 
-    payload = decode_access_token(token) or decode_asset_access_token(
+    payload = decode_request_token(
         token,
         path=websocket.url.path,
+        source=token_source,
     )
     if not payload:
         raise WorkspaceAccessError("终端连接令牌无效或已过期")

@@ -125,9 +125,11 @@ import {
 } from "@/features/assistantInstance/sessionProtocol";
 import {
   buildWebSocketUrl,
+  canSignApiAssetUrl,
   clearAuth,
   del,
   fetchSSE,
+  getAuthToken,
   get,
   getApiBase,
   getPathAccessToken,
@@ -139,7 +141,9 @@ import {
 } from "./http";
 export {
   ApiHttpError,
+  canSignApiAssetUrl,
   clearAuth,
+  getAuthToken,
   getPathAccessToken,
   isAuthenticated,
   request,

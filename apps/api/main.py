@@ -18,9 +18,8 @@ from packages.config import get_settings
 from packages.domain.exceptions import AppError
 from packages.auth import (
     auth_enabled,
-    decode_access_token,
-    decode_asset_access_token,
-    extract_request_token,
+    decode_request_token,
+    extract_request_token_with_source,
     validate_auth_configuration,
 )
 from packages.logging_setup import setup_logging
@@ -81,7 +80,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
-        token = extract_request_token(
+        token, token_source = extract_request_token_with_source(
             request.headers.get("Authorization"),
             request.query_params.get("token"),
             path=request.url.path,
@@ -93,9 +92,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Not authenticated"},
             )
 
-        payload = decode_access_token(token)
-        if not payload:
-            payload = decode_asset_access_token(token, path=request.url.path)
+        payload = decode_request_token(
+            token,
+            path=request.url.path,
+            source=token_source,
+        )
         if not payload:
             return JSONResponse(
                 status_code=401,

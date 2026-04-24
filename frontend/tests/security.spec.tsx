@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import Markdown from "@/components/Markdown";
-import { resolveSignedApiAssetUrl } from "@/services/http";
+import { canSignApiAssetUrl, resolveSignedApiAssetUrl } from "@/services/http";
 
 describe("security-sensitive frontend helpers", () => {
   it("renders KaTeX without trusted javascript links", async () => {
@@ -51,6 +51,32 @@ describe("security-sensitive frontend helpers", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ path: "/papers/p1/pdf" }),
+      }),
+    );
+
+    fetchMock.mockRestore();
+  });
+
+  it("signs absolute same-api asset URLs", async () => {
+    sessionStorage.setItem("auth_token", "long-session-token");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ access_token: "absolute-path-token", expires_in: 90 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    expect(canSignApiAssetUrl("http://localhost:8000/papers/p2/pdf")).toBe(true);
+
+    const url = await resolveSignedApiAssetUrl("http://localhost:8000/papers/p2/pdf");
+
+    expect(url).toContain("/papers/p2/pdf");
+    expect(url).toContain("token=absolute-path-token");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/path-token"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ path: "/papers/p2/pdf" }),
       }),
     );
 

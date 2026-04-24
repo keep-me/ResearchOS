@@ -1,18 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
-import { resolveApiAssetUrl, resolveSignedApiAssetUrl } from "@/services/api";
+import {
+  canSignApiAssetUrl,
+  getAuthToken,
+  resolveApiAssetUrl,
+  resolveSignedApiAssetUrl,
+} from "@/services/api";
 
 export function useSignedApiAssetUrl(path: string | null | undefined): string {
   const rawPath = useMemo(() => String(path || "").trim(), [path]);
-  const [resolvedUrl, setResolvedUrl] = useState(() => resolveApiAssetUrl(rawPath));
+  const shouldSign = useMemo(() => canSignApiAssetUrl(rawPath), [rawPath]);
+  const [resolvedUrl, setResolvedUrl] = useState(() => (
+    shouldSign && getAuthToken() ? "" : resolveApiAssetUrl(rawPath)
+  ));
 
   useEffect(() => {
     let cancelled = false;
-    setResolvedUrl(resolveApiAssetUrl(rawPath));
-    if (!rawPath || !rawPath.startsWith("/")) {
+    if (!rawPath) {
+      setResolvedUrl("");
       return () => {
         cancelled = true;
       };
     }
+    if (!shouldSign || !getAuthToken()) {
+      setResolvedUrl(resolveApiAssetUrl(rawPath));
+      return () => {
+        cancelled = true;
+      };
+    }
+    setResolvedUrl("");
     resolveSignedApiAssetUrl(rawPath)
       .then((url) => {
         if (!cancelled) setResolvedUrl(url);
@@ -23,7 +38,7 @@ export function useSignedApiAssetUrl(path: string | null | undefined): string {
     return () => {
       cancelled = true;
     };
-  }, [rawPath]);
+  }, [rawPath, shouldSign]);
 
   return resolvedUrl;
 }

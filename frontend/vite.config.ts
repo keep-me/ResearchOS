@@ -7,6 +7,22 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import svgr from "vite-plugin-svgr";
 import path from "path";
+import fs from "node:fs";
+
+function copyMermaidChunksPlugin() {
+  return {
+    name: "copy-mermaid-esm-chunks",
+    apply: "build" as const,
+    closeBundle() {
+      const sourceDir = path.resolve(__dirname, "node_modules/mermaid/dist/chunks/mermaid.esm.min");
+      const targetDir = path.resolve(__dirname, "dist/assets/chunks/mermaid.esm.min");
+      if (!fs.existsSync(sourceDir)) return;
+      fs.rmSync(targetDir, { recursive: true, force: true });
+      fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+      fs.cpSync(sourceDir, targetDir, { recursive: true });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -20,7 +36,7 @@ export default defineConfig(({ mode }) => {
   const forceOptimizeDeps = envValue("VITE_FORCE_OPTIMIZE_DEPS") === "true";
 
   return {
-    plugins: [react(), tailwindcss(), svgr()],
+    plugins: [react(), tailwindcss(), svgr(), copyMermaidChunksPlugin()],
     resolve: {
       alias: [
         { find: "@", replacement: path.resolve(__dirname, "./src") },

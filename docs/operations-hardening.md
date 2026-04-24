@@ -8,6 +8,9 @@ password. Public or shared deployments need explicit hardening.
 - Keep `APP_ENV=dev` only for local development.
 - For public deployments, set `APP_ENV=prod`, `AUTH_PASSWORD_HASH`, and
   `AUTH_SECRET_KEY`.
+- The default Docker Compose file is a localhost-bound development profile. Set
+  `BACKEND_PORT_BIND` / `FRONTEND_PORT_BIND` deliberately before exposing it on
+  a shared network.
 - To intentionally run without auth outside dev, set
   `ALLOW_UNAUTHENTICATED=true`. The API refuses unauthenticated non-dev startup
   unless that override is present.
@@ -38,9 +41,11 @@ password. Public or shared deployments need explicit hardening.
 
 - The repository tracks `frontend/package-lock.json`; use `npm ci` in CI and
   deployment builds.
+- CI and container builds use `constraints.txt` to keep Python transitive
+  dependencies reproducible.
 - The root `package.json` is for repository smoke tooling. The actual browser
   application lives in `frontend/`.
-- Dependency auditing runs in CI with `npm audit --audit-level=high` and
+- Dependency auditing runs in CI with `npm audit --audit-level=moderate` and
   `pip-audit`.
 
 ## Runtime Artifacts

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
+from fastapi import HTTPException
 import pytest
 
+import apps.api.routers.auth as auth_router
 import packages.auth as auth
 
 
@@ -125,6 +128,44 @@ def test_asset_access_token_is_path_scoped_and_short_lived(monkeypatch: pytest.M
         auth.create_asset_access_token("/papers/latest")
 
 
+def test_path_access_token_is_not_regular_access_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: SimpleNamespace(
+            auth_password="dev-password",
+            auth_password_hash="",
+            auth_secret_key="super-secret",
+            app_env="dev",
+        ),
+    )
+
+    token = auth.create_asset_access_token("/papers/abc123/pdf")
+
+    assert auth.decode_access_token(token) is None
+    assert auth.decode_request_token(token, path="/papers/other/pdf", source="header") is None
+    assert auth.decode_request_token(token, path="/papers/abc123/pdf", source="header") is not None
+
+
+def test_query_token_source_rejects_regular_access_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: SimpleNamespace(
+            auth_password="dev-password",
+            auth_password_hash="",
+            auth_secret_key="super-secret",
+            app_env="dev",
+        ),
+    )
+
+    token = auth.create_access_token({"sub": "researchos-user"})
+
+    assert auth.decode_access_token(token) is not None
+    assert auth.decode_request_token(token, path="/papers/abc123/pdf", source="query") is None
+    assert auth.decode_request_token(token, path="/papers/latest", source="header") is not None
+
+
 def test_path_access_token_supports_websocket_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         auth,
@@ -144,3 +185,12 @@ def test_path_access_token_supports_websocket_paths(monkeypatch: pytest.MonkeyPa
         path="/agent/workspace/terminal/session/session-1/ws",
     )
     assert auth.decode_asset_access_token(token, path="/global/ws") is None
+
+
+def test_create_path_token_rejects_ineligible_path_with_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth_router, "auth_enabled", lambda: True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(auth_router.create_path_token(auth_router.PathTokenRequest(path="/papers/latest")))
+
+    assert exc_info.value.status_code == 400

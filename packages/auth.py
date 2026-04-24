@@ -22,7 +22,6 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7  # 7 days
-ASSET_TOKEN_EXPIRE_MINUTES = 5
 QUERY_ACCESS_TOKEN_EXPIRE_SECONDS = 90
 _DEFAULT_AUTH_SECRET = "researchos-secret-key-change-in-production"
 _BCRYPT_HASH_RE = re.compile(r"^\$2[aby]\$")
@@ -67,16 +66,34 @@ def extract_request_token(
     path: str | None = None,
     allow_query_token: bool = False,
 ) -> str | None:
+    token, _source = extract_request_token_with_source(
+        auth_header,
+        query_token,
+        path=path,
+        allow_query_token=allow_query_token,
+    )
+    return token
+
+
+def extract_request_token_with_source(
+    auth_header: str | None,
+    query_token: str | None = None,
+    *,
+    path: str | None = None,
+    allow_query_token: bool = False,
+) -> tuple[str | None, str | None]:
     header_value = str(auth_header or "").strip()
     if header_value.lower().startswith("bearer "):
         token = header_value[7:].strip()
         if token:
-            return token
+            return token, "header"
     if allow_query_token and query_token:
-        return str(query_token).strip() or None
+        token = str(query_token).strip()
+        return (token, "query") if token else (None, None)
     if path and query_token_allowed_for_path(path) and query_token:
-        return str(query_token).strip() or None
-    return None
+        token = str(query_token).strip()
+        return (token, "query") if token else (None, None)
+    return None, None
 
 
 def require_auth_secret() -> str:
@@ -135,6 +152,7 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """创建 JWT token"""
     to_encode = data.copy()
+    to_encode.setdefault("typ", "access")
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -167,9 +185,12 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     """解码 JWT token，失败返回 None"""
     try:
         payload = jwt.decode(token, require_auth_secret(), algorithms=[ALGORITHM])
-        return payload
     except (JWTError, RuntimeError):
         return None
+    token_type = str(payload.get("typ") or "access").strip()
+    if token_type != "access":
+        return None
+    return payload
 
 
 def decode_asset_access_token(token: str, *, path: str) -> dict[str, Any] | None:
@@ -183,6 +204,15 @@ def decode_asset_access_token(token: str, *, path: str) -> dict[str, Any] | None
     if str(payload.get("path") or "").strip() != str(path or "").strip():
         return None
     return payload
+
+
+def decode_request_token(token: str, *, path: str, source: str | None) -> dict[str, Any] | None:
+    if source == "query":
+        return decode_asset_access_token(token, path=path)
+    payload = decode_access_token(token)
+    if payload:
+        return payload
+    return decode_asset_access_token(token, path=path)
 
 
 def authenticate_user(password: str) -> bool:

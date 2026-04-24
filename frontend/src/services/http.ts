@@ -12,6 +12,14 @@ function isAbsoluteOrSpecialUrl(value: string): boolean {
     || value.startsWith("#");
 }
 
+const PATH_TOKEN_ELIGIBLE_PATTERNS = [
+  /^\/papers\/[^/]+\/pdf$/,
+  /^\/papers\/[^/]+\/figures\/[^/]+\/image$/,
+  /^\/global\/event$/,
+  /^\/global\/ws$/,
+  /^\/agent\/workspace\/terminal\/session\/[^/]+\/ws$/,
+];
+
 export function getAuthToken(): string | null {
   return sessionStorage.getItem("auth_token");
 }
@@ -60,10 +68,19 @@ function normalizeApiPath(path: string): string {
   return raw.startsWith("/api/") ? raw.slice(4) : raw;
 }
 
+function normalizePathTokenRequestPath(path: string): string {
+  return normalizeApiPath(path).split(/[?#]/, 1)[0];
+}
+
+export function canSignApiAssetUrl(path: string): boolean {
+  const normalizedPath = normalizePathTokenRequestPath(path);
+  return PATH_TOKEN_ELIGIBLE_PATTERNS.some((pattern) => pattern.test(normalizedPath));
+}
+
 export async function getPathAccessToken(path: string): Promise<string | null> {
-  const normalizedPath = normalizeApiPath(path);
+  const normalizedPath = normalizePathTokenRequestPath(path);
   const authToken = getAuthToken();
-  if (!authToken || !normalizedPath.startsWith("/")) return null;
+  if (!authToken || !canSignApiAssetUrl(normalizedPath)) return null;
 
   const cached = pathTokenCache.get(normalizedPath);
   const now = Date.now();
@@ -96,8 +113,8 @@ export async function getPathAccessToken(path: string): Promise<string | null> {
 
 export async function resolveSignedApiAssetUrl(path: string): Promise<string> {
   const raw = String(path || "").trim();
-  const normalizedPath = normalizeApiPath(raw);
-  if (!normalizedPath || !normalizedPath.startsWith("/")) return raw;
+  const normalizedPath = normalizePathTokenRequestPath(raw);
+  if (!normalizedPath || !canSignApiAssetUrl(normalizedPath)) return resolveApiAssetUrl(raw);
   const baseUrl = resolveApiAssetUrl(normalizedPath, { includeAuthToken: false });
   const token = await getPathAccessToken(normalizedPath);
   if (!token || baseUrl.includes("token=")) return baseUrl;

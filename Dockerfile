@@ -30,11 +30,11 @@ ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 ENV PIP_TRUSTED_HOST=mirrors.aliyun.com
 
 # 后端源码 + 依赖安装
-COPY pyproject.toml ./
+COPY pyproject.toml constraints.txt ./
 COPY packages/ packages/
 COPY apps/ apps/
-RUN pip install --no-cache-dir ".[llm,pdf]" && \
-    pip install --no-cache-dir umap-learn
+RUN pip install --no-cache-dir -c constraints.txt ".[llm,pdf]" && \
+    pip install --no-cache-dir -c constraints.txt umap-learn
 
 # Alembic 数据库迁移
 COPY alembic.ini ./
