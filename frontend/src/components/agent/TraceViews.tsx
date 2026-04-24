@@ -1,10 +1,12 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import DOMPurify from "dompurify";
+import SignedAssetImage from "@/components/SignedAssetImage";
 import { cn } from "@/lib/utils";
 import { useAssistantInstance, type ChatItem, type StepItem } from "@/contexts/AssistantInstanceContext";
 import { useToast } from "@/contexts/ToastContext";
 import { normalizeReasoningDisplay } from "@/features/assistantInstance/reasoningText";
-import { ingestApi, paperApi, resolveApiAssetUrl } from "@/services/api";
+import { ingestApi, paperApi } from "@/services/api";
 import { deriveProjectName, getToolMeta, type WorkspaceFileTreeNode } from "./agentPageShared";
 import {
   AlertTriangle,
@@ -43,6 +45,14 @@ import {
 } from "@/lib/lucide";
 
 const Markdown = lazy(() => import("@/components/Markdown"));
+
+function SanitizedHtmlPreview({ content, className }: { content: string; className?: string }) {
+  const sanitized = useMemo(
+    () => DOMPurify.sanitize(String(content || ""), { USE_PROFILES: { html: true, svg: true, svgFilters: true } }),
+    [content],
+  );
+  return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} />;
+}
 
 export const EmptyState = memo(function EmptyState({
   mountedPaperSummary,
@@ -219,12 +229,12 @@ export function CanvasPanel({
           if (card?.dataset.paperId) onNavigate(card.dataset.paperId);
         }}
       >
-        {isHtml ? (
-          <div
-            className="prose-custom brief-html-preview brief-content"
-            dangerouslySetInnerHTML={{ __html: content }}
-          />
-        ) : (
+	        {isHtml ? (
+	          <SanitizedHtmlPreview
+	            className="prose-custom brief-html-preview brief-content"
+	            content={content}
+	          />
+	        ) : (
           <div className="prose-custom">
             <Suspense fallback={<div className="h-4 animate-pulse rounded bg-surface" />}>
               <Markdown>{content}</Markdown>
@@ -1093,7 +1103,7 @@ export function resolveToolFigureImageUrl(
     return paperApi.figureImageUrl(paperId, figureId);
   }
   if (typeof figure.image_url === "string" && figure.image_url.trim()) {
-    return resolveApiAssetUrl(figure.image_url.trim());
+    return figure.image_url.trim();
   }
   return null;
 }
@@ -1120,7 +1130,7 @@ export function ToolFigureLightbox({
       >
         <X className="h-5 w-5" />
       </button>
-      <img
+      <SignedAssetImage
         src={imageUrl}
         alt={alt}
         className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
@@ -1167,7 +1177,7 @@ export function ToolFigureGallery({
                     className="block w-full bg-white"
                     onClick={() => setLightbox({ imageUrl, alt, caption: caption || undefined })}
                   >
-                    <img
+                    <SignedAssetImage
                       src={imageUrl}
                       alt={alt}
                       className="h-28 w-full object-cover transition-transform hover:scale-[1.01]"
@@ -1250,7 +1260,7 @@ export function ToolFigureReferences({
                     className="shrink-0 overflow-hidden rounded-md border border-border/70 bg-white"
                     onClick={() => setLightbox({ imageUrl, alt, caption: caption || undefined })}
                   >
-                    <img
+                    <SignedAssetImage
                       src={imageUrl}
                       alt={alt}
                       className="h-14 w-14 object-cover transition-transform hover:scale-[1.03]"
@@ -1987,7 +1997,7 @@ export const WebSearchView = memo(function WebSearchView({
             key={`${String(item.url || "")}_${index}`}
             href={String(item.url || "#")}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="block rounded-lg bg-surface px-2.5 py-2 text-[11px] transition-colors hover:bg-hover"
           >
             <div className="flex items-start gap-2">
@@ -2537,12 +2547,12 @@ export const ArtifactCard = memo(function ArtifactCard({
               if (card?.dataset.paperId) navigate(`/papers/${card.dataset.paperId}`);
             }}
           >
-            {isHtml ? (
-              <div
-                className="prose-custom brief-html-preview brief-content text-sm"
-                dangerouslySetInnerHTML={{ __html: content }}
-              />
-            ) : (
+	            {isHtml ? (
+	              <SanitizedHtmlPreview
+	                className="prose-custom brief-html-preview brief-content text-sm"
+	                content={content}
+	              />
+	            ) : (
               <div className="prose-custom text-sm">
                 <Suspense fallback={<div className="h-4 animate-pulse rounded bg-surface" />}>
                   <Markdown>{content}</Markdown>

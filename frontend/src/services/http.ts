@@ -13,10 +13,10 @@ function isAbsoluteOrSpecialUrl(value: string): boolean {
 }
 
 export function getAuthToken(): string | null {
-  return sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token");
+  return sessionStorage.getItem("auth_token");
 }
 
-export function resolveApiAssetUrl(path: string, options?: { includeAuthToken?: boolean }): string {
+export function resolveApiAssetUrl(path: string, _options?: { includeAuthToken?: boolean }): string {
   const raw = String(path || "").trim();
   if (!raw || isAbsoluteOrSpecialUrl(raw) || !raw.startsWith("/")) {
     return raw;
@@ -30,13 +30,78 @@ export function resolveApiAssetUrl(path: string, options?: { includeAuthToken?: 
     return raw;
   }
   const base = getApiBase().replace(/\/+$/, "");
-  const url = `${base}${normalizedPath}`;
-  const includeAuthToken = options?.includeAuthToken !== false;
-  const token = includeAuthToken ? getAuthToken() : null;
-  if (!token || url.includes("token=")) {
-    return url;
+  return `${base}${normalizedPath}`;
+}
+
+type PathTokenCacheEntry = {
+  token: string;
+  expiresAt: number;
+};
+
+const pathTokenCache = new Map<string, PathTokenCacheEntry>();
+
+function normalizeApiPath(path: string): string {
+  const raw = String(path || "").trim();
+  if (!raw) return raw;
+  if (isAbsoluteOrSpecialUrl(raw) && /^https?:\/\//i.test(raw)) {
+    try {
+      const baseHref = typeof window === "undefined" ? "http://localhost" : window.location.href;
+      const candidate = new URL(raw, baseHref);
+      const apiBase = new URL(getApiBase(), baseHref);
+      const apiBasePath = apiBase.pathname.replace(/\/+$/, "");
+      if (candidate.origin === apiBase.origin && candidate.pathname.startsWith(`${apiBasePath}/`)) {
+        return candidate.pathname.slice(apiBasePath.length) + candidate.search;
+      }
+    } catch {
+      return raw;
+    }
   }
-  return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+  if (!raw.startsWith("/") || isAbsoluteOrSpecialUrl(raw)) return raw;
+  return raw.startsWith("/api/") ? raw.slice(4) : raw;
+}
+
+export async function getPathAccessToken(path: string): Promise<string | null> {
+  const normalizedPath = normalizeApiPath(path);
+  const authToken = getAuthToken();
+  if (!authToken || !normalizedPath.startsWith("/")) return null;
+
+  const cached = pathTokenCache.get(normalizedPath);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now + 10_000) {
+    return cached.token;
+  }
+
+  const resp = await fetch(`${getApiBase().replace(/\/+$/, "")}/auth/path-token`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${authToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path: normalizedPath }),
+  });
+  if (!resp.ok) {
+    if (resp.status === 401) clearAuth();
+    return null;
+  }
+  const payload = await resp.json() as { access_token?: string; expires_in?: number };
+  const token = String(payload.access_token || "").trim();
+  if (!token) return null;
+  const expiresIn = Number(payload.expires_in || 90);
+  pathTokenCache.set(normalizedPath, {
+    token,
+    expiresAt: now + Math.max(15, expiresIn) * 1000,
+  });
+  return token;
+}
+
+export async function resolveSignedApiAssetUrl(path: string): Promise<string> {
+  const raw = String(path || "").trim();
+  const normalizedPath = normalizeApiPath(raw);
+  if (!normalizedPath || !normalizedPath.startsWith("/")) return raw;
+  const baseUrl = resolveApiAssetUrl(normalizedPath, { includeAuthToken: false });
+  const token = await getPathAccessToken(normalizedPath);
+  if (!token || baseUrl.includes("token=")) return baseUrl;
+  return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
 
 export function buildWebSocketUrl(path: string, params?: Record<string, string>): string {
@@ -76,6 +141,7 @@ export function isAuthenticated(): boolean {
 export function clearAuth(): void {
   sessionStorage.removeItem("auth_token");
   localStorage.removeItem("auth_token");
+  pathTokenCache.clear();
 }
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

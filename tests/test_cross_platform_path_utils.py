@@ -29,6 +29,7 @@ def test_foreign_windows_relative_paths_use_windows_boundaries() -> None:
 
     assert local_relative_path(workspace, r"D:\ResearchOS\data\workspace") == "."
     assert local_relative_path(workspace, r"D:\ResearchOS\data\workspace\reports\out.md") == "reports/out.md"
+    assert local_relative_path(workspace, r"d:\researchos\data\workspace\reports\..\out.md") == "out.md"
     with pytest.raises(ValueError):
         local_relative_path(workspace, r"D:\ResearchOS\data\other\out.md")
 
@@ -40,3 +41,8 @@ def test_posix_style_windows_drive_paths_keep_posix_separators() -> None:
     assert normalize_local_path_string(data_dir) == data_dir
     assert path_name_string(data_dir) == "data"
     assert join_path_string(data_dir, "papers", "paper.pdf") == "D:/ResearchOS/data/papers/paper.pdf"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="foreign UNC URL behavior is only relevant off Windows")
+def test_unc_windows_sqlite_url_uses_sqlite_unc_form() -> None:
+    assert sqlite_url_for_path(r"\\server\share\researchos.db") == "sqlite://server/share/researchos.db"

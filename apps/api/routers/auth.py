@@ -6,7 +6,14 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from packages.auth import auth_enabled, authenticate_user, create_access_token, validate_auth_configuration
+from packages.auth import (
+    QUERY_ACCESS_TOKEN_EXPIRE_SECONDS,
+    auth_enabled,
+    authenticate_user,
+    create_access_token,
+    create_asset_access_token,
+    validate_auth_configuration,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -22,6 +29,16 @@ class LoginResponse(BaseModel):
 
 class AuthStatusResponse(BaseModel):
     auth_enabled: bool
+
+
+class PathTokenRequest(BaseModel):
+    path: str
+
+
+class PathTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "path"
+    expires_in: int = QUERY_ACCESS_TOKEN_EXPIRE_SECONDS
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -51,3 +68,15 @@ async def auth_status():
     检查认证是否启用
     """
     return AuthStatusResponse(auth_enabled=auth_enabled())
+
+
+@router.post("/path-token", response_model=PathTokenResponse)
+async def create_path_token(request: PathTokenRequest):
+    """
+    Mint a short-lived, path-scoped token for browser surfaces that cannot attach
+    Authorization headers, such as image/PDF tags and WebSocket handshakes.
+    """
+    if not auth_enabled():
+        raise HTTPException(status_code=403, detail="Authentication is disabled")
+    token = create_asset_access_token(request.path)
+    return PathTokenResponse(access_token=token)

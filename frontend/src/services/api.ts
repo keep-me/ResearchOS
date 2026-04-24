@@ -130,15 +130,22 @@ import {
   fetchSSE,
   get,
   getApiBase,
-  getAuthToken,
+  getPathAccessToken,
   patch,
   post,
   postForm,
   put,
   request,
-  resolveApiAssetUrl,
 } from "./http";
-export { ApiHttpError, clearAuth, isAuthenticated, request, resolveApiAssetUrl } from "./http";
+export {
+  ApiHttpError,
+  clearAuth,
+  getPathAccessToken,
+  isAuthenticated,
+  request,
+  resolveApiAssetUrl,
+  resolveSignedApiAssetUrl,
+} from "./http";
 
 export type FigureExtractMode = "arxiv_source" | "mineru";
 export type PaperContentSource = "pdf" | "markdown";
@@ -538,9 +545,7 @@ export const paperApi = {
     );
   },
   pdfUrl: (id: string, _arxivId?: string) => {
-    const token = getAuthToken();
-    const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${getApiBase().replace(/\/+$/, "")}/papers/${id}/pdf${suffix}`;
+    return `/papers/${id}/pdf`;
   },
   downloadPdf: (id: string) =>
     post<{ status: string; pdf_path: string }>(`/papers/${id}/download-pdf`),
@@ -596,7 +601,7 @@ export const paperApi = {
     return postForm<PdfUploadResult>("/papers/upload-pdf", form);
   },
   figureImageUrl: (paperId: string, figureId: string) => {
-    return resolveApiAssetUrl(`/papers/${paperId}/figures/${figureId}/image`);
+    return `/papers/${paperId}/figures/${figureId}/image`;
   },
   aiExplain: (
     id: string,
@@ -1571,11 +1576,10 @@ export const assistantWorkspaceApi = {
   closeTerminalSession: (sessionId: string) =>
     del<void>(`/agent/workspace/terminal/session/${encodeURIComponent(sessionId)}`),
   terminalWebSocketUrl: (sessionId: string) => {
-    const token = getAuthToken() || "";
-    return buildWebSocketUrl(
-      `/agent/workspace/terminal/session/${encodeURIComponent(sessionId)}/ws`,
-      token ? { token } : undefined,
-    );
+    const path = `/agent/workspace/terminal/session/${encodeURIComponent(sessionId)}/ws`;
+    return getPathAccessToken(path).then((token) => (
+      buildWebSocketUrl(path, token ? { token } : undefined)
+    ));
   },
   readFile: (path: string, relativePath: string, maxChars = 120000, serverId = "local") =>
     get<AssistantWorkspaceFileResponse>(

@@ -151,10 +151,14 @@ export function WorkspaceTerminal({
     onStateChangeRef.current?.("connecting");
     expectedCloseRef.current = false;
 
-    const socket = new WebSocket(assistantWorkspaceApi.terminalWebSocketUrl(sessionId));
-    socketRef.current = socket;
+    let disposed = false;
+    let socket: WebSocket | null = null;
 
-    socket.onopen = () => {
+    const attachSocket = (nextSocket: WebSocket) => {
+      socket = nextSocket;
+      socketRef.current = nextSocket;
+
+      nextSocket.onopen = () => {
       const fitAddon = fitAddonRef.current;
       if (fitAddon) {
         try {
@@ -170,9 +174,9 @@ export function WorkspaceTerminal({
           rows: terminal.rows,
         }));
       }
-    };
+      };
 
-    socket.onmessage = (event) => {
+      nextSocket.onmessage = (event) => {
       let payload: Record<string, unknown>;
       try {
         payload = JSON.parse(String(event.data || "{}"));
@@ -210,17 +214,17 @@ export function WorkspaceTerminal({
         onStateChangeRef.current?.("closed");
         onExitRef.current?.(exitCode);
       }
-    };
+      };
 
-    socket.onerror = () => {
+      nextSocket.onerror = () => {
       if (expectedCloseRef.current || stateRef.current === "closed") return;
       stateRef.current = "error";
       onStateChangeRef.current?.("error");
       onErrorRef.current?.("终端 WebSocket 连接失败");
-    };
+      };
 
-    socket.onclose = (event) => {
-      if (socketRef.current === socket) {
+      nextSocket.onclose = (event) => {
+      if (socketRef.current === nextSocket) {
         socketRef.current = null;
       }
       if (expectedCloseRef.current) {
@@ -238,14 +242,29 @@ export function WorkspaceTerminal({
         stateRef.current = "closed";
         onStateChangeRef.current?.("closed");
       }
+      };
     };
 
+    assistantWorkspaceApi.terminalWebSocketUrl(sessionId)
+      .then((url) => {
+        if (disposed) return;
+        attachSocket(new WebSocket(url));
+      })
+      .catch((error) => {
+        if (disposed) return;
+        const message = error instanceof Error ? error.message : "终端 WebSocket 连接失败";
+        stateRef.current = "error";
+        onStateChangeRef.current?.("error");
+        onErrorRef.current?.(message);
+      });
+
     return () => {
+      disposed = true;
       expectedCloseRef.current = true;
-      if (socketRef.current === socket) {
+      if (socket && socketRef.current === socket) {
         socketRef.current = null;
       }
-      socket.close();
+      socket?.close();
     };
   }, [sessionId]);
 

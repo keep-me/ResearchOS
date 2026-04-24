@@ -23,12 +23,15 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7  # 7 days
 ASSET_TOKEN_EXPIRE_MINUTES = 5
+QUERY_ACCESS_TOKEN_EXPIRE_SECONDS = 90
 _DEFAULT_AUTH_SECRET = "researchos-secret-key-change-in-production"
 _BCRYPT_HASH_RE = re.compile(r"^\$2[aby]\$")
 _QUERY_TOKEN_ALLOWED_PATHS = (
     re.compile(r"^/papers/[^/]+/pdf$"),
     re.compile(r"^/papers/[^/]+/figures/[^/]+/image$"),
     re.compile(r"^/global/event$"),
+    re.compile(r"^/global/ws$"),
+    re.compile(r"^/agent/workspace/terminal/session/[^/]+/ws$"),
 )
 
 
@@ -87,6 +90,10 @@ def require_auth_secret() -> str:
 def validate_auth_configuration() -> None:
     settings = get_settings()
     if not auth_enabled():
+        if settings.app_env != "dev" and not bool(getattr(settings, "allow_unauthenticated", False)):
+            raise RuntimeError(
+                "Non-dev deployments must configure authentication or set ALLOW_UNAUTHENTICATED=true"
+            )
         return
 
     require_auth_secret()
@@ -141,11 +148,13 @@ def create_asset_access_token(path: str, *, expires_delta: timedelta | None = No
     normalized_path = str(path or "").strip()
     if not query_token_allowed_for_path(normalized_path):
         raise ValueError("path is not eligible for signed asset access")
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ASSET_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(seconds=QUERY_ACCESS_TOKEN_EXPIRE_SECONDS)
+    )
     return jwt.encode(
         {
             "sub": "asset",
-            "typ": "asset_access",
+            "typ": "path_access",
             "path": normalized_path,
             "exp": expire,
         },
@@ -169,7 +178,8 @@ def decode_asset_access_token(token: str, *, path: str) -> dict[str, Any] | None
     except (JWTError, RuntimeError):
         return None
     if payload.get("typ") != "asset_access":
-        return None
+        if payload.get("typ") != "path_access":
+            return None
     if str(payload.get("path") or "").strip() != str(path or "").strip():
         return None
     return payload

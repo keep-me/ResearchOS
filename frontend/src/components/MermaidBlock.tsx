@@ -1,4 +1,6 @@
 import { memo, useEffect, useId, useMemo, useState } from "react";
+import DOMPurify from "dompurify";
+import mermaidModuleUrl from "mermaid/dist/mermaid.esm.min.mjs?url";
 import { cn } from "@/lib/utils";
 
 interface MermaidBlockProps {
@@ -13,7 +15,6 @@ type MermaidApi = {
 
 let initializedTheme: "default" | "dark" | null = null;
 let mermaidPromise: Promise<MermaidApi> | null = null;
-const MERMAID_ESM_URL = "https://esm.sh/mermaid@11.12.0";
 
 function getMermaidModule(mod: unknown): MermaidApi {
   if (mod && typeof mod === "object" && "default" in mod) {
@@ -22,17 +23,9 @@ function getMermaidModule(mod: unknown): MermaidApi {
   return mod as MermaidApi;
 }
 
-function isDynamicImportFetchError(error: unknown): boolean {
-  const message = getErrorMessage(error).toLowerCase();
-  return (
-    message.includes("failed to fetch dynamically imported module")
-    || message.includes("/.vite/deps/")
-  );
-}
-
 async function loadMermaid(): Promise<MermaidApi> {
   if (!mermaidPromise) {
-    mermaidPromise = import(/* @vite-ignore */ MERMAID_ESM_URL).then(getMermaidModule);
+    mermaidPromise = import(/* @vite-ignore */ mermaidModuleUrl).then(getMermaidModule);
   }
   try {
     return await mermaidPromise;
@@ -127,7 +120,7 @@ const MermaidBlock = memo(function MermaidBlock({ chart, className }: MermaidBlo
           setError("Mermaid 语法无效，已跳过渲染");
           return;
         }
-        setSvg(renderedSvg);
+        setSvg(DOMPurify.sanitize(renderedSvg, { USE_PROFILES: { svg: true, svgFilters: true } }));
         setError(null);
       } catch (renderError) {
         if (disposed) return;

@@ -1,5 +1,5 @@
 import { isTauri, resolveApiBase } from "@/lib/tauri";
-import { globalApi } from "@/services/api";
+import { getPathAccessToken, globalApi } from "@/services/api";
 import type { GlobalBusEnvelope } from "@/types";
 
 type EnvelopeHandler = (envelope: GlobalBusEnvelope) => void;
@@ -47,25 +47,7 @@ function parseEventSourceEnvelope(data: string): GlobalBusEnvelope | null {
   }
 }
 
-function getAuthToken(): string | null {
-  try {
-    return sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token");
-  } catch {
-    return null;
-  }
-}
-
-function buildEventSourceUrl(): string {
-  const base = `${resolveApiBase().replace(/\/+$/, "")}/global/event`;
-  const url = new URL(base, window.location.href);
-  const token = getAuthToken();
-  if (token && !url.searchParams.has("token")) {
-    url.searchParams.set("token", token);
-  }
-  return url.toString();
-}
-
-function buildWebSocketUrl(): string {
+async function buildWebSocketUrl(): Promise<string> {
   const base = resolveApiBase().replace(/\/+$/, "");
   const wsBase = base.startsWith("https://")
     ? `wss://${base.slice("https://".length)}`
@@ -73,7 +55,7 @@ function buildWebSocketUrl(): string {
       ? `ws://${base.slice("http://".length)}`
       : base;
   const url = new URL(`${wsBase}/global/ws`, window.location.href);
-  const token = getAuthToken();
+  const token = await getPathAccessToken("/global/ws");
   if (token && !url.searchParams.has("token")) {
     url.searchParams.set("token", token);
   }
@@ -118,50 +100,11 @@ function emitError(error: unknown): void {
   }
 }
 
-async function runEventSourceConnection(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    const source = new EventSource(buildEventSourceUrl());
-    GLOBAL_BUS_CLIENT.eventSource = source;
-
-    const cleanup = () => {
-      if (settled) return;
-      settled = true;
-      if (GLOBAL_BUS_CLIENT.eventSource === source) {
-        GLOBAL_BUS_CLIENT.eventSource = null;
-      }
-      source.close();
-      resolve();
-    };
-
-    source.onmessage = (event) => {
-      const envelope = parseEventSourceEnvelope(event.data);
-      if (envelope) {
-        emitEnvelope(envelope);
-      }
-    };
-
-    source.onerror = () => {
-      if (GLOBAL_BUS_CLIENT.closed) {
-        cleanup();
-        return;
-      }
-      emitError(new Error("global event stream disconnected"));
-      if (source.readyState === EventSource.CLOSED) {
-        cleanup();
-      }
-    };
-
-    if (GLOBAL_BUS_CLIENT.closed) {
-      cleanup();
-    }
-  });
-}
-
 async function runWebSocketConnection(): Promise<void> {
+  const url = await buildWebSocketUrl();
   await new Promise<void>((resolve) => {
     let settled = false;
-    const socket = new WebSocket(buildWebSocketUrl());
+    const socket = new WebSocket(url);
     GLOBAL_BUS_CLIENT.websocket = socket;
 
     const cleanup = () => {
@@ -250,8 +193,6 @@ async function runGlobalBusConnection(): Promise<void> {
     try {
       if (isTauri() && typeof WebSocket !== "undefined") {
         await runWebSocketConnection();
-      } else if (typeof EventSource !== "undefined") {
-        await runEventSourceConnection();
       } else {
         await runFetchConnection();
       }

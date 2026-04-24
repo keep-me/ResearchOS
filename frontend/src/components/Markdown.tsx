@@ -6,8 +6,10 @@ import { Children, isValidElement, memo, useEffect, useMemo, useState, type Reac
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import DOMPurify from "dompurify";
 import katexScriptUrl from "katex/dist/katex.min.js?url";
 import MermaidBlock from "@/components/MermaidBlock";
+import SignedAssetImage from "@/components/SignedAssetImage";
 import { resolveApiAssetUrl } from "@/services/api";
 import "katex/dist/katex.min.css";
 
@@ -176,15 +178,15 @@ function KatexMath({ formula, displayMode }: { formula: string; displayMode: boo
     setHtml(null);
     loadKatex()
       .then((katex) => {
-        const rendered = katex.renderToString(normalizedFormula, {
-          displayMode,
-          strict: false,
-          throwOnError: false,
-          trust: true,
-        });
-        if (!cancelled) {
-          setHtml(rendered);
-        }
+	        const rendered = katex.renderToString(normalizedFormula, {
+	          displayMode,
+	          strict: false,
+	          throwOnError: false,
+	          trust: false,
+	        });
+	        if (!cancelled) {
+	          setHtml(DOMPurify.sanitize(rendered, { USE_PROFILES: { html: true, svg: true, mathMl: true } }));
+	        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -258,10 +260,9 @@ const Markdown = memo(function Markdown({ children, className, autoMath = false 
               </div>
             );
           },
-          img({ src, alt, ...props }) {
-            const resolvedSrc = resolveApiAssetUrl(String(src || ""));
-            return <img {...props} src={resolvedSrc || undefined} alt={alt || ""} loading="lazy" />;
-          },
+	          img({ src, alt, ...props }) {
+	            return <SignedAssetImage {...props} src={String(src || "")} alt={alt || ""} loading="lazy" />;
+	          },
           a({ href, children: linkChildren, ...props }) {
             const resolvedHref = resolveApiAssetUrl(String(href || ""));
             const isExternal = /^https?:\/\//i.test(resolvedHref);
@@ -270,7 +271,7 @@ const Markdown = memo(function Markdown({ children, className, autoMath = false 
                 {...props}
                 href={resolvedHref || undefined}
                 target={isExternal ? "_blank" : undefined}
-                rel={isExternal ? "noreferrer" : undefined}
+	                rel={isExternal ? "noopener noreferrer" : undefined}
               >
                 {linkChildren}
               </a>

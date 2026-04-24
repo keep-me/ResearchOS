@@ -75,8 +75,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.WHITELIST:
             return await call_next(request)
 
-        # 静态文件和文档跳过
-        if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
+        # 文档可在生产环境通过 EXPOSE_API_DOCS=false 关闭或改为受认证保护
+        if get_settings().expose_api_docs and (
+            request.url.path.startswith("/docs") or request.url.path.startswith("/openapi")
+        ):
             return await call_next(request)
 
         token = extract_request_token(
@@ -127,7 +129,13 @@ async def lifespan(_app: FastAPI):
         await _shutdown_runtime()
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    lifespan=lifespan,
+    docs_url="/docs" if settings.expose_api_docs else None,
+    redoc_url="/redoc" if settings.expose_api_docs else None,
+    openapi_url="/openapi.json" if settings.expose_api_docs else None,
+)
 app.add_middleware(RequestLogMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -197,4 +205,3 @@ app.include_router(writing.router)
 app.include_router(jobs.router)
 app.include_router(auth.router)
 app.include_router(opencode.router)
-

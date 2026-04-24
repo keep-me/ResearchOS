@@ -105,17 +105,35 @@ function toError(error: unknown) {
 
 async function loadPdfJs() {
   if (!pdfjsPromise) {
-    pdfjsPromise = import(/* @vite-ignore */ pdfjsModuleUrl).then((module) => {
-      const pdfjs = module as PdfJsModule;
-      pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
-      return pdfjs;
-    });
+    pdfjsPromise = import(/* @vite-ignore */ pdfjsModuleUrl)
+      .then((module) => {
+        const pdfjs = module as PdfJsModule;
+        pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+        return pdfjs;
+      })
+      .catch((error) => {
+        pdfjsPromise = null;
+        throw error;
+      });
   }
   return pdfjsPromise;
 }
 
 function createLinkService() {
+  const scrollToPage = (pageNumber: number) => {
+    if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
+    document
+      .querySelector(`[data-pdf-page-number="${Math.floor(pageNumber)}"]`)
+      ?.scrollIntoView({ block: "start" });
+  };
   return {
+    externalLinkTarget: 2,
+    externalLinkRel: "noopener noreferrer nofollow",
+    eventBus: {
+      dispatch() {
+        return undefined;
+      },
+    },
     addLinkAttributes(link: HTMLAnchorElement, url: string, newWindow = false) {
       link.href = url;
       link.rel = "noopener noreferrer nofollow";
@@ -127,10 +145,27 @@ function createLinkService() {
     getAnchorUrl(hash: string) {
       return hash;
     },
-    goToDestination() {
+    goToDestination(destination: unknown) {
+      if (Array.isArray(destination) && typeof destination[0] === "object") {
+        return undefined;
+      }
       return undefined;
     },
+    setHash(hash: string) {
+      const match = String(hash || "").match(/page=(\d+)/i);
+      if (match) scrollToPage(Number(match[1]));
+    },
     navigateTo() {
+      return undefined;
+    },
+    executeNamedAction(action: string) {
+      if (String(action || "").toLowerCase() === "nextpage") {
+        const current = document.querySelector("[data-pdf-page-number]");
+        const page = Number(current?.getAttribute("data-pdf-page-number") || "0");
+        scrollToPage(page + 1);
+      }
+    },
+    executeSetOCGState() {
       return undefined;
     },
   };
@@ -184,8 +219,8 @@ export function Document({
     return () => {
       cancelled = true;
       setContextValue(null);
-      void loadingTask?.destroy?.();
-      void loadedPdf?.destroy?.();
+      const destroyTarget = loadedPdf ? loadedPdf.destroy?.() : loadingTask?.destroy?.();
+      void destroyTarget;
     };
   }, [file]);
 
@@ -341,6 +376,7 @@ export function Page({
   return (
     <div
       className={classNames("react-pdf__Page", className)}
+      data-pdf-page-number={pageNumber}
       style={{ position: "relative", width: dimensions.width, height: dimensions.height }}
     >
       <canvas ref={canvasRef} className="react-pdf__Page__canvas block" />

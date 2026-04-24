@@ -20,25 +20,10 @@ export default defineConfig(({ mode }) => {
   const forceOptimizeDeps = envValue("VITE_FORCE_OPTIMIZE_DEPS") === "true";
 
   return {
-    plugins: [mode === "production" ? null : react(), tailwindcss(), svgr()].filter(Boolean),
-    esbuild: {
-      jsx: "automatic",
-    },
+    plugins: [react(), tailwindcss(), svgr()],
     resolve: {
       alias: [
         { find: "@", replacement: path.resolve(__dirname, "./src") },
-        ...(mode === "production"
-          ? [
-              {
-                find: /^react-router$/,
-                replacement: path.resolve(__dirname, "./node_modules/react-router/dist/production/index.mjs"),
-              },
-              {
-                find: /^react-router\/dom$/,
-                replacement: path.resolve(__dirname, "./node_modules/react-router/dist/production/dom-export.mjs"),
-              },
-            ]
-          : []),
       ],
     },
     server: {
@@ -71,7 +56,6 @@ export default defineConfig(({ mode }) => {
         : undefined,
     },
     optimizeDeps: {
-      exclude: ["mermaid"],
       include: [
         // The graph route is lazy-loaded. Pre-bundle these deps up front so the
         // first visit to /graph does not trigger a late optimize pass that can
@@ -86,8 +70,8 @@ export default defineConfig(({ mode }) => {
       force: mode === "development" && forceOptimizeDeps,
     },
     build: {
-      modulePreload: false,
-      reportCompressedSize: false,
+      modulePreload: true,
+      reportCompressedSize: true,
       rollupOptions: {
         output: {
           manualChunks(id) {

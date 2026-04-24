@@ -23,6 +23,43 @@ def test_validate_auth_configuration_requires_secret_when_auth_enabled(monkeypat
         auth.validate_auth_configuration()
 
 
+def test_validate_auth_configuration_rejects_unauthenticated_non_dev(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: SimpleNamespace(
+            auth_password="",
+            auth_password_hash="",
+            auth_secret_key="",
+            app_env="prod",
+            allow_unauthenticated=False,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="ALLOW_UNAUTHENTICATED"):
+        auth.validate_auth_configuration()
+
+
+def test_validate_auth_configuration_allows_explicit_unauthenticated_non_dev(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: SimpleNamespace(
+            auth_password="",
+            auth_password_hash="",
+            auth_secret_key="",
+            app_env="prod",
+            allow_unauthenticated=True,
+        ),
+    )
+
+    auth.validate_auth_configuration()
+
+
 def test_validate_auth_configuration_requires_hashed_password_outside_dev(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -86,3 +123,24 @@ def test_asset_access_token_is_path_scoped_and_short_lived(monkeypatch: pytest.M
     assert auth.decode_asset_access_token(token, path="/papers/other/pdf") is None
     with pytest.raises(ValueError):
         auth.create_asset_access_token("/papers/latest")
+
+
+def test_path_access_token_supports_websocket_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: SimpleNamespace(
+            auth_password="dev-password",
+            auth_password_hash="",
+            auth_secret_key="super-secret",
+            app_env="dev",
+        ),
+    )
+
+    token = auth.create_asset_access_token("/agent/workspace/terminal/session/session-1/ws")
+
+    assert auth.decode_asset_access_token(
+        token,
+        path="/agent/workspace/terminal/session/session-1/ws",
+    )
+    assert auth.decode_asset_access_token(token, path="/global/ws") is None

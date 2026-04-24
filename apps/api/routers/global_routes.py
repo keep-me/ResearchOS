@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 
 from packages.agent import global_bus
 from packages.agent.runtime.runtime_cleanup import dispose_runtime_state
-from packages.auth import auth_enabled, decode_access_token, extract_request_token
+from packages.auth import auth_enabled, decode_access_token, decode_asset_access_token, extract_request_token
 
 router = APIRouter()
 _ROOT = Path(__file__).resolve().parents[3]
@@ -73,7 +73,7 @@ def _authenticate_global_websocket(websocket: WebSocket) -> dict | None:
     if not token:
         raise PermissionError("未认证，全局事件连接被拒绝")
 
-    payload = decode_access_token(token)
+    payload = decode_access_token(token) or decode_asset_access_token(token, path="/global/ws")
     if not payload:
         raise PermissionError("全局事件令牌无效或已过期")
     return payload
@@ -201,4 +201,3 @@ async def _forward_global_events_websocket(
             await websocket.send_json(payload)
     finally:
         unsubscribe()
-

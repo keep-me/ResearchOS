@@ -12,7 +12,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
-from jinja2 import Template
+from jinja2 import Environment
 from packages.config import get_settings
 from packages.timezone import user_date_str
 
@@ -190,7 +190,10 @@ def _parse_deep_dive(md: str) -> dict:
     return sections
 
 
-DAILY_TEMPLATE = Template("""\
+_JINJA_ENV = Environment(autoescape=True)
+
+
+DAILY_TEMPLATE = _JINJA_ENV.from_string("""\
 <!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -297,7 +300,7 @@ DAILY_TEMPLATE = Template("""\
   {% for d in deep_read_highlights %}
   <div class="deep-card" data-paper-id="{{ d.id }}">
     <div class="deep-header">
-      <a href="{{ site_url }}/papers/{{ d.id }}" target="_blank" class="deep-title">{{ d.title }}</a>
+      <a href="{{ site_url }}/papers/{{ d.id }}" target="_blank" rel="noopener noreferrer" class="deep-title">{{ d.title }}</a>
       {% if d.skim_score %}
       <span class="score-badge {% if d.skim_score >= 0.8 %}score-high{% elif d.skim_score >= 0.6 %}score-mid{% else %}score-low{% endif %}">
         {{ "%.0f"|format(d.skim_score * 100) }}分
@@ -327,7 +330,7 @@ DAILY_TEMPLATE = Template("""\
       </ul>
     </div>
     {% endif %}
-    <a href="{{ site_url }}/papers/{{ d.id }}" class="btn" target="_blank">查看详情</a>
+    <a href="{{ site_url }}/papers/{{ d.id }}" class="btn" target="_blank" rel="noopener noreferrer">查看详情</a>
   </div>
   {% endfor %}
 </div>
@@ -339,13 +342,13 @@ DAILY_TEMPLATE = Template("""\
   {% for r in recommendations %}
   <div class="rec-card" data-paper-id="{{ r.id }}" data-arxiv-id="{{ r.arxiv_id }}">
     <div class="rec-title">
-      <a href="{{ site_url }}/papers/{{ r.id }}" target="_blank">{{ r.title }}</a>
+      <a href="{{ site_url }}/papers/{{ r.id }}" target="_blank" rel="noopener noreferrer">{{ r.title }}</a>
     </div>
-    <div class="rec-meta">arXiv: <a href="https://arxiv.org/abs/{{ r.arxiv_id }}" target="_blank">{{ r.arxiv_id }}</a> · 相似度：{{ "%.0f"|format(r.similarity * 100) }}%</div>
+    <div class="rec-meta">arXiv: <a href="https://arxiv.org/abs/{{ r.arxiv_id }}" target="_blank" rel="noopener noreferrer">{{ r.arxiv_id }}</a> · 相似度：{{ "%.0f"|format(r.similarity * 100) }}%</div>
     {% if r.title_zh %}
     <div class="rec-reason">💡 {{ r.title_zh }}</div>
     {% endif %}
-    <a href="{{ site_url }}/papers/{{ r.id }}" class="btn" target="_blank">查看详情</a>
+    <a href="{{ site_url }}/papers/{{ r.id }}" class="btn" target="_blank" rel="noopener noreferrer">查看详情</a>
   </div>
   {% endfor %}
 </div>
@@ -372,7 +375,7 @@ DAILY_TEMPLATE = Template("""\
     <div class="paper-item" data-paper-id="{{ p.id }}" data-arxiv-id="{{ p.arxiv_id }}">
       <div class="paper-header">
         <div class="paper-title">
-          <a href="{{ site_url }}/papers/{{ p.id }}" target="_blank">{{ p.title }}</a>
+          <a href="{{ site_url }}/papers/{{ p.id }}" target="_blank" rel="noopener noreferrer">{{ p.title }}</a>
         </div>
         {% if p.skim_score %}
         <span class="score-badge score-sm {% if p.skim_score >= 0.8 %}score-high{% elif p.skim_score >= 0.6 %}score-mid{% else %}score-low{% endif %}">
@@ -380,7 +383,7 @@ DAILY_TEMPLATE = Template("""\
         </span>
         {% endif %}
       </div>
-      <div class="paper-id">arXiv: <a href="https://arxiv.org/abs/{{ p.arxiv_id }}" target="_blank">{{ p.arxiv_id }}</a> · {{ p.read_status }}{% if p.has_deep_read %} · <span class="deep-badge">已精读</span>{% endif %}</div>
+      <div class="paper-id">arXiv: <a href="https://arxiv.org/abs/{{ p.arxiv_id }}" target="_blank" rel="noopener noreferrer">{{ p.arxiv_id }}</a> · {{ p.read_status }}{% if p.has_deep_read %} · <span class="deep-badge">已精读</span>{% endif %}</div>
       {% if p.innovations %}
       <div class="innovation-tags">
         {% for inn in p.innovations[:3] %}
@@ -391,7 +394,7 @@ DAILY_TEMPLATE = Template("""\
       {% if p.summary %}
       <div class="paper-summary">{{ p.summary }}</div>
       {% endif %}
-      <a href="{{ site_url }}/papers/{{ p.id }}" class="btn" target="_blank">阅读原文</a>
+      <a href="{{ site_url }}/papers/{{ p.id }}" class="btn" target="_blank" rel="noopener noreferrer">阅读原文</a>
     </div>
     {% endfor %}
   </div>
@@ -406,7 +409,7 @@ DAILY_TEMPLATE = Template("""\
   <div class="paper-item" data-paper-id="{{ p.id }}" data-arxiv-id="{{ p.arxiv_id }}">
     <div class="paper-header">
       <div class="paper-title">
-        <a href="{{ site_url }}/papers/{{ p.id }}" target="_blank">{{ p.title }}</a>
+        <a href="{{ site_url }}/papers/{{ p.id }}" target="_blank" rel="noopener noreferrer">{{ p.title }}</a>
       </div>
       {% if p.skim_score %}
       <span class="score-badge score-sm {% if p.skim_score >= 0.8 %}score-high{% elif p.skim_score >= 0.6 %}score-mid{% else %}score-low{% endif %}">
@@ -414,7 +417,7 @@ DAILY_TEMPLATE = Template("""\
       </span>
       {% endif %}
     </div>
-    <div class="paper-id">arXiv: <a href="https://arxiv.org/abs/{{ p.arxiv_id }}" target="_blank">{{ p.arxiv_id }}</a> · {{ p.read_status }}{% if p.has_deep_read %} · <span class="deep-badge">已精读</span>{% endif %}</div>
+    <div class="paper-id">arXiv: <a href="https://arxiv.org/abs/{{ p.arxiv_id }}" target="_blank" rel="noopener noreferrer">{{ p.arxiv_id }}</a> · {{ p.read_status }}{% if p.has_deep_read %} · <span class="deep-badge">已精读</span>{% endif %}</div>
     {% if p.innovations %}
     <div class="innovation-tags">
       {% for inn in p.innovations[:3] %}
@@ -425,7 +428,7 @@ DAILY_TEMPLATE = Template("""\
     {% if p.summary %}
     <div class="paper-summary">{{ p.summary }}</div>
     {% endif %}
-    <a href="{{ site_url }}/papers/{{ p.id }}" class="btn" target="_blank">阅读原文</a>
+    <a href="{{ site_url }}/papers/{{ p.id }}" class="btn" target="_blank" rel="noopener noreferrer">阅读原文</a>
   </div>
   {% endfor %}
 </div>
@@ -433,7 +436,7 @@ DAILY_TEMPLATE = Template("""\
 
 <div class="footer">
   ResearchOS · AI 驱动的学术研究工作流平台<br>
-  <a href="{{ site_url }}" target="_blank">{{ site_url }}</a>
+  <a href="{{ site_url }}" target="_blank" rel="noopener noreferrer">{{ site_url }}</a>
 </div>
 
 </body>

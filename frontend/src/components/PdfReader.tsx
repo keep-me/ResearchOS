@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
 import { Document, Page } from "@/components/PdfDocument";
+import { useSignedApiAssetUrl } from "@/hooks/useSignedApiAssetUrl";
 import Markdown from "@/components/Markdown";
 import { timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -669,7 +670,8 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
   const autoOcrAttemptedRef = useRef(false);
   const ocrRunRef = useRef(false);
 
-  const pdfUrl = useMemo(() => paperApi.pdfUrl(paperId, paperArxivId), [paperArxivId, paperId]);
+  const basePdfUrl = useMemo(() => paperApi.pdfUrl(paperId, paperArxivId), [paperArxivId, paperId]);
+  const pdfUrl = useSignedApiAssetUrl(basePdfUrl);
   const pages = useMemo(() => Array.from({ length: numPages }, (_, i) => i + 1), [numPages]);
   const sectionsById = useMemo(() => {
     const map = new Map<string, { title: string; level: number; order: number; page_start?: number | null }>();

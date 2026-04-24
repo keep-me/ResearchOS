@@ -705,13 +705,13 @@ function RichCitationCard({
               </Link>
             )}
             {entry.arxiv_id && (
-              <a href={`https://arxiv.org/abs/${entry.arxiv_id}`} target="_blank" rel="noreferrer"
+              <a href={`https://arxiv.org/abs/${entry.arxiv_id}`} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 rounded-lg bg-page px-2.5 py-1 text-[10px] font-medium text-ink-secondary hover:text-ink">
                 <ExternalLink className="h-3 w-3" /> arXiv
               </a>
             )}
             {entry.scholar_id && (
-              <a href={`https://www.semanticscholar.org/paper/${entry.scholar_id}`} target="_blank" rel="noreferrer"
+              <a href={`https://www.semanticscholar.org/paper/${entry.scholar_id}`} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 rounded-lg bg-page px-2.5 py-1 text-[10px] font-medium text-ink-secondary hover:text-ink">
                 <ExternalLink className="h-3 w-3" /> Semantic Scholar
               </a>

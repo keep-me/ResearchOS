@@ -7,9 +7,12 @@
 from functools import lru_cache
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from packages.path_utils import is_foreign_windows_path, sqlite_url_for_path
 
 
 def _resolve_env_file() -> str:
@@ -20,6 +23,11 @@ def _resolve_env_file() -> str:
 def _default_data_dir() -> Path:
     configured = os.environ.get("RESEARCHOS_DATA_DIR", "").strip()
     if configured:
+        if is_foreign_windows_path(configured):
+            raise RuntimeError(
+                "RESEARCHOS_DATA_DIR is a Windows path on a non-Windows host; "
+                "use a host-mounted POSIX path or run the API on Windows."
+            )
         return Path(configured).expanduser().resolve()
     container_dir = Path("/app/data")
     if container_dir.exists():
@@ -28,7 +36,7 @@ def _default_data_dir() -> Path:
 
 
 def _sqlite_url(path: Path) -> str:
-    return f"sqlite:///{path.resolve().as_posix()}"
+    return sqlite_url_for_path(path)
 
 
 def default_database_file(data_dir: Path) -> Path:
@@ -62,6 +70,8 @@ class Settings(BaseSettings):
     auth_password: str = ""  # 站点密码，为空则禁用认证
     auth_password_hash: str = ""  # 推荐使用 bcrypt 哈希
     auth_secret_key: str = ""  # JWT 密钥，开启认证时必须显式配置
+    allow_unauthenticated: bool = False  # 非 dev 环境必须显式允许无认证
+    expose_api_docs: bool = True  # 生产环境可关闭 /docs 和 /openapi.json
 
     database_url: str = Field(default_factory=_default_database_url)
     pdf_storage_root: Path = Field(default_factory=_default_pdf_storage_root)
@@ -87,8 +97,7 @@ class Settings(BaseSettings):
     weekly_cron: str = "0 22 * * 0"
     cors_allow_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"  # 开发环境
-        "http://localhost:3002,http://127.0.0.1:3002,"  # Docker 生产环境
-        "https://pm.vibingu.cn"  # 自定义域名 HTTPS
+        "http://localhost:3002,http://127.0.0.1:3002"  # 本地静态前端
     )
 
     # LLM Provider: openai / anthropic / zhipu / gemini
@@ -150,11 +159,38 @@ class Settings(BaseSettings):
     )
 
 
+def _sqlite_database_path(database_url: str) -> Path | None:
+    raw = str(database_url or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.scheme != "sqlite":
+        return None
+    if raw.startswith("sqlite:///"):
+        path_text = unquote(raw[len("sqlite:///") :])
+        if not path_text:
+            return None
+        if os.name == "nt" and path_text.startswith("/") and len(path_text) >= 3 and path_text[2] == ":":
+            path_text = path_text[1:]
+        return Path(path_text).expanduser()
+    if raw.startswith("sqlite://"):
+        return None
+    if raw.startswith("sqlite:"):
+        path_text = unquote(raw[len("sqlite:") :])
+        return Path(path_text).expanduser() if path_text else None
+    return Path(raw).expanduser()
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     settings = Settings()
     configured_data_dir = os.environ.get("RESEARCHOS_DATA_DIR", "").strip()
     if configured_data_dir:
+        if is_foreign_windows_path(configured_data_dir):
+            raise RuntimeError(
+                "RESEARCHOS_DATA_DIR is a Windows path on a non-Windows host; "
+                "use a host-mounted POSIX path or run the API on Windows."
+            )
         data_dir = Path(configured_data_dir).expanduser().resolve()
         if not os.environ.get("DATABASE_URL", "").strip():
             settings.database_url = _sqlite_url(default_database_file(data_dir))
@@ -164,6 +200,13 @@ def get_settings() -> Settings:
             settings.brief_output_root = data_dir / "briefs"
     settings.pdf_storage_root.mkdir(parents=True, exist_ok=True)
     settings.brief_output_root.mkdir(parents=True, exist_ok=True)
-    db_parent = Path(settings.database_url.replace("sqlite:///", "")).parent
-    db_parent.mkdir(parents=True, exist_ok=True)
+    db_path = _sqlite_database_path(settings.database_url)
+    if db_path is not None:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
     return settings
+
+
+def reload_settings() -> Settings:
+    """Clear the cached settings object and reload it from the current environment."""
+    get_settings.cache_clear()
+    return get_settings()

@@ -9,6 +9,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { PaperDetailSkeleton } from "@/components/Skeleton";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PaperCitationExpansion from "@/components/graph/PaperCitationExpansion";
+import SignedAssetImage from "@/components/SignedAssetImage";
 
 // Lazy-load heavier readers/renderers to keep the detail page responsive.
 const Markdown = lazy(() => import("@/components/Markdown"));
@@ -18,7 +19,6 @@ import { formatDateTime } from "@/lib/utils";
 import {
   paperApi,
   pipelineApi,
-  resolveApiAssetUrl,
   tasksApi,
   topicApi,
   type FigureAnalysisItem,
@@ -175,7 +175,7 @@ function resolveFigurePreviewUrl(
     return paperApi.figureImageUrl(paperId, figure.id);
   }
   const rawImageUrl = typeof figure.image_url === "string" ? figure.image_url.trim() : "";
-  return rawImageUrl ? resolveApiAssetUrl(rawImageUrl) : null;
+  return rawImageUrl || null;
 }
 
 function getPaperSourceLabel(url: string | null) {
@@ -3042,10 +3042,10 @@ function AnalysisSectionFigureRefs({
                 <p className="text-sm font-medium leading-6 text-ink">{figure.caption}</p>
               ) : null}
               {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt={figure.caption || getFigureReferenceTitle(figure)}
-                  className="max-h-56 w-full rounded-xl border border-border/70 object-contain bg-page/70"
+                <SignedAssetImage
+	                  src={imageUrl}
+	                  alt={figure.caption || getFigureReferenceTitle(figure)}
+	                  className="max-h-56 w-full rounded-xl border border-border/70 object-contain bg-page/70"
                   loading="lazy"
                 />
               ) : null}
@@ -3529,10 +3529,10 @@ function FigureCard({
             {/* Figure preview */}
             {imgUrl ? (
               <div className="flex justify-center bg-page/50 p-4 dark:bg-black/20">
-                <img
-                  src={imgUrl}
-                  alt={figure.caption || `Figure on page ${figure.page_number}`}
-                  className="max-h-[400px] max-w-full cursor-zoom-in rounded-lg object-contain shadow-sm transition-transform hover:scale-[1.02]"
+                <SignedAssetImage
+	                  src={imgUrl}
+	                  alt={figure.caption || `Figure on page ${figure.page_number}`}
+	                  className="max-h-[400px] max-w-full cursor-zoom-in rounded-lg object-contain shadow-sm transition-transform hover:scale-[1.02]"
                   onClick={(e) => { e.stopPropagation(); setLightbox(true); }}
                   loading="lazy"
                 />
@@ -3577,7 +3577,7 @@ function FigureCard({
           >
             <X className="h-5 w-5" />
           </button>
-          <img
+          <SignedAssetImage
             src={imgUrl}
             alt={figure.caption || ""}
             className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"

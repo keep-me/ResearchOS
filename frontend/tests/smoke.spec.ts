@@ -214,7 +214,8 @@ function isApiRequest(url: string) {
 
 async function enableAppSession(page: Page) {
   await page.addInitScript((token) => {
-    localStorage.setItem("auth_token", token);
+    sessionStorage.setItem("auth_token", token);
+    localStorage.removeItem("auth_token");
     localStorage.setItem("theme", "light");
   }, AUTH_TOKEN);
 }

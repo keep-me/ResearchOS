@@ -282,7 +282,7 @@ function EntryColumn({
                     <a
                       href={`https://arxiv.org/abs/${entry.arxiv_id}`}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-lg bg-page px-3 py-1.5 text-xs font-medium text-ink-secondary transition-colors hover:text-ink"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -294,7 +294,7 @@ function EntryColumn({
                     <a
                       href={entry.scholar_id.startsWith("http") ? entry.scholar_id : `https://www.semanticscholar.org/paper/${entry.scholar_id}`}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-lg bg-page px-3 py-1.5 text-xs font-medium text-ink-secondary transition-colors hover:text-ink"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />

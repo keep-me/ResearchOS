@@ -74,7 +74,10 @@ def join_path_string(base: object, *parts: object, resolve: bool = False) -> str
 def sqlite_url_for_path(path_value: object) -> str:
     path_text = str(path_value or "").strip()
     if is_windows_absolute_path(path_text):
-        return "sqlite:///" + path_text.replace("\\", "/")
+        normalized = ntpath.normpath(path_text).replace("\\", "/")
+        if normalized.startswith("//"):
+            return "sqlite:" + normalized
+        return "sqlite:///" + normalized
     return "sqlite:///" + Path(path_text).expanduser().resolve().as_posix()
 
 
@@ -82,12 +85,14 @@ def local_relative_path(root: object, target: object) -> str:
     root_text = str(root or "").strip()
     target_text = str(target or "").strip()
     if is_windows_absolute_path(root_text) or is_windows_absolute_path(target_text):
-        root_norm = root_text.replace("\\", "/").rstrip("/")
-        target_norm = target_text.replace("\\", "/")
+        root_norm = ntpath.normcase(ntpath.normpath(root_text)).replace("\\", "/").rstrip("/")
+        target_norm = ntpath.normcase(ntpath.normpath(target_text)).replace("\\", "/")
         if target_norm == root_norm:
             return "."
         prefix = f"{root_norm}/"
         if target_norm.startswith(prefix):
-            return target_norm[len(prefix):]
+            original_target = ntpath.normpath(target_text).replace("\\", "/")
+            original_root = ntpath.normpath(root_text).replace("\\", "/").rstrip("/")
+            return original_target[len(original_root) + 1 :]
         raise ValueError(f"{target_text!r} is not under {root_text!r}")
     return Path(target_text).relative_to(Path(root_text)).as_posix()

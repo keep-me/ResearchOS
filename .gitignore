@@ -32,7 +32,6 @@ test-results/
 
 # AI agent config (local only)
 .codex/
-.github/
 .claude/
 CLAUDE.md
 .claw/sessions/
@@ -54,10 +53,6 @@ backups/
 node_modules/
 frontend/node_modules/
 frontend/dist/
-
-# Package manager
-package-lock.json
-frontend/package-lock.json
 
 # Egg info
 researchos.egg-info/
@@ -95,4 +90,3 @@ packages/MinerU/runtime/
 # Local project/runtime artifacts
 projects/
 class/
-docs/

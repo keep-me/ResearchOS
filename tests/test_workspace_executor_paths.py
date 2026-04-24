@@ -9,6 +9,7 @@ import pytest
 
 from apps.api.routers import agent_workspace
 from packages.agent.workspace.workspace_executor import (
+    _translate_powershell_compat_command,
     edit_path_file,
     glob_path_entries,
     grep_path_contents,
@@ -123,6 +124,17 @@ def test_run_workspace_command_returns_updated_cwd(tmp_path: Path) -> None:
     assert result["success"] is True
     assert result["cwd"] == str(docs_dir.resolve())
     assert result["stdout"] == ""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="PowerShell compatibility translation is for non-Windows hosts")
+def test_powershell_compat_translation_preserves_semicolons_inside_strings() -> None:
+    translated = _translate_powershell_compat_command(
+        "Set-Content -Path notes/out.txt -Value 'alpha; beta'; Write-Output done"
+    )
+
+    assert translated is not None
+    assert "alpha; beta" in translated
+    assert "printf '%s\\n' done" in translated
 
 
 def test_create_workspace_git_branch_detects_existing_branch(tmp_path: Path) -> None:
@@ -364,4 +376,3 @@ def test_run_workspace_command_handles_multiline_python_without_outer_command_qu
     assert "hello from python" in result["stdout"]
     assert "workspace" in result["stdout"]
     assert result.get("error_code") is None
-

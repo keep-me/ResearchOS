@@ -1835,13 +1835,49 @@ def _mkdir_parent_prefix(path: str) -> str:
     return f"mkdir -p {shlex.quote(parent)} && "
 
 
+def _split_powershell_statements(raw: str) -> list[str]:
+    statements: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    escaped = False
+    for char in str(raw or ""):
+        if escaped:
+            current.append(char)
+            escaped = False
+            continue
+        if char == "`":
+            current.append(char)
+            escaped = True
+            continue
+        if quote:
+            current.append(char)
+            if char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            current.append(char)
+            continue
+        if char == ";":
+            statement = "".join(current).strip()
+            if statement:
+                statements.append(statement)
+            current = []
+            continue
+        current.append(char)
+    statement = "".join(current).strip()
+    if statement:
+        statements.append(statement)
+    return statements
+
+
 def _translate_powershell_compat_command(command: str) -> str | None:
     if os.name == "nt":
         return None
     raw = str(command or "").strip()
     if not raw:
         return None
-    statements = [item.strip() for item in raw.split(";") if item.strip()]
+    statements = _split_powershell_statements(raw)
     if not statements:
         return None
 

@@ -1,5 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 
+// Deep per-icon imports keep production builds below small container memory limits.
+// The lockfile pins lucide-react so these package-internal paths cannot drift in CI.
 export type LucideIcon = ComponentType<
   SVGProps<SVGSVGElement> & {
     size?: string | number;
