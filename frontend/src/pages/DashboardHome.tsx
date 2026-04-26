@@ -141,7 +141,7 @@ export default function DashboardHome() {
     ? arxivTrend.total_submissions
     : null;
   const libraryFocus = snapshot.library_focus;
-  const topicCards = libraryFocus?.topic_cards || [];
+  const folderCards = (libraryFocus?.topic_cards || []).filter((item) => item.kind === "folder");
   const libraryKeywords = libraryFocus?.keywords || [];
   const graphDensity = snapshot.graph?.density || 0;
   const trendPoints = useMemo(
@@ -316,9 +316,9 @@ export default function DashboardHome() {
             <SectionHeader title="主题详情" className="mb-0" />
             <Badge variant="info">{libraryFocus?.window_label || "论文库"}</Badge>
           </div>
-          {topicCards.length > 0 ? (
+          {folderCards.length > 0 ? (
             <div className="grid gap-2.5">
-              {topicCards.map((topic, index) => (
+              {folderCards.map((topic, index) => (
                 <TopicSummaryCard key={`${topic.label}-${index}`} topic={topic} accent={dataAccent(index)} />
               ))}
             </div>

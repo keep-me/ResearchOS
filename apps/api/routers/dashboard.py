@@ -105,7 +105,9 @@ def _build_topic_card(
 def _library_focus_snapshot(session, paper_repo) -> dict:
     topic_cards = []
     topics = session.execute(
-        select(TopicSubscription).order_by(TopicSubscription.created_at.desc())
+        select(TopicSubscription)
+        .where(TopicSubscription.kind == "folder")
+        .order_by(TopicSubscription.created_at.desc())
     ).scalars().all()
     topic_ids = [topic.id for topic in topics]
     topic_member_rows = []
@@ -154,7 +156,7 @@ def dashboard_home(
     """
 
     normalized_subdomain = str(trend_subdomain or "all").strip().lower() or "all"
-    cache_key = f"dashboard_home_v13_{project_limit}_{task_limit}_{normalized_subdomain}"
+    cache_key = f"dashboard_home_v14_{project_limit}_{task_limit}_{normalized_subdomain}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
