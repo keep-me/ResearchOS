@@ -355,7 +355,7 @@ def manual_fetch_topic(topic_id: str) -> dict:
         topic_name = topic.name
 
     task_prefix = f"fetch_{topic_id[:8]}_"
-    for task in reversed(global_tracker.get_active()):
+    for task in global_tracker.get_active():
         if (
             task.get("task_type") == "fetch"
             and str(task.get("task_id", "")).startswith(task_prefix)
@@ -391,7 +391,7 @@ def manual_fetch_topic(topic_id: str) -> dict:
 def fetch_topic_status(topic_id: str) -> dict:
     """查询手动抓取任务状态。"""
     task_prefix = f"fetch_{topic_id[:8]}_"
-    for task in reversed(global_tracker.get_active()):
+    for task in global_tracker.get_active():
         if task.get("task_type") == "fetch" and str(task.get("task_id", "")).startswith(task_prefix):
             if not task["finished"]:
                 return {"status": "running", **task}

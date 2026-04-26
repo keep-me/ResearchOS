@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.routers import topics as topics_router
 from packages.ai.ops import daily_runner
+from packages.domain.task_tracker import TaskTracker
 from packages.storage import db
 from packages.storage.db import Base, session_scope
 from packages.storage.repositories import TopicRepository
@@ -154,3 +155,60 @@ def test_run_topic_ingest_uses_persisted_external_filters(monkeypatch):
     }
     assert captured["topic_id"] == topic_id
     assert captured["entries"][0]["title"] == "Filtered Paper"
+
+
+def test_run_topic_ingest_does_not_outer_retry_arxiv_rate_limit(monkeypatch):
+    _configure_test_db(monkeypatch)
+    calls = {"count": 0}
+
+    class _FakePipelines:
+        def ingest_arxiv_with_stats(self, **kwargs):
+            calls["count"] += 1
+            raise RuntimeError("Client error '429 Unknown Error'")
+
+    monkeypatch.setattr(daily_runner, "PaperPipelines", _FakePipelines)
+
+    with session_scope() as session:
+        topic = TopicRepository(session).upsert_topic(
+            name="Rate Limited Topic",
+            kind="subscription",
+            query="multimodal",
+            source="arxiv",
+            enabled=True,
+            max_results_per_run=5,
+            retry_limit=3,
+        )
+        topic_id = topic.id
+
+    result = daily_runner.run_topic_ingest(topic_id)
+
+    assert calls["count"] == 1
+    assert result["status"] == "failed"
+    assert result["inserted"] == 0
+    assert "429" in result["error"]
+
+
+def test_fetch_status_prefers_latest_matching_task(monkeypatch):
+    monkeypatch.setattr(TaskTracker, "_sync_task", lambda self, task: None)
+    monkeypatch.setattr(TaskTracker, "_load_persisted_task", lambda self, task_id: None)
+    monkeypatch.setattr(TaskTracker, "_list_persisted_tasks", lambda self, task_type=None, limit=100: [])
+    tracker = TaskTracker()
+    monkeypatch.setattr(topics_router, "global_tracker", tracker)
+    client = TestClient(_build_app())
+    topic_id = "abcdefgh-1234-5678-9012-abcdefghijkl"
+    prefix = f"fetch_{topic_id[:8]}_"
+
+    tracker.start(f"{prefix}old", "fetch", "Old Fetch", total=100)
+    tracker.update(f"{prefix}old", 100, "旧任务失败", total=100)
+    tracker.set_result(f"{prefix}old", {"status": "failed", "error": "old error"})
+    tracker.finish(f"{prefix}old", success=False, error="old error")
+    tracker.start(f"{prefix}new", "fetch", "New Fetch", total=100)
+    tracker.update(f"{prefix}new", 20, "新任务运行中", total=100)
+
+    response = client.get(f"/topics/{topic_id}/fetch-status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "running"
+    assert payload["task_id"] == f"{prefix}new"
+    assert payload["message"] == "新任务运行中"

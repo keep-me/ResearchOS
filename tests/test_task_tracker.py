@@ -117,6 +117,37 @@ def test_task_tracker_supports_logs_and_retry_metadata():
     assert calls["count"] == 1
 
 
+def test_submit_marks_failed_result_status_as_failed(monkeypatch):
+    monkeypatch.setattr(TaskTracker, "_sync_task", lambda self, task: None)
+    monkeypatch.setattr(TaskTracker, "_load_persisted_task", lambda self, task_id: None)
+    tracker = TaskTracker()
+
+    tracker.submit(
+        task_type="fetch",
+        title="Fetch Topic",
+        fn=lambda progress_callback=None: {
+            "status": "failed",
+            "error": "arXiv rate limit",
+            "inserted": 0,
+        },
+        task_id="task-failed-result",
+    )
+
+    task = None
+    for _ in range(20):
+        task = tracker.get_task("task-failed-result")
+        if task and task["finished"]:
+            break
+        time.sleep(0.05)
+
+    assert task is not None
+    assert task["finished"] is True
+    assert task["success"] is False
+    assert task["status"] == "failed"
+    assert task["error"] == "arXiv rate limit"
+    assert tracker.get_result("task-failed-result")["status"] == "failed"
+
+
 def test_task_tracker_persists_tasks_and_results(monkeypatch):
     _configure_test_db(monkeypatch)
     tracker = TaskTracker()

@@ -38,6 +38,19 @@ class TaskPausedError(RuntimeError):
     """Raised when a running task should transition into a paused state."""
 
 
+_FAILED_RESULT_STATUSES = {"failed", "failure", "error"}
+
+
+def _failed_result_error(result: Any) -> str | None:
+    if not isinstance(result, dict):
+        return None
+    status = str(result.get("status") or "").strip().lower()
+    if status not in _FAILED_RESULT_STATUSES:
+        return None
+    error = result.get("error") or result.get("message") or status
+    return str(error)[:200]
+
+
 @dataclass
 class TaskInfo:
     task_id: str
@@ -539,9 +552,15 @@ class TaskTracker:
                     task = self._tasks.get(task_id)
                     if task and not task.cancelled:
                         task.result = result
-                self.finish(task_id, success=True)
-                self.append_log(task_id, "任务执行完成", level="success")
-                logger.info("Task %s completed: %s", task_id, title)
+                failed_error = _failed_result_error(result)
+                if failed_error:
+                    self.finish(task_id, success=False, error=failed_error)
+                    self.append_log(task_id, failed_error, level="error")
+                    logger.info("Task %s finished with failed result: %s", task_id, title)
+                else:
+                    self.finish(task_id, success=True)
+                    self.append_log(task_id, "任务执行完成", level="success")
+                    logger.info("Task %s completed: %s", task_id, title)
             except TaskPausedError as exc:
                 message = str(exc).strip() or "任务已暂停"
                 self.pause(task_id, message=message[:200])

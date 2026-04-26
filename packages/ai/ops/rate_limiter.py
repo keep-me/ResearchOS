@@ -99,10 +99,12 @@ class APIRateLimiter:
         # 初始化令牌桶（多个 API 独立限流）
         self._buckets = {
             "llm": TokenBucket(rate=5.0, capacity=10),
-            "arxiv": TokenBucket(rate=2.0, capacity=5),
+            # arXiv API 明确偏好低频请求；保持单令牌和约 3 秒间隔，避免订阅抓取触发 429。
+            "arxiv": TokenBucket(rate=1.0 / 3.0, capacity=1),
             "embedding": TokenBucket(rate=3.0, capacity=8),
             "vision": TokenBucket(rate=1.0, capacity=3),
         }
+        self._time_slot_scaled_buckets = {"llm", "embedding", "vision"}
 
         # 当前并发配置
         self._current_slot = self._get_current_time_slot()
@@ -136,8 +138,8 @@ class APIRateLimiter:
 
             # 更新令牌桶速率
             new_rate = current_slot[3]
-            for bucket in self._buckets.values():
-                bucket.rate = new_rate
+            for name in self._time_slot_scaled_buckets:
+                self._buckets[name].rate = new_rate
 
             logger.info(
                 "切换到时间段配置 [%02d:00-%02d:00]: 并发=%d, 速率=%.1f/s",
@@ -195,12 +197,12 @@ class APIRateLimiter:
 
         if acquired:
             # 冷却时间（避免过于频繁）
-            cooldown = 1.0 / self._current_slot[3]
+            cooldown = 1.0 / max(bucket.rate, 0.001)
             time.sleep(cooldown)
 
         return acquired
 
-    def record_rate_limit_error(self):
+    def record_rate_limit_error(self, api_type: str = "llm"):
         """记录 429 限流错误，自动降速"""
         now = time.time()
 
@@ -209,9 +211,10 @@ class APIRateLimiter:
             self._rate_limit_errors += 1
 
             if self._rate_limit_errors >= 3:
-                # 严重限流，速率减半
-                for bucket in self._buckets.values():
-                    bucket.rate = max(0.5, bucket.rate * 0.5)
+                # 严重限流，只降低对应 API 的速率。
+                bucket = self._buckets.get(api_type) or self._buckets["llm"]
+                floor = (1.0 / 60.0) if api_type == "arxiv" else 0.5
+                bucket.rate = max(floor, bucket.rate * 0.5)
 
                 logger.warning("检测到频繁限流，速率降至 %.1f/s", bucket.rate)
                 self._rate_limit_errors = 0
@@ -271,8 +274,7 @@ def acquire_api(api_type: str = "llm", timeout: Optional[float] = 10.0) -> bool:
 def record_rate_limit_error(api_type: str = "llm"):
     """便捷函数：记录 API 限流错误（429）"""
     limiter = get_rate_limiter()
-    # 简化处理：直接触发全局降速
-    limiter.record_rate_limit_error()
+    limiter.record_rate_limit_error(api_type)
 
 
 def can_start_task() -> bool:

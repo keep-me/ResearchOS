@@ -17,6 +17,8 @@ from packages.integrations.citation_provider import CitationProvider
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 logger = logging.getLogger(__name__)
+_ARXIV_RATE_LIMIT_BASE_DELAY = 30.0
+_ARXIV_RATE_LIMIT_MAX_DELAY = 180.0
 _QUERY_STOPWORDS = {
     "a",
     "an",
@@ -100,6 +102,27 @@ def _build_arxiv_query(
     if tokens:
         return " AND ".join(f"all:{token}" for token in tokens) + date_filter
     return f'all:"{normalized_phrase.replace(chr(34), "")}"' + date_filter
+
+
+def _retry_after_seconds(value: str | None) -> float | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return None
+    if seconds <= 0:
+        return None
+    return min(seconds, _ARXIV_RATE_LIMIT_MAX_DELAY)
+
+
+def _arxiv_rate_limit_delay(attempt: int, retry_after: str | None = None) -> float:
+    header_delay = _retry_after_seconds(retry_after)
+    if header_delay is not None:
+        return header_delay
+    delay = _ARXIV_RATE_LIMIT_BASE_DELAY * (2**attempt)
+    return min(delay, _ARXIV_RATE_LIMIT_MAX_DELAY)
 
 
 def _normalize_match_text(value: str | None) -> str:
@@ -223,8 +246,8 @@ class ArxivClient:
 
                 if status == 429:
                     record_rate_limit_error("arxiv")
-                    wait = 3 * (attempt + 1)
-                    logger.warning("ArXiv 429 rate limited, wait %ds and retry", wait)
+                    wait = _arxiv_rate_limit_delay(attempt, exc.response.headers.get("retry-after"))
+                    logger.warning("ArXiv 429 rate limited, wait %.0fs and retry", wait)
                     time.sleep(wait)
                     continue
 
@@ -365,8 +388,8 @@ class ArxivClient:
                 last_exc = exc
                 if exc.response.status_code == 429:
                     record_rate_limit_error("arxiv")
-                    wait = 3 * (attempt + 1)
-                    logger.warning("ArXiv 429 rate limited, wait %ds and retry", wait)
+                    wait = _arxiv_rate_limit_delay(attempt, exc.response.headers.get("retry-after"))
+                    logger.warning("ArXiv 429 rate limited, wait %.0fs and retry", wait)
                     time.sleep(wait)
                     continue
                 raise

@@ -1,0 +1,15 @@
+[Unit]
+Description=ResearchOS Worker Scheduler
+After=network.target researchos-backend.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ResearchOS
+EnvironmentFile=/home/ResearchOS/.env
+ExecStart=/home/ResearchOS/.venv/bin/python -m apps.worker.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

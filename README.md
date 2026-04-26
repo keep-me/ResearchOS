@@ -221,6 +221,7 @@ DASHBOARD_TREND_CRON=0 16 * * *
 ```env
 AUTH_PASSWORD=
 AUTH_PASSWORD_HASH=
+ALLOW_UNAUTHENTICATED=true
 ```
 
 ### 2. 安装 systemd 服务
@@ -265,12 +266,33 @@ RestartSec=3
 WantedBy=multi-user.target
 ```
 
+Worker 服务示例：
+
+```ini
+[Unit]
+Description=ResearchOS Worker Scheduler
+After=network.target researchos-backend.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ResearchOS
+EnvironmentFile=/home/ResearchOS/.env
+ExecStart=/home/ResearchOS/.venv/bin/python -m apps.worker.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
 生效命令：
 
 ```bash
 systemctl daemon-reload
 systemctl enable --now researchos-backend.service
 systemctl enable --now researchos-frontend.service
+systemctl enable --now researchos-worker.service
 ```
 
 ### 3. 配置 nginx
@@ -391,10 +413,13 @@ cd /home/ResearchOS
 ```bash
 systemctl status researchos-backend.service
 systemctl status researchos-frontend.service
+systemctl status researchos-worker.service
 systemctl restart researchos-backend.service
 systemctl restart researchos-frontend.service
+systemctl restart researchos-worker.service
 journalctl -u researchos-backend.service -f
 journalctl -u researchos-frontend.service -f
+journalctl -u researchos-worker.service -f
 ```
 
 ### nginx

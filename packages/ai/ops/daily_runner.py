@@ -33,6 +33,11 @@ logger = logging.getLogger(__name__)
 PAPER_CONCURRENCY = 3
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "429" in message or "too many requests" in message or "rate limit" in message
+
+
 def _resolve_topic_priority_sort(topic: TopicSubscription) -> str:
     priority_mode = str(getattr(topic, "priority_mode", "") or "").strip().lower()
     if priority_mode == "impact":
@@ -303,6 +308,9 @@ def run_topic_ingest(
                 break
             except Exception as exc:
                 last_error = str(exc)
+                if _is_rate_limit_error(exc):
+                    logger.warning("topic [%s] stopped after rate limit: %s", topic_name, exc)
+                    break
 
         if last_error is not None:
             report("抓取失败", 100)
