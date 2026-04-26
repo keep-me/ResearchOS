@@ -128,6 +128,29 @@ def test_get_paper_detail_and_analysis_expose_saved_research_metadata(
     assert analysis.internal_data["display_data"]["figures"][0]["id"] == "fig-1"
 
 
+def test_search_papers_returns_compact_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    paper_id, title = _seed_local_paper()
+
+    result = research_tool_runtime._search_papers("Research Agent", limit=5)
+
+    assert result.success is True
+    assert result.data["count"] == 1
+    item = result.data["papers"][0]
+    assert item["id"] == paper_id
+    assert item["title"] == title
+    assert item["abstract_preview"] == "A paper about research assistants."
+    assert item["abstract_zh_preview"] == "一篇关于研究助手的论文。"
+    assert item["has_analysis_rounds"] is True
+    assert "abstract" not in item
+    assert "abstract_zh" not in item
+    assert "analysis_rounds" not in item
+    assert "skim_report" not in item
+    assert "deep_report" not in item
+    assert "mineru_ocr" not in item
+    assert "embedding_status" not in item
+
+
 def test_research_wiki_tools_seed_query_and_update_by_workspace_context(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -427,4 +450,3 @@ def test_researchos_mcp_paper_tools_can_use_detached_paper_snapshot(
     assert analysis["success"] is True
     assert analysis["data"]["paper_id"] == paper_id
     assert analysis["data"]["figure_refs"][0]["figure_label"] == "Figure 1"
-

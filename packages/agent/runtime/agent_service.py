@@ -1141,7 +1141,7 @@ def _opencode_research_lookup_prompt(
     if options.mounted_paper_ids:
         lines.append("- This session already has imported papers. If the user's question can be answered from them, inspect those papers before using search_papers or external literature search.")
     if "search_papers" in tool_names:
-        lines.append("- Use search_papers first for papers already in the local library.")
+        lines.append("- Use search_papers first for papers already in the local library. It returns a compact candidate list; call get_paper_detail only for the few papers you will cite or compare.")
     if "get_paper_detail" in tool_names:
         lines.append("- Use get_paper_detail after local search to inspect title, abstract, venue, saved analysis metadata, and any already extracted figures for a paper.")
     if "get_paper_analysis" in tool_names:
@@ -1154,6 +1154,7 @@ def _opencode_research_lookup_prompt(
         lines.append("- Use get_timeline for milestone evolution, historical overview, and trend-by-year questions.")
     if "search_literature" in tool_names:
         lines.append("- Use search_literature for external paper discovery across arXiv, conferences, and journals, especially for venue-filtered or CCF-A requests.")
+        lines.append("- For broad discovery or comparison, prefer one focused local search and one focused external search before answering; avoid repeated near-duplicate searches unless results are clearly off-target.")
     if "preview_external_paper_head" in tool_names:
         lines.append("- If an external arXiv paper is not imported yet and the user wants a quick triage pass, use preview_external_paper_head to inspect abstract metadata and section headings before ingesting it.")
     if "preview_external_paper_section" in tool_names:
@@ -4456,4 +4457,3 @@ def reject_action(
     persistence: StreamPersistenceConfig | None = None,
 ) -> Iterator[str]:
     return respond_action(action_id, "reject", persistence=persistence)
-

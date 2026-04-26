@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -12,8 +13,11 @@ from packages.ai.project.gpu_lease_service import list_active_gpu_leases
 from packages.ai.project.workflow_runner import (
     _build_literature_context_blocks,
     _build_writing_materials,
+    _invoke_reviewer_workspace_agent,
     _load_context,
+    _reconcile_completed_project_run,
     run_project_workflow,
+    submit_project_run,
 )
 from packages.domain.enums import ProjectRunStatus, ProjectWorkflowType
 from packages.domain.task_tracker import TaskPausedError
@@ -971,6 +975,186 @@ def test_research_review_reviewer_uses_workspace_agent(monkeypatch, tmp_path):
         assert run.status == ProjectRunStatus.succeeded
         assert run.metadata_json["workflow_output_markdown"].startswith("# 研究评审报告")
         assert "# Verdict" in run.metadata_json["workflow_output_markdown"]
+
+
+def test_reviewer_workspace_agent_heartbeats_without_total_timeout(monkeypatch, tmp_path):
+    _configure_test_db(monkeypatch)
+    _, run_id = _seed_project_with_run(
+        ProjectWorkflowType.research_review,
+        workdir=str(tmp_path),
+    )
+
+    with db.session_scope() as session:
+        repo = ProjectRepository(session)
+        run = repo.get_run(run_id)
+        metadata = dict(run.metadata_json or {})
+        metadata.update(
+            {
+                "reviewer_agent_heartbeat_sec": 0.01,
+                "reviewer_agent_idle_timeout_sec": 0.08,
+            }
+        )
+        repo.update_run(run_id, task_id="reviewer-heartbeat-task", metadata=metadata)
+
+    updates: list[tuple[str, int, str]] = []
+
+    def _fake_update(task_id, current, message="", total=None):  # noqa: ANN001, ANN202
+        updates.append((task_id, current, str(message)))
+
+    def _fake_stream_chat(_messages, **kwargs):  # noqa: ANN001, ANN202
+        del kwargs
+
+        def _iter():
+            yield 'event: assistant_message_id\ndata: {"message_id":"message_agent"}\n\n'
+            for part in ("# Review\n\n", "- chunk one\n", "- chunk two\n"):
+                time.sleep(0.03)
+                yield f'event: text_delta\ndata: {json.dumps({"content": part}, ensure_ascii=False)}\n\n'
+            yield "event: done\ndata: {}\n\n"
+
+        return _iter()
+
+    monkeypatch.setattr("packages.ai.project.workflow_runner.stream_chat", _fake_stream_chat)
+    monkeypatch.setattr("packages.ai.project.workflow_runner.delete_session", lambda _session_id: True)
+    monkeypatch.setattr("packages.ai.project.workflow_runner.global_tracker.update", _fake_update)
+
+    context = _load_context(run_id)
+    content = _invoke_reviewer_workspace_agent(
+        context,
+        stage_id="review_submission",
+        stage="project_research_review",
+        prompt="Review this project.",
+        target={
+            "provider": "",
+            "display_model": "reviewer-agent-test-model",
+            "model_override": "reviewer-agent-test-model",
+            "model_role": "reviewer",
+            "model_source": "role_template",
+        },
+        role={"label": "Reviewer"},
+        role_template_id="claude_code",
+        variant="medium",
+        output_mode="markdown",
+    )
+
+    assert content is not None
+    assert "chunk two" in content
+    assert updates
+    assert updates[0][0] == "reviewer-heartbeat-task"
+    assert "正在由 reviewer agent 输出" in updates[0][2]
+
+
+def test_submit_project_run_clears_stale_terminal_metadata(monkeypatch, tmp_path):
+    _configure_test_db(monkeypatch)
+    _, run_id = _seed_project_with_run(
+        ProjectWorkflowType.idea_discovery,
+        workdir=str(tmp_path),
+    )
+
+    with db.session_scope() as session:
+        repo = ProjectRepository(session)
+        repo.update_run(
+            run_id,
+            status=ProjectRunStatus.succeeded,
+            active_phase="completed",
+            finished_at=None,
+            metadata={
+                "completed_at": "2026-04-26T06:42:56+00:00",
+                "submitted_at": "2026-04-26T06:40:00+00:00",
+                "workflow_output_markdown": "# stale report",
+                "workflow_output_excerpt": "stale",
+                "created_idea_ids": ["idea-1"],
+                "artifact_refs": [{"kind": "report", "path": "old.md"}],
+                "stage_outputs": {"final_report": {"content": "stale"}},
+            },
+        )
+
+    submitted: list[str] = []
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.global_tracker.submit",
+        lambda *_args, **kwargs: submitted.append(str(kwargs.get("task_id") or "")),
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.global_tracker.register_retry",
+        lambda *_args, **_kwargs: None,
+    )
+
+    task_id = submit_project_run(run_id)
+
+    assert task_id
+    assert submitted == [task_id]
+    with db.session_scope() as session:
+        repo = ProjectRepository(session)
+        run = repo.get_run(run_id)
+        metadata = dict(run.metadata_json or {})
+        assert run.status == ProjectRunStatus.running
+        assert run.active_phase == "initializing"
+        assert "completed_at" not in metadata
+        assert "workflow_output_markdown" not in metadata
+        assert "stage_outputs" not in metadata
+        assert "created_idea_ids" not in metadata
+
+
+def test_reconcile_completed_project_run_ignores_stale_submission(monkeypatch, tmp_path):
+    _configure_test_db(monkeypatch)
+    _, run_id = _seed_project_with_run(
+        ProjectWorkflowType.idea_discovery,
+        workdir=str(tmp_path),
+    )
+
+    with db.session_scope() as session:
+        repo = ProjectRepository(session)
+        repo.update_run(
+            run_id,
+            status=ProjectRunStatus.running,
+            active_phase="verify_novelty",
+            metadata={
+                "submitted_at": "2026-04-26T06:45:04+00:00",
+                "completed_at": "2026-04-26T06:42:56+00:00",
+                "workflow_output_markdown": "# stale report",
+                "workflow_output_excerpt": "stale",
+            },
+        )
+
+    assert _reconcile_completed_project_run(run_id) is None
+    with db.session_scope() as session:
+        run = ProjectRepository(session).get_run(run_id)
+        assert run.status == ProjectRunStatus.running
+        assert run.active_phase == "verify_novelty"
+
+
+def test_reconcile_completed_project_run_marks_current_completion(monkeypatch, tmp_path):
+    _configure_test_db(monkeypatch)
+    _, run_id = _seed_project_with_run(
+        ProjectWorkflowType.idea_discovery,
+        workdir=str(tmp_path),
+    )
+
+    with db.session_scope() as session:
+        repo = ProjectRepository(session)
+        repo.update_run(
+            run_id,
+            status=ProjectRunStatus.running,
+            active_phase="verify_novelty",
+            metadata={
+                "submitted_at": "2026-04-26T06:40:00+00:00",
+                "completed_at": "2026-04-26T06:42:56+00:00",
+                "workflow_output_markdown": "# current report",
+                "workflow_output_excerpt": "done",
+                "artifact_refs": [{"kind": "report", "path": "IDEA_REPORT.md"}],
+                "created_ideas": [{"id": "idea-1", "title": "Idea"}],
+            },
+        )
+
+    result = _reconcile_completed_project_run(run_id)
+
+    assert result is not None
+    assert result["summary"] == "done"
+    assert result["markdown"] == "# current report"
+    assert result["created_ideas"][0]["id"] == "idea-1"
+    with db.session_scope() as session:
+        run = ProjectRepository(session).get_run(run_id)
+        assert run.status == ProjectRunStatus.succeeded
+        assert run.active_phase == "completed"
 
 
 def test_auto_review_loop_review_cycle_uses_reviewer_workspace_agent(monkeypatch, tmp_path):
@@ -2975,4 +3159,3 @@ def test_run_experiment_remote_batch_releases_failed_gpu_lease(monkeypatch):
     active_leases = list_active_gpu_leases("ssh-main")
     assert len(active_leases) == 1
     assert active_leases[0]["gpu_index"] == 1
-

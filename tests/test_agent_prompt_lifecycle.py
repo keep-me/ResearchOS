@@ -3113,7 +3113,7 @@ def test_system_prompt_adds_academic_lookup_strategy_for_paper_queries(
 
     joined = "\n\n".join(messages)
     assert "Academic lookup strategy for this turn:" in joined
-    assert "Use search_papers first for papers already in the local library." in joined
+    assert "Use search_papers first for papers already in the local library. It returns a compact candidate list" in joined
     assert "Use search_literature for external paper discovery across arXiv, conferences, and journals" in joined
     assert "Use search_arxiv for external paper discovery and arXiv candidate lookup." in joined
     assert "Do not start with broad web search if local library or arXiv tools can answer the request directly." in joined
@@ -4358,4 +4358,3 @@ def test_streaming_parts_publish_delta_events_with_stable_part_ids(
         assert part_id in placeholder_parts
         assert part_id in assistant_parts
         assert delta_text == str(assistant_parts[part_id].get("text") or "")
-

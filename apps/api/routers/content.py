@@ -19,6 +19,10 @@ router = APIRouter()
 @router.get("/wiki/paper/{paper_id}")
 def wiki_paper(paper_id: str) -> dict:
     result = graph_service.paper_wiki(paper_id=paper_id)
+    return _save_paper_wiki_result(paper_id, result)
+
+
+def _save_paper_wiki_result(paper_id: str, result: dict) -> dict:
     with session_scope() as session:
         repo = GeneratedContentRepository(session)
         gc = repo.create(
@@ -32,12 +36,7 @@ def wiki_paper(paper_id: str) -> dict:
     return result
 
 
-@router.get("/wiki/topic")
-def wiki_topic(
-    keyword: str,
-    limit: int = Query(default=120, ge=1, le=500),
-) -> dict:
-    result = graph_service.topic_wiki(keyword=keyword, limit=limit)
+def _save_topic_wiki_result(keyword: str, result: dict) -> dict:
     with session_scope() as session:
         repo = GeneratedContentRepository(session)
         gc = repo.create(
@@ -49,6 +48,15 @@ def wiki_topic(
         )
         result["content_id"] = gc.id
     return result
+
+
+@router.get("/wiki/topic")
+def wiki_topic(
+    keyword: str,
+    limit: int = Query(default=120, ge=1, le=500),
+) -> dict:
+    result = graph_service.topic_wiki(keyword=keyword, limit=limit)
+    return _save_topic_wiki_result(keyword, result)
 
 
 # ---------- 异步任务 API ----------
@@ -73,17 +81,24 @@ def _run_topic_wiki_task(
         limit=limit,
         progress_callback=_adapted_progress,
     )
-    with session_scope() as session:
-        repo = GeneratedContentRepository(session)
-        gc = repo.create(
-            content_type="topic_wiki",
-            title=f"Topic Wiki: {keyword}",
-            markdown=result.get("markdown", ""),
-            keyword=keyword,
-            metadata_json={k: v for k, v in result.items() if k != "markdown"},
-        )
-        result["content_id"] = gc.id
-    return result
+    return _save_topic_wiki_result(keyword, result)
+
+
+def _run_paper_wiki_task(
+    paper_id: str,
+    progress_callback=None,
+) -> dict:
+    """后台执行 paper wiki 生成"""
+
+    if progress_callback:
+        progress_callback("正在生成论文综述...", 15, 100)
+    result = graph_service.paper_wiki(paper_id=paper_id)
+    if progress_callback:
+        progress_callback("正在保存论文综述...", 85, 100)
+    saved = _save_paper_wiki_result(paper_id, result)
+    if progress_callback:
+        progress_callback("论文综述完成", 100, 100)
+    return saved
 
 
 @router.post("/tasks/wiki/topic")
@@ -98,6 +113,22 @@ def start_topic_wiki_task(
         fn=_run_topic_wiki_task,
         keyword=keyword,
         limit=limit,
+        metadata={"source": "wiki", "source_id": keyword, "keyword": keyword},
+        retry_metadata={"kind": "topic_wiki", "keyword": keyword, "limit": limit},
+    )
+    return {"task_id": task_id, "status": "pending"}
+
+
+@router.post("/tasks/wiki/paper/{paper_id}")
+def start_paper_wiki_task(paper_id: str) -> dict:
+    """提交后台论文综述生成任务"""
+    task_id = global_tracker.submit(
+        task_type="paper_wiki",
+        title=f"论文综述: {paper_id[:8]}",
+        fn=_run_paper_wiki_task,
+        paper_id=paper_id,
+        metadata={"source": "wiki", "source_id": paper_id, "paper_id": paper_id},
+        retry_metadata={"kind": "paper_wiki", "paper_id": paper_id},
     )
     return {"task_id": task_id, "status": "pending"}
 

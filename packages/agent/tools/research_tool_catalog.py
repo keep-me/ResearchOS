@@ -32,7 +32,7 @@ def _research_action_tool(**kwargs) -> ToolDef:
 RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
     _research_tool(
         name="search_papers",
-        description="在本地论文库中搜索论文标题和摘要。",
+        description="在本地论文库中搜索论文标题和摘要，返回紧凑候选列表；需要完整摘要或已有分析时再调用 get_paper_detail。",
         parameters={
             "type": "object",
             "properties": {
@@ -482,4 +482,3 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
         },
     ),
 ]
-

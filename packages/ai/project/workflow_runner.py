@@ -7,9 +7,13 @@ import re
 import shlex
 import shutil
 import sys
+import threading
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from queue import Empty, Queue
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -114,6 +118,8 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[str, int, int], None]
 _MISSING = object()
 _TOTAL_PROGRESS = 100
+_REVIEWER_AGENT_HEARTBEAT_SECONDS = 20.0
+_REVIEWER_AGENT_IDLE_TIMEOUT_SECONDS = 480.0
 _SUPPORTED_WORKFLOWS = {
     ProjectWorkflowType.literature_review,
     ProjectWorkflowType.idea_discovery,
@@ -286,6 +292,26 @@ def supports_project_workflow(workflow_type: ProjectWorkflowType | str) -> bool:
         return False
 
 
+def _reset_fresh_submission_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Drop stale terminal outputs before starting a fresh non-resume run."""
+
+    cleaned = dict(metadata or {})
+    for key in (
+        "artifact_refs",
+        "cancelled_at",
+        "completed_at",
+        "created_idea_ids",
+        "created_ideas",
+        "error",
+        "failed_at",
+        "stage_outputs",
+        "workflow_output_excerpt",
+        "workflow_output_markdown",
+    ):
+        cleaned.pop(key, None)
+    return cleaned
+
+
 def submit_project_run(run_id: str, *, resume_stage_id: str | None = None) -> str | None:
     tracker_metadata: dict[str, Any] | None = None
     retry_metadata: dict[str, Any] | None = None
@@ -301,6 +327,8 @@ def submit_project_run(run_id: str, *, resume_stage_id: str | None = None) -> st
         task_id = run.task_id or f"project_run_{run.id.replace('-', '')[:12]}"
         metadata = dict(run.metadata_json or {})
         resolved_resume_stage_id = str(resume_stage_id or checkpoint_resume_stage(metadata) or "").strip() or None
+        if not resolved_resume_stage_id:
+            metadata = _reset_fresh_submission_metadata(metadata)
         orchestration = build_run_orchestration(
             run.workflow_type,
             metadata.get("orchestration"),
@@ -387,12 +415,89 @@ def submit_project_run(run_id: str, *, resume_stage_id: str | None = None) -> st
     return task_id
 
 
+def _parse_project_iso_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _completion_is_current_for_submission(metadata: dict[str, Any]) -> bool:
+    completed_at = _parse_project_iso_datetime(metadata.get("completed_at"))
+    if completed_at is None:
+        return False
+    submitted_at = _parse_project_iso_datetime(metadata.get("submitted_at"))
+    if submitted_at is not None and completed_at < submitted_at:
+        return False
+    return True
+
+
+def _reconcile_completed_project_run(
+    run_id: str,
+    *,
+    context: WorkflowContext | None = None,
+) -> dict[str, Any] | None:
+    context = context or _load_context(run_id)
+    run_snapshot = context.run
+    metadata = dict(context.metadata or {})
+    markdown = str(metadata.get("workflow_output_markdown") or "").strip()
+    if not markdown or not _completion_is_current_for_submission(metadata):
+        return None
+
+    with session_scope() as session:
+        persisted_run = ProjectRepository(session).get_run(run_id)
+        if persisted_run is None:
+            return None
+        if (
+            str(persisted_run.status) == ProjectRunStatus.succeeded.value
+            and str(persisted_run.active_phase or "") == "completed"
+        ):
+            return None
+
+    summary = str(metadata.get("workflow_output_excerpt") or "").strip() or "工作流已完成。"
+    artifact_refs = metadata.get("artifact_refs") if isinstance(metadata.get("artifact_refs"), list) else []
+    result: dict[str, Any] = {
+        "run_id": run_snapshot.id,
+        "workflow_type": run_snapshot.workflow_type.value,
+        "summary": summary,
+        "markdown": markdown,
+        "artifact_refs": artifact_refs,
+    }
+    if isinstance(metadata.get("created_ideas"), list):
+        result["created_ideas"] = metadata.get("created_ideas")
+    completed_at = _parse_project_iso_datetime(metadata.get("completed_at")) or datetime.now(UTC)
+    _patch_run(
+        run_snapshot.id,
+        status=ProjectRunStatus.succeeded,
+        active_phase="completed",
+        summary=summary,
+        finished_at=completed_at,
+        metadata_updates={"error": None},
+    )
+    if run_snapshot.task_id:
+        global_tracker.set_metadata(run_snapshot.task_id, {"artifact_refs": artifact_refs})
+        global_tracker.set_result(run_snapshot.task_id, result)
+    return result
+
+
 def run_project_workflow(
     run_id: str,
     *,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     context = _load_context(run_id)
+    reconciled_result = _reconcile_completed_project_run(run_id, context=context)
+    if reconciled_result is not None:
+        _emit_progress(progress_callback, "检测到工作流已生成最终产物，已同步完成状态。", 100)
+        return reconciled_result
     resume_stage_id = str(checkpoint_resume_stage(context.metadata) or "").strip() or None
     _ensure_run_orchestration(
         run_id,
@@ -4980,6 +5085,176 @@ def _build_reviewer_agent_user_prompt(
     return "\n".join(block for block in blocks if str(block or "").strip()).strip()
 
 
+def _positive_float(value: Any, default: float, *, minimum: float = 0.01, maximum: float = 7200.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(float(parsed), maximum))
+
+
+def _reviewer_agent_heartbeat_seconds(context: WorkflowContext) -> float:
+    raw = context.metadata.get("reviewer_agent_heartbeat_sec")
+    if raw is None:
+        raw = context.metadata.get("reviewer_agent_heartbeat_seconds")
+    return _positive_float(raw, _REVIEWER_AGENT_HEARTBEAT_SECONDS, minimum=0.01, maximum=300.0)
+
+
+def _reviewer_agent_idle_timeout_seconds(context: WorkflowContext) -> float:
+    raw = context.metadata.get("reviewer_agent_idle_timeout_sec")
+    if raw is None:
+        raw = context.metadata.get("reviewer_agent_idle_timeout_seconds")
+    return _positive_float(raw, _REVIEWER_AGENT_IDLE_TIMEOUT_SECONDS, minimum=0.01, maximum=7200.0)
+
+
+def _reviewer_agent_task_current(context: WorkflowContext, stage_id: str) -> int:
+    task_id = str(context.run.task_id or "").strip()
+    if task_id:
+        status = global_tracker.get_task(task_id) or {}
+        try:
+            current = int(status.get("current") or 0)
+            total = int(status.get("total") or _TOTAL_PROGRESS)
+        except (TypeError, ValueError):
+            current = 0
+            total = _TOTAL_PROGRESS
+        if total > 0 and current > 0:
+            return max(1, min(current, total - 1 if current >= total else current))
+
+    stage_states = context.metadata.get("stage_states")
+    if isinstance(stage_states, dict):
+        for candidate in _resolve_stage_alias_ids(context.run.workflow_type, stage_id):
+            state = stage_states.get(candidate)
+            if not isinstance(state, dict):
+                continue
+            try:
+                progress = int(float(state.get("progress_pct") or 0))
+            except (TypeError, ValueError):
+                progress = 0
+            if progress > 0:
+                return max(1, min(progress, _TOTAL_PROGRESS - 1))
+    return 1
+
+
+def _reviewer_agent_text(control: PromptStreamControl) -> str:
+    return "".join(str(part.get("text") or "") for part in control.text_parts).strip()
+
+
+def _emit_reviewer_agent_heartbeat(
+    context: WorkflowContext,
+    stage_id: str,
+    *,
+    text_chars: int,
+    event_count: int,
+) -> None:
+    task_id = str(context.run.task_id or "").strip()
+    if not task_id:
+        return
+    label = _stage_label(context, stage_id)
+    suffix = f"已接收约 {text_chars} 字" if text_chars > 0 else f"已接收 {event_count} 个事件"
+    message = f"{label} 正在由 reviewer agent 输出...（{suffix}）"
+    current = _reviewer_agent_task_current(context, stage_id)
+    try:
+        global_tracker.update(task_id, current, message, total=_TOTAL_PROGRESS)
+    except Exception:
+        logger.debug("Failed to update reviewer heartbeat for task %s", task_id, exc_info=True)
+    try:
+        _patch_run(context.run.id, active_phase=stage_id, summary=message)
+    except Exception:
+        logger.debug("Failed to update reviewer heartbeat for run %s", context.run.id, exc_info=True)
+
+
+def _consume_reviewer_agent_stream(
+    stream: Any,
+    *,
+    control: PromptStreamControl,
+    context: WorkflowContext,
+    stage_id: str,
+    stage: str,
+    session_id: str,
+) -> str:
+    heartbeat_seconds = _reviewer_agent_heartbeat_seconds(context)
+    idle_timeout_seconds = _reviewer_agent_idle_timeout_seconds(context)
+    events: Queue[tuple[str, Any]] = Queue()
+
+    def _reader() -> None:
+        try:
+            for payload in stream:
+                events.put(("item", payload))
+            events.put(("done", None))
+        except BaseException as exc:  # pragma: no cover - forwarded to caller
+            events.put(("error", exc))
+
+    thread = threading.Thread(
+        target=_reader,
+        name=f"reviewer-agent-stream-{session_id[:24]}",
+        daemon=True,
+    )
+    thread.start()
+
+    event_count = 0
+    last_event_at = time.monotonic()
+    last_heartbeat_at = 0.0
+
+    while True:
+        now = time.monotonic()
+        remaining_idle = max(0.01, idle_timeout_seconds - (now - last_event_at))
+        wait_timeout = min(heartbeat_seconds, remaining_idle)
+        try:
+            kind, payload = events.get(timeout=wait_timeout)
+        except Empty:
+            now = time.monotonic()
+            if now - last_heartbeat_at >= heartbeat_seconds:
+                _emit_reviewer_agent_heartbeat(
+                    context,
+                    stage_id,
+                    text_chars=len(_reviewer_agent_text(control)),
+                    event_count=event_count,
+                )
+                last_heartbeat_at = now
+            if now - last_event_at >= idle_timeout_seconds:
+                close_method = getattr(stream, "close", None)
+                if callable(close_method):
+                    with suppress(Exception):
+                        close_method()
+                partial = _reviewer_agent_text(control)
+                if partial:
+                    logger.warning(
+                        "Reviewer workspace agent idle timeout after partial output for run %s stage %s",
+                        context.run.id,
+                        stage_id,
+                    )
+                    return partial
+                raise TimeoutError(
+                    f"reviewer agent idle timeout after {int(idle_timeout_seconds)}s without stream events"
+                )
+            continue
+
+        if kind == "item":
+            event_count += 1
+            last_event_at = time.monotonic()
+            control.observe(payload, session_id=session_id, lifecycle_kind=stage, step_index=0, publish_bus=False)
+            if last_event_at - last_heartbeat_at >= heartbeat_seconds:
+                _emit_reviewer_agent_heartbeat(
+                    context,
+                    stage_id,
+                    text_chars=len(_reviewer_agent_text(control)),
+                    event_count=event_count,
+                )
+                last_heartbeat_at = last_event_at
+            continue
+        if kind == "error":
+            raise payload
+        if kind == "done":
+            break
+
+    content = _reviewer_agent_text(control)
+    if control.paused:
+        raise RuntimeError("reviewer agent unexpectedly paused")
+    if control.error_message and not content:
+        raise RuntimeError(control.error_message)
+    return content
+
+
 def _invoke_reviewer_workspace_agent(
     context: WorkflowContext,
     *,
@@ -5090,13 +5365,14 @@ def _invoke_reviewer_workspace_agent(
             persistence=persistence,
         )
         control = PromptStreamControl()
-        for item in stream:
-            control.observe(item, session_id=session_id, lifecycle_kind=stage, step_index=0, publish_bus=False)
-        content = "".join(str(part.get("text") or "") for part in control.text_parts).strip()
-        if control.paused:
-            raise RuntimeError("reviewer agent unexpectedly paused")
-        if control.error_message and not content:
-            raise RuntimeError(control.error_message)
+        content = _consume_reviewer_agent_stream(
+            stream,
+            control=control,
+            context=context,
+            stage_id=stage_id,
+            stage=stage,
+            session_id=session_id,
+        )
         return content or None
     except Exception as exc:
         logger.warning(

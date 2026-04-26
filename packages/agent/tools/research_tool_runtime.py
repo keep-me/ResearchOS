@@ -55,6 +55,19 @@ def _require_paper_id(paper_id: str) -> tuple[UUID | None, ToolResult | None]:
     return pid, None
 
 
+def _truncate_text(value: object, limit: int) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _compact_list(value: object, limit: int) -> list:
+    if not isinstance(value, list):
+        return []
+    return value[:limit]
+
+
 def _resolve_project_id(
     project_id: str | None = None,
     *,
@@ -138,6 +151,45 @@ def _paper_saved_analysis_flags(payload: dict) -> dict[str, bool]:
         "has_deep_report": isinstance(payload.get("deep_report"), dict) and bool(payload.get("deep_report")),
         "has_analysis_rounds": isinstance(payload.get("analysis_rounds"), dict) and bool(payload.get("analysis_rounds")),
     }
+
+
+def _paper_to_search_item(paper: Paper) -> dict:
+    metadata = dict(paper.metadata_json or {})
+    item = {
+        "id": str(paper.id),
+        "title": paper.title,
+        "arxiv_id": paper.arxiv_id,
+        "abstract_preview": _truncate_text(paper.abstract, 480),
+        "publication_date": paper.publication_date.isoformat() if paper.publication_date else None,
+        "read_status": paper.read_status.value,
+        "has_pdf": bool(paper.pdf_path),
+        "favorited": bool(getattr(paper, "favorited", False)),
+        "categories": _compact_list(metadata.get("categories"), 6),
+        "authors": _compact_list(metadata.get("authors"), 8),
+        "keywords": _compact_list(metadata.get("keywords"), 8),
+        "title_zh": metadata.get("title_zh") or "",
+        "abstract_zh_preview": _truncate_text(metadata.get("abstract_zh"), 280),
+        "citation_count": metadata.get("citation_count") or metadata.get("citations") or 0,
+        "cited_by_count": metadata.get("cited_by_count") or 0,
+        "venue": metadata.get("venue") or metadata.get("citation_venue") or "",
+        "venue_type": metadata.get("venue_type") or "",
+        "venue_tier": metadata.get("venue_tier") or "",
+        "source_url": metadata.get("source_url") or "",
+        "pdf_url": metadata.get("pdf_url") or "",
+        "has_ocr": bool(metadata.get("mineru_ocr")),
+        "has_embedding": paper.embedding is not None or bool(metadata.get("embedding_status")),
+        "created_at": paper.created_at.isoformat() if getattr(paper, "created_at", None) else None,
+    }
+    item.update(
+        _paper_saved_analysis_flags(
+            {
+                "skim_report": metadata.get("skim_report"),
+                "deep_report": metadata.get("deep_report"),
+                "analysis_rounds": metadata.get("analysis_rounds"),
+            }
+        )
+    )
+    return item
 
 
 def _is_invalid_analysis_markdown(text: str) -> bool:
@@ -361,8 +413,8 @@ def _dedupe_literature_items(items: list[dict]) -> list[dict]:
 
 def _search_papers(keyword: str, limit: int = 20) -> ToolResult:
     with session_scope() as session:
-        papers = PaperRepository(session).full_text_candidates(keyword.strip(), limit=max(1, min(limit, 50)))
-        items = [_paper_to_dict(paper) for paper in papers]
+        papers = PaperRepository(session).full_text_candidates(keyword.strip(), limit=max(1, min(limit, 20)))
+        items = [_paper_to_search_item(paper) for paper in papers]
     return ToolResult(
         success=True,
         data={"papers": items, "count": len(items)},
@@ -438,7 +490,7 @@ def _get_similar_papers(paper_id: str, top_k: int = 5) -> ToolResult:
         items = []
         for other_id in ids:
             try:
-                items.append(_paper_to_dict(repo.get_by_id(other_id)))
+                items.append(_paper_to_search_item(repo.get_by_id(other_id)))
             except ValueError:
                 continue
     return ToolResult(

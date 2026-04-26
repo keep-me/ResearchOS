@@ -5,13 +5,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardHeader, Button, Tabs, Spinner, Empty } from "@/components/ui";
 import AIPromptHelper from "@/components/AIPromptHelper";
-import { wikiApi, generatedApi, tasksApi, topicApi } from "@/services/api";
+import { generatedApi, tasksApi, topicApi } from "@/services/api";
 import type { TaskStatus } from "@/services/api";
 import type {
   PaperWiki,
   TopicWiki,
   TopicWikiContent,
   PaperWikiContent,
+  CitationTree,
+  TimelineResponse,
+  SurveyResponse,
   WikiSection,
   WikiReadingItem,
   TimelineEntry,
@@ -47,6 +50,66 @@ const wikiTabs = [
   { id: "topic", label: "主题综述" },
   { id: "paper", label: "论文综述" },
 ];
+
+type WikiTaskMode = "topic" | "paper";
+
+const contentTypeForMode = (mode: WikiTaskMode) =>
+  mode === "topic" ? "topic_wiki" : "paper_wiki";
+
+const emptyTimeline = (keyword: string): TimelineResponse => ({
+  keyword,
+  timeline: [],
+  seminal: [],
+  milestones: [],
+});
+
+const emptySurvey = (keyword: string): SurveyResponse => ({
+  keyword,
+  summary: {
+    overview: "",
+    stages: [],
+    reading_list: [],
+    open_questions: [],
+  },
+  milestones: [],
+  seminal: [],
+});
+
+const emptyCitationGraph = (paperId: string, title?: string): CitationTree => ({
+  root: paperId,
+  root_title: title || "",
+  ancestors: [],
+  descendants: [],
+  nodes: [],
+  edge_count: 0,
+});
+
+const buildTopicWikiFromGenerated = (content: GeneratedContent): TopicWiki => {
+  const metadata = content.metadata_json ?? {};
+  const keyword = content.keyword || String(metadata.keyword || content.title);
+  return {
+    keyword,
+    markdown: content.markdown,
+    wiki_content: metadata.wiki_content as TopicWikiContent | undefined,
+    timeline: (metadata.timeline as TimelineResponse | undefined) ?? emptyTimeline(keyword),
+    survey: (metadata.survey as SurveyResponse | undefined) ?? emptySurvey(keyword),
+    content_id: content.id,
+  };
+};
+
+const buildPaperWikiFromGenerated = (content: GeneratedContent): PaperWiki => {
+  const metadata = content.metadata_json ?? {};
+  const paperId = content.paper_id || String(metadata.paper_id || "");
+  const title = typeof metadata.title === "string" ? metadata.title : content.title;
+  return {
+    paper_id: paperId,
+    title,
+    markdown: content.markdown,
+    wiki_content: metadata.wiki_content as PaperWikiContent | undefined,
+    graph: (metadata.graph as CitationTree | undefined) ?? emptyCitationGraph(paperId, title),
+    content_id: content.id,
+  };
+};
 
 export default function Wiki() {
   const [activeTab, setActiveTab] = useState("topic");
@@ -88,7 +151,32 @@ export default function Wiki() {
 
   useEffect(() => { loadHistory(contentType); }, [contentType, loadHistory]);
 
-  const pollTask = useCallback(async (tid: string) => {
+  const applyWikiTaskResult = useCallback((mode: WikiTaskMode, result: Record<string, unknown>) => {
+    if (mode === "topic") {
+      setTopicWiki(result as unknown as TopicWiki);
+      setPaperWiki(null);
+    } else {
+      setPaperWiki(result as unknown as PaperWiki);
+      setTopicWiki(null);
+    }
+  }, []);
+
+  const loadLatestGeneratedContent = useCallback(async (mode: WikiTaskMode) => {
+    const type = contentTypeForMode(mode);
+    const result = await generatedApi.list(type, 1);
+    if (!result.items?.length) return;
+    const content = await generatedApi.detail(result.items[0].id);
+    if (mode === "topic") {
+      setTopicWiki(buildTopicWikiFromGenerated(content));
+      setPaperWiki(null);
+    } else {
+      setPaperWiki(buildPaperWikiFromGenerated(content));
+      setTopicWiki(null);
+    }
+  }, []);
+
+  const pollTask = useCallback(async (tid: string, mode: WikiTaskMode) => {
+    const type = contentTypeForMode(mode);
     const poll = async (): Promise<void> => {
       try {
         const status: TaskStatus = await tasksApi.getStatus(tid);
@@ -99,17 +187,11 @@ export default function Wiki() {
         if (status.status === "completed" || status.status === "failed" || status.status === "cancelled") {
           // 任务完成，加载 Wiki 内容
           if (status.status === "completed") {
-            const result = await generatedApi.list(contentType, 1);
-            if (result.items && result.items.length > 0) {
-              const content = await generatedApi.detail(result.items[0].id);
-              setTopicWiki({
-                keyword: content.keyword || content.title,
-                markdown: content.markdown,
-                timeline: { events: [], insights: [] },
-                survey: { summary: "", sections: [] },
-                content_id: content.id,
-              } as unknown as TopicWiki);
-              setPaperWiki(null);
+            const taskResult = await tasksApi.getResult(tid).catch(() => null);
+            if (taskResult && typeof taskResult.markdown === "string") {
+              applyWikiTaskResult(mode, taskResult);
+            } else {
+              await loadLatestGeneratedContent(mode);
             }
           } else if (status.status === "cancelled") {
             setTaskMessage(status.error || "任务已终止");
@@ -117,7 +199,7 @@ export default function Wiki() {
           setLoading(false);
           setTaskId(null);
           pollTimerRef.current = null;
-          loadHistory(contentType);
+          loadHistory(type);
           return;
         }
         if (status.error) {
@@ -128,11 +210,12 @@ export default function Wiki() {
         }
       } catch {
         pollTimerRef.current = setTimeout(poll, 5000);
+        return;
       }
       pollTimerRef.current = setTimeout(poll, 2000);
     };
     poll();
-  }, [contentType, loadHistory]);
+  }, [applyWikiTaskResult, loadHistory, loadLatestGeneratedContent]);
 
   const handleAiSuggest = useCallback(async () => {
     const description = aiDesc.trim() || keyword.trim();
@@ -155,6 +238,7 @@ export default function Wiki() {
     setSuggestions([]);
     setSelectedContent(null);
     setTopicWiki(null);
+    setPaperWiki(null);
   }, []);
 
   const handleQuery = async () => {
@@ -162,23 +246,28 @@ export default function Wiki() {
     setSelectedContent(null);
     setTaskProgress(0);
     setTaskMessage("");
+    let submittedTask = false;
     try {
       if (activeTab === "topic" && keyword.trim()) {
         // 后台任务模式
         const { task_id } = await tasksApi.startTopicWiki(keyword);
+        submittedTask = true;
         setTaskId(task_id);
         setTaskMessage("任务已提交，正在初始化...");
-        pollTask(task_id);
+        pollTask(task_id, "topic");
         return;
       } else if (activeTab === "paper" && paperId.trim()) {
-        const res = await wikiApi.paper(paperId);
-        setPaperWiki(res);
-        setTopicWiki(null);
+        const { task_id } = await tasksApi.startPaperWiki(paperId.trim());
+        submittedTask = true;
+        setTaskId(task_id);
+        setTaskMessage("任务已提交，正在初始化...");
+        pollTask(task_id, "paper");
+        return;
       }
       loadHistory(contentType);
     } catch { /* */ }
     finally {
-      if (activeTab !== "topic") setLoading(false);
+      if (!submittedTask) setLoading(false);
     }
   };
 

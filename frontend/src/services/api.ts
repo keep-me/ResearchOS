@@ -1991,6 +1991,10 @@ export const tasksApi = {
     post<{ task_id: string; status: string }>(
       `/tasks/wiki/topic?keyword=${encodeURIComponent(keyword)}&limit=${limit}`
     ),
+  startPaperWiki: (paperId: string) =>
+    post<{ task_id: string; status: string }>(
+      `/tasks/wiki/paper/${encodeURIComponent(paperId)}`
+    ),
   getStatus: (taskId: string) =>
     get<TaskStatus>(`/tasks/${taskId}`),
   getResult: (taskId: string) =>
