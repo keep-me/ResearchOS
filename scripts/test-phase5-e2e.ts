@@ -2,11 +2,10 @@
  * Phase 5 功能 E2E 测试脚本
  * 使用: npx playwright test scripts/test-phase5-e2e.ts
  * 或: npx ts-node scripts/test-phase5-e2e.ts (需安装 playwright)
- * @author Bamzc
  */
 import { chromium } from "playwright";
 
-const BASE = "http://localhost:5173";
+const BASE = "http://localhost:3002";
 const PAPER_ID = "c1efeec2-32b4-4abe-825f-ac007e819011";
 
 async function main() {

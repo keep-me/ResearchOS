@@ -1,478 +1,285 @@
 # ResearchOS
 
-ResearchOS 是一个面向个人研究者和小团队的 AI 研究工作台，核心目标是把“论文采集、阅读分析、主题跟踪、图表提取、知识沉淀、写作辅助”放到同一套系统里。
+ResearchOS 是一款面向高校学生和科研人员的一体化智能研究辅助平台。随着学术论文数量快速增长，研究者在开展课题时常需反复检索论文、筛选文献、阅读原文、提炼方法与实验要点，并手动整理笔记和研究脉络，过程耗时长、重复性高。ResearchOS 以研究助手 Agent 为核心，围绕文献发现、论文导读、知识沉淀和科研工作流推进构建连续研究链路，帮助用户快速发现感兴趣方向的论文，理解单篇论文的核心内容与技术细节，梳理研究趋势，并将论文库沉淀为个人科研知识库。
 
-当前仓库已经支持两种主要运行方式：
-- 本地开发：`uvicorn + vite`
-- 服务器部署：`systemd + nginx`
-
-当前论文 OCR / 图表补充链路已切换为 `MinerU API`，不再依赖本地 MinerU 模型。
+更完整的 Windows 本地启动、Docker 部署和安装包构建说明见 [`docs/start-project.md`](docs/start-project.md)。
 
 ## 功能概览
 
-- 论文收集：支持主题订阅、手动导入、arXiv 链接导入
-- 论文管理：论文库、状态流转、元数据维护、PDF 存储
-- AI 阅读：粗读、精读、多轮分析、结构化证据抽取
-- 图表处理：`arxiv_source` 优先，必要时回退到 MinerU API OCR 结构化结果
-- 主题与图谱：主题详情、引用图谱、每日/每周自动维护
-- 写作辅助：Brief、Wiki、问答、图像生成接口
-- 自动化：worker 定时任务、闲时处理、日报/周维护
+- 论文发现：支持主题订阅、论文检索、arXiv 导入和本地论文入库。
+- 论文阅读：支持 PDF 阅读、Markdown 对齐、阅读笔记、粗读、精读、三轮分析和推理链分析。
+- 证据分析：围绕论文原文、图表、章节和分析结果组织可追溯证据，辅助快速定位论文要点。
+- 图表解析：支持论文图表、表格、算法块和题注等结构化信息提取与分析。
+- 知识沉淀：通过主题归档、研究趋势概览、引用图谱和知识图谱构建个人科研知识库。
+- 科研工作流：在用户形成研究想法、实验内容和初步结果后，辅助完成方案整理、实验推进、评审反馈和写作准备等重复性工作。
+- 自动化任务：Worker 负责主题订阅抓取、首页 arXiv 趋势预计算、每日简报、每周图谱维护和闲时自动处理。
 
 ## 技术栈
 
 - Backend: Python 3.11, FastAPI, SQLAlchemy, Alembic
-- Frontend: React 18, TypeScript, Vite
-- Database: SQLite 默认，可通过 `DATABASE_URL` 切换
-- Reverse Proxy: nginx
-- Process Manager: systemd
+- Frontend: React, TypeScript, Vite
+- Database: 默认 SQLite，可通过 `DATABASE_URL` 切换
+- Worker: Python 后台调度进程
+- Deployment: 本地开发、Docker Compose、Windows exe / 安装包
 
 ## 目录结构
 
-- `apps/api`: FastAPI 入口与路由
+- `apps/api`: FastAPI 入口、路由和中间件
 - `apps/worker`: 后台调度与自动化任务
-- `packages`: 核心业务、LLM 集成、论文处理、存储层
-- `frontend`: React 前端
-- `infra`: Alembic migration 等基础设施文件
-- `docs`: 项目文档
-- `.env.example`: 后端主配置示例
-- `frontend/.env.example`: 前端开发环境变量示例
+- `apps/desktop`: 桌面版服务端入口
+- `packages`: 核心业务、论文处理、LLM 集成、存储层和领域服务
+- `frontend`: React 前端工程
+- `infra`: Alembic migration、备份脚本等基础设施文件
+- `scripts`: 本地初始化、测试、Windows 构建等脚本
+- `docs`: 项目说明、设计文档、启动部署说明和交付材料
+- `data`: 本地数据库、PDF、简报和运行数据，默认不提交到仓库
 
 ## 环境要求
 
-- Python `3.11`
-- Node.js `20+`
-- npm
-- Linux 服务器部署时建议具备：
-  - `systemd`
-  - `nginx`
-  - 已放行公网 `80` 端口
+- Windows 本地环境
+- Python 3.11
+- Node.js 20+ 和 npm
+- Docker Desktop，可选，用于 Docker Compose 部署
+- PyInstaller，可选，用于构建 Windows exe
+- .NET Framework C# 编译器，可选，用于构建 Windows 安装包
 
-## 配置文件
+构建安装包前可检查 C# 编译器：
 
-后端配置来自根目录 [`.env.example`](/home/ResearchOS/.env.example)。
-
-初始化方式：
-
-```bash
-cp .env.example .env
+```cmd
+if exist "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" (echo OK csc x64) else (echo MISSING csc x64)
+if exist "%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe" (echo OK csc x86) else (echo MISSING csc x86)
 ```
 
-前端开发环境如需单独配置，可参考 [frontend/.env.example](/home/ResearchOS/frontend/.env.example)。
+## 配置
 
-## 必填配置
+第一次启动前复制环境变量示例：
 
-至少要配置一组可用的大模型 Key：
+```cmd
+cd /d D:\Desktop\ResearchOS
+copy /Y .env.example .env
+notepad .env
+```
 
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `ZHIPU_API_KEY`
-- `GEMINI_API_KEY`
+本地开发至少确认下面配置：
 
-通常你还需要确认这些字段：
+```env
+APP_ENV=dev
+SITE_URL=http://127.0.0.1:3002
 
-- `SITE_URL`
-  - 本地开发可写 `http://127.0.0.1:5173`
-  - 服务器公网部署可写 `http://<你的公网IP>` 或正式域名
-- `CORS_ALLOW_ORIGINS`
-  - 本地开发示例：`http://127.0.0.1:5173,http://localhost:5173`
-  - nginx 公网部署可直接填公网地址，或在同域反代场景下保持较窄白名单
-- `AUTH_SECRET_KEY`
-  - 生产环境必须改成随机字符串
+DATABASE_URL=sqlite:///./data/researchos.db
+PDF_STORAGE_ROOT=./data/papers
+BRIEF_OUTPUT_ROOT=./data/briefs
 
-## MinerU API 配置
+CORS_ALLOW_ORIGINS=http://127.0.0.1:3002,http://localhost:3002
 
-当前仓库使用 MinerU 官方 API，而不是本地模型。
+LLM_PROVIDER=zhipu
+ZHIPU_API_KEY=你的Key
+RESEARCHOS_DASHBOARD_TREND_ON_DEMAND=true
+```
 
-相关变量：
+AI 分析、写作助手和 Agent 等功能需要配置可用的大模型服务 Key。若只验证页面、论文导入和基础流程，可以先不配置 Key。
 
-- `FIGURE_EXTRACT_MODE=arxiv_source`
-- `MINERU_BACKEND=api`
-- `MINERU_API_BASE_URL=https://mineru.net`
-- `MINERU_API_TOKEN=<你的 token>`
-- `MINERU_API_MODEL_VERSION=vlm`
-- `MINERU_API_POLL_INTERVAL_SECONDS=3`
-- `MINERU_API_TIMEOUT_SECONDS=300`
-- `MINERU_API_UPLOAD_TIMEOUT_SECONDS=600`
-
-说明：
-
-- `arxiv_source` 是默认图表提取模式
-- 对 arXiv 论文，系统优先使用 arXiv 源文件中的图表资源
-- 当需要 OCR / 结构化补充时，系统再调用 MinerU API
-- 不再需要本地下载 MinerU 模型，也不再需要 `MINERU_DEVICE_MODE`
-
-## 常用环境变量说明
-
-常用项如下，完整列表看 [`.env.example`](/home/ResearchOS/.env.example)：
-
-- `APP_ENV`: `dev` / `production`
-- `API_HOST`: 后端监听地址
-- `API_PORT`: 后端监听端口
-- `SITE_URL`: 前端站点地址
-- `DATABASE_URL`: 数据库连接串
-- `PDF_STORAGE_ROOT`: PDF 存储目录
-- `BRIEF_OUTPUT_ROOT`: Brief 输出目录
-- `CORS_ALLOW_ORIGINS`: CORS 白名单
-- `LLM_PROVIDER`: 默认模型提供方
-- `LLM_MODEL_SKIM`
-- `LLM_MODEL_DEEP`
-- `LLM_MODEL_VISION`
-- `AUTH_PASSWORD`: 站点密码，留空则不启用登录保护
-- `AUTH_PASSWORD_HASH`: 推荐生产环境使用 bcrypt 哈希
-- `AUTH_SECRET_KEY`: JWT 签名密钥
-- `DAILY_CRON`
-- `DASHBOARD_TREND_CRON`
-- `WEEKLY_CRON`
-- `IDLE_PROCESSOR_ENABLED`
-
-## 本地开发启动
+## 本地启动
 
 ### 1. 安装后端依赖
 
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
+```cmd
+cd /d D:\Desktop\ResearchOS
+python -m venv .venv
+call .venv\Scripts\activate.bat
+python -m pip install --upgrade pip setuptools wheel
+pip install -e ".[dev,llm,pdf]"
+```
+
+如果只需要启动基础 API，也可以先安装最小依赖：
+
+```cmd
 pip install -e .
 ```
 
 ### 2. 安装前端依赖
 
-```bash
-cd frontend
+```cmd
+cd /d D:\Desktop\ResearchOS\frontend
 npm install
-cd ..
+cd /d D:\Desktop\ResearchOS
 ```
 
-### 3. 写 `.env`
+### 3. 初始化数据库
 
-```bash
-cp .env.example .env
+```cmd
+cd /d D:\Desktop\ResearchOS
+call .venv\Scripts\activate.bat
+python scripts\local_bootstrap.py
 ```
 
-本地开发推荐至少修改：
+初始化后会创建本地 SQLite 数据库和必要目录：
 
-```env
-APP_ENV=dev
-SITE_URL=http://127.0.0.1:5173
-CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
-LLM_PROVIDER=zhipu
-ZHIPU_API_KEY=你的key
-MINERU_API_TOKEN=你的token
+```text
+data\researchos.db
+data\papers
+data\briefs
 ```
 
 ### 4. 启动后端
 
-```bash
-cd /path/to/ResearchOS
-./.venv/bin/python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
+```cmd
+cd /d D:\Desktop\ResearchOS
+call .venv\Scripts\activate.bat
+set RESEARCHOS_DASHBOARD_TREND_ON_DEMAND=true
+python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8002
+```
+
+后端地址：
+
+```text
+http://127.0.0.1:8002
 ```
 
 ### 5. 启动前端
 
-```bash
-cd /path/to/ResearchOS/frontend
-npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```cmd
+cd /d D:\Desktop\ResearchOS\frontend
+set VITE_PROXY_TARGET=http://127.0.0.1:8002
+npm run dev -- --host 127.0.0.1 --port 3002 --strictPort
 ```
 
-### 6. 本地访问地址
+前端地址：
 
-- 前端: `http://127.0.0.1:5173`
-- 后端健康检查: `http://127.0.0.1:8000/health`
-- API 文档: `http://127.0.0.1:8000/docs`
-
-## 服务器部署：systemd + nginx + 公网 IP
-
-这是当前仓库在服务器上的推荐运行方式。
-
-部署思路：
-
-- 后端只监听 `127.0.0.1:8000`
-- 前端只监听 `127.0.0.1:3002`
-- nginx 监听公网 `80`
-- nginx `/` 转发到前端
-- nginx `/api/` 转发到后端
-
-### 1. 准备 `.env`
-
-生产环境建议至少这样配置：
-
-```env
-APP_ENV=production
-API_HOST=127.0.0.1
-API_PORT=8000
-SITE_URL=http://47.93.160.229
-CORS_ALLOW_ORIGINS=http://47.93.160.229
-
-LLM_PROVIDER=zhipu
-ZHIPU_API_KEY=你的key
-
-FIGURE_EXTRACT_MODE=arxiv_source
-MINERU_BACKEND=api
-MINERU_API_BASE_URL=https://mineru.net
-MINERU_API_TOKEN=你的token
-
-AUTH_SECRET_KEY=请改成随机字符串
-DASHBOARD_TREND_CRON=0 16 * * *
+```text
+http://127.0.0.1:3002
 ```
 
-如果要开放匿名访问，保持：
+### 6. 启动 Worker
 
-```env
-AUTH_PASSWORD=
-AUTH_PASSWORD_HASH=
-ALLOW_UNAUTHENTICATED=true
+```cmd
+cd /d D:\Desktop\ResearchOS
+call .venv\Scripts\activate.bat
+python -m apps.worker.main
 ```
 
-### 2. 安装 systemd 服务
+只演示手动论文导入、论文阅读和项目工作流时，可以先不启动 Worker；需要展示自动订阅和定时任务时再启动。
 
-后端服务示例：
+### 7. 检查服务
 
-```ini
-[Unit]
-Description=ResearchOS Backend API
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/home/ResearchOS
-EnvironmentFile=/home/ResearchOS/.env
-ExecStart=/home/ResearchOS/.venv/bin/python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
+```cmd
+curl http://127.0.0.1:8002/health
+curl -I http://127.0.0.1:3002
+curl "http://127.0.0.1:8002/dashboard/arxiv-trend?subdomain=all&refresh=true"
 ```
 
-前端服务示例：
+## Docker 部署
 
-```ini
-[Unit]
-Description=ResearchOS Frontend Dev Server
-After=network.target researchos-backend.service
+Docker Compose 会启动 backend、worker 和 frontend。启动前先确认 `.env` 已经配置完成。
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/home/ResearchOS/frontend
-Environment=VITE_PROXY_TARGET=http://127.0.0.1:8000
-ExecStart=/root/.nvm/versions/node/v24.15.0/bin/node /home/ResearchOS/frontend/node_modules/vite/bin/vite.js --host 127.0.0.1 --port 3002 --strictPort
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Worker 服务示例：
-
-```ini
-[Unit]
-Description=ResearchOS Worker Scheduler
-After=network.target researchos-backend.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/home/ResearchOS
-EnvironmentFile=/home/ResearchOS/.env
-ExecStart=/home/ResearchOS/.venv/bin/python -m apps.worker.main
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-生效命令：
-
-```bash
-systemctl daemon-reload
-systemctl enable --now researchos-backend.service
-systemctl enable --now researchos-frontend.service
-systemctl enable --now researchos-worker.service
-```
-
-### 3. 配置 nginx
-
-示例：
-
-```nginx
-server {
-    listen 80;
-    server_name _;
-
-    client_max_body_size 100m;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
-    }
-
-    location /docs {
-        proxy_pass http://127.0.0.1:8000/docs;
-    }
-
-    location /openapi.json {
-        proxy_pass http://127.0.0.1:8000/openapi.json;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:3002;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
-    }
-}
-```
-
-检查并重载：
-
-```bash
-nginx -t
-systemctl reload nginx
-```
-
-### 4. 放行公网端口
-
-至少需要放行：
-
-- `80/tcp`
-
-如果服务器安全组或防火墙没放行，公网 IP 还是访问不到。
-
-### 5. 验证
-
-```bash
-curl http://127.0.0.1:8000/health
-curl -I http://127.0.0.1:3002/
-curl -I http://127.0.0.1/
-curl -I http://<你的公网IP>/
-```
-
-## Docker Compose 部署
-
-仓库仍然保留 Docker Compose 方案：
-
-```bash
-cp .env.example .env
+```cmd
+cd /d D:\Desktop\ResearchOS
 docker compose up -d --build
 ```
 
-默认端口：
+默认访问地址：
 
-- 前端: `3002`
-- 后端: `8002`
-
-访问地址：
-
-- 前端: `http://localhost:3002`
-- 后端: `http://localhost:8002`
-- API 文档: `http://localhost:8002/docs`
-
-说明：
-
-- Docker 路线适合隔离运行
-- 如果你已经采用 `systemd + nginx`，通常不需要再同时跑 Docker 版本
-
-## Worker 说明
-
-自动主题抓取、每日简报、每周图谱维护、闲时自动处理等能力依赖 worker。
-
-Docker 部署时：
-
-- `docker compose up` 会自动拉起 `worker`
-
-本地 / systemd 部署时，如需自动化调度，可以单独运行：
-
-```bash
-cd /home/ResearchOS
-./.venv/bin/python -m apps.worker.main
+```text
+前端：http://127.0.0.1:3002
+后端：http://127.0.0.1:8002
+API 文档：http://127.0.0.1:8002/docs
 ```
 
-如果你只需要手动使用 Web 界面，不一定要先启动 worker。
+常用命令：
 
-## 常用运维命令
-
-### systemd
-
-```bash
-systemctl status researchos-backend.service
-systemctl status researchos-frontend.service
-systemctl status researchos-worker.service
-systemctl restart researchos-backend.service
-systemctl restart researchos-frontend.service
-systemctl restart researchos-worker.service
-journalctl -u researchos-backend.service -f
-journalctl -u researchos-frontend.service -f
-journalctl -u researchos-worker.service -f
-```
-
-### nginx
-
-```bash
-nginx -t
-systemctl status nginx
-systemctl reload nginx
-tail -f /var/log/nginx/access.log
-tail -f /var/log/nginx/error.log
-```
-
-### Docker
-
-```bash
+```cmd
 docker compose ps
-docker compose logs -f backend
-docker compose logs -f worker
-docker compose logs -f frontend
-docker compose up -d --build
+docker compose logs backend --tail 80
+docker compose logs worker --tail 80
+docker compose logs frontend --tail 80
 docker compose down
+```
+
+## Windows exe 和安装包构建
+
+构建流程会生成前端静态文件、后端可执行文件和 Windows 安装包。
+
+```cmd
+cd /d D:\Desktop\ResearchOS
+call .venv\Scripts\activate.bat
+pip install pyinstaller
+scripts\windows\build-windows-installer.cmd -Clean
+```
+
+构建产物：
+
+```text
+dist\researchos-server.exe
+dist\ResearchOS-Windows-Setup.exe
+```
+
+`researchos-server.exe` 是桌面版服务端可执行文件，内置后端、静态前端和 Worker。启动后会自动选择本机空闲端口，并在标准输出首行打印端口：
+
+```json
+{"port": 51234}
+```
+
+拿到端口后，在浏览器打开：
+
+```text
+http://127.0.0.1:51234
+```
+
+桌面版默认数据目录：
+
+```text
+%APPDATA%\ResearchOS\data
+```
+
+也可以通过环境变量指定：
+
+```cmd
+set RESEARCHOS_DATA_DIR=D:\ResearchOSData
+dist\researchos-server.exe
 ```
 
 ## 常见问题
 
-### 1. 公网 IP 打不开
+### 前端能打开，但 API 请求失败
 
-优先检查：
+确认前端启动前设置了代理地址：
 
-- 安全组是否放行 `80/tcp`
-- nginx 是否在监听 `0.0.0.0:80`
-- `curl -I http://127.0.0.1/` 是否正常
+```cmd
+set VITE_PROXY_TARGET=http://127.0.0.1:8002
+```
 
-### 2. 页面能打开，但 API 不通
+然后重启前端开发服务器。
 
-优先检查：
+### 端口被占用
 
-- nginx `/api/` 是否正确反代到 `127.0.0.1:8000`
-- 后端是否正常：`curl http://127.0.0.1:8000/health`
-- `CORS_ALLOW_ORIGINS` 是否包含你的前端访问地址
+```cmd
+netstat -ano | findstr ":8002"
+netstat -ano | findstr ":3002"
+taskkill /PID <PID> /F
+```
 
-### 3. 提取图表报 MinerU 错误
+### 首页趋势没有生成
 
-优先检查：
+确认 `.env` 或当前终端中启用了：
 
-- `MINERU_API_TOKEN` 是否填写
-- MinerU API quota / token 是否可用
-- 默认模式是否还是 `FIGURE_EXTRACT_MODE=arxiv_source`
+```env
+RESEARCHOS_DASHBOARD_TREND_ON_DEMAND=true
+```
 
-### 4. 为什么手动启动的后台进程会消失
+然后请求：
 
-因为临时 shell 起的 `uvicorn` / `vite` 不等于真正的系统服务。
-生产环境请用 `systemd`、Docker 或其他进程管理器托管。
+```cmd
+curl "http://127.0.0.1:8002/dashboard/arxiv-trend?subdomain=all&refresh=true"
+```
+
+### PyInstaller 找不到
+
+```cmd
+cd /d D:\Desktop\ResearchOS
+call .venv\Scripts\activate.bat
+pip install pyinstaller
+python -m PyInstaller --version
+```
 
 ## 许可证
 

@@ -1,6 +1,5 @@
 /**
  * 输入框组件
- * @author Color2333
  */
 import { cn } from "@/lib/utils";
 import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";

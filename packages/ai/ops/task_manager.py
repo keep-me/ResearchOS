@@ -1,6 +1,5 @@
 """
 后台任务管理器 - 管理 wiki/brief 等耗时生成任务
-@author Bamzc
 """
 from __future__ import annotations
 

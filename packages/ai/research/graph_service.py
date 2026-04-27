@@ -1,6 +1,5 @@
 """
 图谱分析服务 - 引用树、时间线、质量评估、演化分析、综述生成
-@author Bamzc
 """
 from __future__ import annotations
 

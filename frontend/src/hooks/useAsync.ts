@@ -1,6 +1,5 @@
 /**
  * 通用异步请求 Hook
- * @author Bamzc
  */
 import { useState, useCallback } from "react";
 

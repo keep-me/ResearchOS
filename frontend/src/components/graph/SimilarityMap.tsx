@@ -1,6 +1,5 @@
 /**
  * SimilarityMap - 论文相似度 2D 散点图（Canvas 渲染）
- * @author Color2333
  */
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";

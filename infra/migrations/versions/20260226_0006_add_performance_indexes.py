@@ -5,7 +5,6 @@ Revision ID: 20260226_0006
 Revises: 20260216_0005
 Create Date: 2026-02-26
 
-@author Color2333
 """
 from __future__ import annotations
 

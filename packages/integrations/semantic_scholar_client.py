@@ -1,7 +1,6 @@
 """
 Semantic Scholar API 客户端
 连接复用 + 429 重试 + 日志
-@author Bamzc
 """
 
 from __future__ import annotations

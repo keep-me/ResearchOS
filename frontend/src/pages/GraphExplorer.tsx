@@ -1,6 +1,5 @@
 /**
  * Graph Explorer - 研究洞察（2 大面板：全局概览 / 领域洞察）
- * @author Bamzc
  */
 import { useState } from "react";
 import { Compass, TrendingUp } from "@/lib/lucide";

@@ -1,6 +1,5 @@
 /**
  * Papers - 论文库（分页 + 文件夹/日期分类导航）
- * @author Bamzc
  */
 import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

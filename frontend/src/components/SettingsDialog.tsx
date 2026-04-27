@@ -1,6 +1,5 @@
-﻿/**
+/**
  * 设置弹窗 - 参考 ResearchClaw 的 settings 信息架构，承载模型 / 助手策略 / 工作区 / MCP 配置
- * @author Bamzc
  */
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import { useToast } from "@/contexts/ToastContext";

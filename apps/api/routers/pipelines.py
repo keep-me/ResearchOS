@@ -1,5 +1,4 @@
 """Pipeline / RAG / 任务追踪路由
-@author Color2333
 """
 
 import logging

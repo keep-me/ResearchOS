@@ -1,6 +1,5 @@
 /**
  * 模态框组件
- * @author Bamzc
  */
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";

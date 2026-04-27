@@ -1,6 +1,5 @@
 """
 AI 检索词建议服务 - 自然语言 → 更适合实际检索的关键词
-@author Bamzc
 """
 from __future__ import annotations
 

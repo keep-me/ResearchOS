@@ -1,7 +1,5 @@
 """
 每日/每周定时任务编排 - 智能调度 + 精读限额
-@author Bamzc
-@author Color2333
 """
 
 from __future__ import annotations

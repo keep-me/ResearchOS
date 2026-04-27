@@ -66,9 +66,9 @@ describe("security-sensitive frontend helpers", () => {
       }),
     );
 
-    expect(canSignApiAssetUrl("http://localhost:8000/papers/p2/pdf")).toBe(true);
+    expect(canSignApiAssetUrl("http://localhost:8002/papers/p2/pdf")).toBe(true);
 
-    const url = await resolveSignedApiAssetUrl("http://localhost:8000/papers/p2/pdf");
+    const url = await resolveSignedApiAssetUrl("http://localhost:8002/papers/p2/pdf");
 
     expect(url).toContain("/papers/p2/pdf");
     expect(url).toContain("token=absolute-path-token");

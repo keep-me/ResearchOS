@@ -1,6 +1,5 @@
 """
 认证路由 - 登录接口
-@author Color2333
 """
 
 from fastapi import APIRouter, HTTPException

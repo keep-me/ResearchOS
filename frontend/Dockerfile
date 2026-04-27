@@ -1,6 +1,5 @@
 # ============================================================
 # ResearchOS Frontend Dockerfile - Nginx 托管静态文件
-# @author Color2333
 # ============================================================
 
 ARG BASE_REGISTRY=docker.io

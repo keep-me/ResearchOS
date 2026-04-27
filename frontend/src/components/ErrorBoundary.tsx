@@ -1,6 +1,5 @@
 /**
  * 全局错误边界 - 防止子组件崩溃导致白屏
- * @author Color2333
  */
 import { Component, type ReactNode } from "react";
 import { AlertTriangle, RotateCcw } from "@/lib/lucide";

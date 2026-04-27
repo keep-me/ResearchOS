@@ -100,7 +100,7 @@ export function resolveApiBase(): string {
       if (import.meta.env.VITE_PROXY_TARGET) {
         return "/api";
       }
-      return "http://localhost:8000";
+      return "http://localhost:8002";
     }
     return "/api";
   }
@@ -108,7 +108,7 @@ export function resolveApiBase(): string {
   if (_resolvedPort) {
     return `http://127.0.0.1:${_resolvedPort}`;
   }
-  return import.meta.env.VITE_API_BASE || "http://localhost:8000";
+  return import.meta.env.VITE_API_BASE || "http://localhost:8002";
 }
 
 export function setApiPort(port: number): void {

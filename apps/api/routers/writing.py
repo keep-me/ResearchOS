@@ -1,5 +1,4 @@
 """学术写作助手路由
-@author Color2333
 """
 
 from fastapi import APIRouter, HTTPException

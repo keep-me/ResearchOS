@@ -1,6 +1,5 @@
 """
 性能监控工具
-@author Color2333
 """
 from __future__ import annotations
 

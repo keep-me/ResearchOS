@@ -1,6 +1,5 @@
 /**
  * Canvas 状态管理 Hook
- * @author Color2333
  */
 import { useState, useCallback } from "react";
 import type { CanvasData } from "@/contexts/AssistantInstanceContext";

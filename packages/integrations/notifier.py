@@ -1,6 +1,5 @@
 """
 通知服务 - 邮件发送 + HTML 存储
-@author Bamzc
 """
 from __future__ import annotations
 

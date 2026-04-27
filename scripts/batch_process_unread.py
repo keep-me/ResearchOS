@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 批量处理未读论文 - 粗读 + 嵌入
-@author Color2333
 """
 
 from __future__ import annotations

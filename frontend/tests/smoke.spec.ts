@@ -9,10 +9,10 @@ import {
 } from "@playwright/test";
 
 const AUTH_TOKEN = "smoke-test-token";
-const API_BASE = (process.env.PLAYWRIGHT_API_BASE || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const API_BASE = (process.env.PLAYWRIGHT_API_BASE || "http://127.0.0.1:8002").replace(/\/+$/, "");
 const BACKEND_FS_MODE = (
   process.env.PLAYWRIGHT_BACKEND_FS
-  || (/:8002(?:\/|$)/.test(API_BASE) ? "container" : "host")
+  || "host"
 ).toLowerCase() === "container" ? "container" : "host";
 const ACP_PYTHON = process.env.PLAYWRIGHT_PYTHON || "python";
 const BACKEND_REPO_ROOT = resolveBackendPath(path.resolve(process.cwd(), ".."), "/app");

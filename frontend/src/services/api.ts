@@ -1,6 +1,5 @@
 /**
  * ResearchOS - API 服务层
- * @author Bamzc
  */
 import type {
   SystemStatus,

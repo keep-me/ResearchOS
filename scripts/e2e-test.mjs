@@ -1,12 +1,11 @@
 /**
  * ResearchOS 深度用户体验自动化测试
  * 模拟真人操作：导航、点击、输入、滚动、截图
- * @author Bamzc
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
 
-const BASE = "http://localhost:5173";
+const BASE = "http://localhost:3002";
 const SHOT_DIR = "scripts/screenshots";
 mkdirSync(SHOT_DIR, { recursive: true });
 

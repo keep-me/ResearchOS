@@ -1,6 +1,5 @@
 """
 服务基类 — 统一 session 管理和依赖注入模式
-@author Color2333
 
 使用方式：
     # 方式1: 内部自管理 session（默认）

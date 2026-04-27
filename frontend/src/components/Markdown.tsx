@@ -1,6 +1,5 @@
 /**
  * 统一 Markdown 渲染组件（含 LaTeX 支持）
- * @author Color2333
  */
 import { Children, isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";

@@ -1,6 +1,5 @@
 """
 统一异常体系 — 区分业务错误和系统错误，配合全局中间件使用
-@author Color2333
 """
 from __future__ import annotations
 

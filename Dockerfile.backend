@@ -1,6 +1,5 @@
 # ============================================================
 # ResearchOS Backend Dockerfile - FastAPI + Worker
-# @author Color2333
 # ============================================================
 
 ARG BASE_REGISTRY=docker.io
@@ -57,10 +56,10 @@ ENV PYTHONUNBUFFERED=1
 # 初始化数据库（如果不存在）
 RUN python scripts/local_bootstrap.py || true
 
-EXPOSE 8000
+EXPOSE 8002
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD curl -sf http://localhost:8000/health || exit 1
+    CMD curl -sf http://localhost:8002/health || exit 1
 
 # 默认命令（可以被 docker-compose 覆盖）
-CMD ["python", "-m", "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8002"]

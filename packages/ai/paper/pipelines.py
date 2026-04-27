@@ -1,6 +1,5 @@
-﻿"""
+"""
 璁烘枃澶勭悊 Pipeline - 鎽勫叆 / 绮楄 / 绮捐 / 鍚戦噺鍖?/ 鍙傝€冩枃鐚鍏?
-@author Bamzc
 """
 
 from __future__ import annotations

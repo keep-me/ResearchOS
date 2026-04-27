@@ -1,7 +1,6 @@
 """
 应用配置 - Pydantic Settings
 支持桌面模式通过 RESEARCHOS_ENV_FILE / RESEARCHOS_DATA_DIR 环境变量注入路径。
-@author Bamzc
 """
 
 from functools import lru_cache
@@ -61,7 +60,7 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     app_name: str = "ResearchOS API"
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    api_port: int = 8002
 
     # 站点配置
     site_url: str = "http://localhost:3002"  # 默认本地，生产环境设为 https://pm.vibingu.cn
@@ -96,8 +95,7 @@ class Settings(BaseSettings):
     daily_cron: str = "0 21 * * *"
     weekly_cron: str = "0 22 * * 0"
     cors_allow_origins: str = (
-        "http://localhost:5173,http://127.0.0.1:5173,"  # 开发环境
-        "http://localhost:3002,http://127.0.0.1:3002"  # 本地静态前端
+        "http://localhost:3002,http://127.0.0.1:3002"  # 本地前端
     )
 
     # LLM Provider: openai / anthropic / zhipu / gemini

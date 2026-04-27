@@ -1,12 +1,11 @@
 /**
  * ResearchOS 全流程 E2E 深度测试
  * 模拟真实用户操作：导航、输入、点击、滚动、验证
- * @author Bamzc
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
 
-const BASE = "http://localhost:5173";
+const BASE = "http://localhost:3002";
 const SHOT_DIR = "scripts/screenshots/full";
 mkdirSync(SHOT_DIR, { recursive: true });
 
@@ -189,7 +188,7 @@ const info = (msg) => console.log(`  ℹ️  ${msg}`);
   // 直接导航到第一篇论文
   const firstPaperResp = await page.evaluate(async () => {
     const r = await fetch("/api/papers/latest?page=1&page_size=1");
-    // 如果 /api 前缀不行，试 localhost:8000
+    // 如果 /api 前缀不行，试 localhost:8002
     return null;
   });
 

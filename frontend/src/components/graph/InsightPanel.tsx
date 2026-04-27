@@ -1,6 +1,5 @@
 /**
  * 领域洞察面板 — 一键查询: 时间线 + 演化 + 质量 + 研究空白
- * @author Color2333
  */
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { Button, Badge } from "@/components/ui";

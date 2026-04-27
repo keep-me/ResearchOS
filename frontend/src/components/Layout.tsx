@@ -1,6 +1,5 @@
 /**
  * 主布局组件
- * @author Bamzc
  */
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";

@@ -1,6 +1,5 @@
 /**
  * 按钮组件
- * @author Color2333
  */
 import { cn } from "@/lib/utils";
 import type { ButtonHTMLAttributes, ReactNode } from "react";

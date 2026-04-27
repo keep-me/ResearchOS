@@ -1,5 +1,4 @@
 """LLM 配置 / 邮箱配置 / 工作区 / 助手策略路由
-@author Color2333
 """
 
 from typing import Literal

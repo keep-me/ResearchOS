@@ -1,6 +1,5 @@
 /**
  * 对话历史管理 - localStorage 持久化（元信息 + session 绑定）
- * @author Bamzc
  */
 import { useSyncExternalStore } from "react";
 import { uid } from "@/lib/utils";

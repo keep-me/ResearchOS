@@ -1,6 +1,5 @@
 """
 LLM 成本守卫 - 自动降级模型选择
-@author Bamzc
 """
 from __future__ import annotations
 

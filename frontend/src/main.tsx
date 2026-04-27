@@ -1,6 +1,5 @@
 /**
  * ResearchOS - 入口文件
- * @author Bamzc
  */
 import { createRoot } from "react-dom/client";
 import App from "./App";

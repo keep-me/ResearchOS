@@ -1,6 +1,5 @@
 /**
  * Toast 通知渲染组件
- * @author Color2333
  */
 import { useToast, type ToastType } from "@/contexts/ToastContext";
 import { CheckCircle2, XCircle, Info, AlertTriangle, X } from "@/lib/lucide";

@@ -1,6 +1,5 @@
 /**
  * ResearchOS - 登录页面
- * @author Color2333
  */
 import { useState } from "react";
 import { Lock, Loader2, Eye, EyeOff, Sparkles, ArrowRight } from "@/lib/lucide";

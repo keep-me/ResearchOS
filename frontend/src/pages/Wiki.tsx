@@ -1,6 +1,5 @@
 /**
  * 专题综述 - Manus 风格结构化知识百科
- * @author Bamzc
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardHeader, Button, Tabs, Spinner, Empty } from "@/components/ui";

@@ -1,6 +1,5 @@
 """
 每日简报服务 - 精美日报生成
-@author Bamzc
 """
 
 from __future__ import annotations

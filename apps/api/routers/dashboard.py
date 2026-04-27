@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Query
@@ -23,17 +24,25 @@ from packages.storage.repository_facades import PaperDataFacade, ProjectDataFaca
 router = APIRouter()
 
 
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _get_arxiv_trend(subdomain_key: str = "all", *, allow_compute: bool = False) -> dict:
     normalized_subdomain = str(subdomain_key or "all").strip().lower() or "all"
     cache_key = f"dashboard_arxiv_trend_{normalized_subdomain}_v11"
+    compute_on_demand = allow_compute or _truthy_env("RESEARCHOS_DASHBOARD_TREND_ON_DEMAND")
     cached = None if allow_compute else cache.get(cache_key)
     if cached is not None:
-        return cached
+        if compute_on_demand and not cached.get("available"):
+            cached = None
+        else:
+            return cached
     result = ArxivTrendService().get_snapshot(
         subdomain_key=normalized_subdomain,
         sample_limit=160,
         fallback_days=7,
-        allow_compute=allow_compute,
+        allow_compute=compute_on_demand,
     )
     cache.set(cache_key, result, ttl=60 * 60 if result.get("available") else 5 * 60)
     return result

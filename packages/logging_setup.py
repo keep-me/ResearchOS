@@ -1,6 +1,5 @@
 """
 统一日志配置 — API / Worker / 脚本共享同一格式
-@author Color2333
 """
 from __future__ import annotations
 

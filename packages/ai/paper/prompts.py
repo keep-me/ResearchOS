@@ -1,6 +1,5 @@
 """
 LLM Prompt 模板
-@author Bamzc
 """
 
 from packages.ai.paper.analysis_options import normalize_analysis_detail_level

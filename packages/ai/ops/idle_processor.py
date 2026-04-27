@@ -1,6 +1,5 @@
 """
 闲时自动处理器 - 检测系统空闲状态，自动批量处理未读论文
-@author Color2333
 """
 
 from __future__ import annotations

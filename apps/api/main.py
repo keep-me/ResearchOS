@@ -1,16 +1,19 @@
 """
 ResearchOS API - FastAPI 入口
-@author Color2333
 """
 
 from contextlib import asynccontextmanager
 import logging
+import os
+from pathlib import Path
+import sys
+import threading
 import time
 import uuid as _uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -108,8 +111,104 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class ApiPrefixMiddleware:
+    """让生产前端的 /api 前缀兼容现有根路径 API。"""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") in {"http", "websocket"}:
+            path = scope.get("path") or ""
+            if path == "/api" or path.startswith("/api/"):
+                scope = dict(scope)
+                scope["path"] = path[4:] or "/"
+                raw_path = scope.get("raw_path")
+                if isinstance(raw_path, bytes) and (raw_path == b"/api" or raw_path.startswith(b"/api/")):
+                    scope["raw_path"] = raw_path[4:] or b"/"
+        await self.app(scope, receive, send)
+
+
+class FrontendStaticMiddleware:
+    """在打包模式下用 FastAPI 进程承载前端静态资源。"""
+
+    def __init__(self, app, dist_dir: str):
+        self.app = app
+        self.dist_dir = Path(dist_dir).resolve()
+        self.index_file = self.dist_dir / "index.html"
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        method = scope.get("method", "GET")
+        path = scope.get("path") or "/"
+        if method not in {"GET", "HEAD"} or path.startswith("/api/") or path == "/api":
+            await self.app(scope, receive, send)
+            return
+
+        candidate = (self.dist_dir / path.lstrip("/")).resolve()
+        if candidate.is_file() and candidate.is_relative_to(self.dist_dir):
+            await FileResponse(candidate)(scope, receive, send)
+            return
+
+        accept = ""
+        for name, value in scope.get("headers", []):
+            if name.lower() == b"accept":
+                accept = value.decode("latin-1")
+                break
+
+        if self.index_file.is_file() and ("text/html" in accept or path == "/"):
+            await FileResponse(self.index_file)(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_frontend_dist() -> Path | None:
+    configured = os.environ.get("RESEARCHOS_FRONTEND_DIST", "").strip()
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    bundle_root = getattr(sys, "_MEIPASS", "")
+    if bundle_root:
+        candidates.append(Path(bundle_root) / "frontend" / "dist")
+    candidates.append(Path(__file__).resolve().parents[2] / "frontend" / "dist")
+
+    for candidate in candidates:
+        if candidate.joinpath("index.html").is_file():
+            return candidate
+    return None
+
 
 settings = get_settings()
+_embedded_worker_thread: threading.Thread | None = None
+
+
+def _start_embedded_worker_if_requested() -> None:
+    global _embedded_worker_thread
+
+    if not _truthy_env("RESEARCHOS_EMBED_WORKER"):
+        return
+    if _embedded_worker_thread and _embedded_worker_thread.is_alive():
+        return
+
+    from apps.worker.main import run_worker
+
+    _embedded_worker_thread = threading.Thread(
+        target=run_worker,
+        daemon=True,
+        name="scheduler",
+    )
+    _embedded_worker_thread.start()
+    logger.info("Embedded scheduler started after API bootstrap")
+
+
 async def _startup_runtime() -> None:
     validate_auth_configuration()
     bootstrap_api_runtime()
@@ -124,6 +223,7 @@ async def _shutdown_runtime() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await _startup_runtime()
+    _start_embedded_worker_if_requested()
     try:
         yield
     finally:
@@ -159,6 +259,8 @@ if origins:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+app.add_middleware(ApiPrefixMiddleware)
 
 
 # ---------- 注册路由 ----------
@@ -206,3 +308,11 @@ app.include_router(writing.router)
 app.include_router(jobs.router)
 app.include_router(auth.router)
 app.include_router(opencode.router)
+
+if _truthy_env("RESEARCHOS_SERVE_FRONTEND"):
+    frontend_dist = _resolve_frontend_dist()
+    if frontend_dist is None:
+        logger.warning("RESEARCHOS_SERVE_FRONTEND is enabled, but frontend/dist was not found")
+    else:
+        app.add_middleware(FrontendStaticMiddleware, dist_dir=str(frontend_dist))
+        logger.info("Serving frontend from %s", frontend_dist)

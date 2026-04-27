@@ -1,5 +1,4 @@
 """ResearchOS API — 共享依赖
-@author Color2333
 """
 
 import logging

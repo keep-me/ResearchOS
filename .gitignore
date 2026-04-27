@@ -85,8 +85,14 @@ deploy/
 
 # MinerU local runtime
 MinerU/runtime/
+MinerU/mineru.local.json
+MinerU/models/
+packages/MinerU/
 packages/MinerU/runtime/
 
 # Local project/runtime artifacts
 projects/
 class/
+docs/
+skills/
+ResearchOS/

@@ -1,6 +1,5 @@
 """
 API 并发控制器 - 智能限流 + 动态并发
-@author Color2333
 """
 
 from __future__ import annotations

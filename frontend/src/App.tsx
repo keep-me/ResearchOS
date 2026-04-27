@@ -1,6 +1,5 @@
 /**
  * ResearchOS - 主应用路由（懒加载）
- * @author Bamzc
  */
 import { lazy, Suspense, useEffect, useState, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";

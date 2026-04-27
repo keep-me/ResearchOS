@@ -1,6 +1,5 @@
 /**
  * 消息历史构建 Hook - 提取消息构建逻辑
- * @author Color2333
  */
 import { useCallback } from "react";
 import type { AgentMessage } from "@/types";

@@ -1,6 +1,5 @@
-﻿/**
+/**
  * Paper Detail - paper overview, analysis reports, and PDF actions.
- * @author Bamzc
  */
 import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { useParams, useNavigate } from "react-router-dom";

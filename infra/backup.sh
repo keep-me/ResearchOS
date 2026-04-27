@@ -1,6 +1,5 @@
 #!/bin/bash
 # ResearchOS 数据备份脚本
-# @author Bamzc
 #
 # 用法: 添加到 crontab:
 #   0 3 * * * /opt/researchos/backup.sh >> /opt/researchos/backups/backup.log 2>&1

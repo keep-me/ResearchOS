@@ -2,7 +2,6 @@
 """
 ResearchOS Desktop — PyInstaller spec
 打包 Python 后端为独立二进制，供 Tauri sidecar 调用。
-@author Bamzc
 """
 import sys
 from pathlib import Path
@@ -10,6 +9,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 block_cipher = None
 ROOT = Path(SPECPATH)
+frontend_dist = ROOT / "frontend" / "dist"
+frontend_datas = [(str(frontend_dist), "frontend/dist")] if frontend_dist.exists() else []
 passlib_hiddenimports = collect_submodules("passlib.handlers")
 pillow_hiddenimports = collect_submodules("PIL")
 pillow_datas = collect_data_files("PIL")
@@ -37,6 +38,7 @@ mcp_hiddenimports = [
     *collect_submodules("mcp.server"),
     *collect_submodules("mcp.shared"),
 ]
+agent_hiddenimports = collect_submodules("packages.agent")
 
 try:
     winpty_hiddenimports = collect_submodules("winpty")
@@ -61,6 +63,7 @@ a = Analysis(
         *magika_datas,
         *fast_langdetect_datas,
         *winpty_datas,
+        *frontend_datas,
     ],
     hiddenimports=[
         "apps.api.main",
@@ -120,6 +123,7 @@ a = Analysis(
         "httpx",
         "dotenv",
         "bcrypt",
+        *agent_hiddenimports,
         *mcp_hiddenimports,
         *mineru_hiddenimports,
         *magika_hiddenimports,

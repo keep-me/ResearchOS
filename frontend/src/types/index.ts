@@ -1,6 +1,5 @@
 /**
  * ResearchOS - TypeScript 类型定义
- * @author Bamzc
  */
 
 /* ========== 系统 ========== */

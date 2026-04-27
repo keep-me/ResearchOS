@@ -1,6 +1,5 @@
 /**
  * 工具函数
- * @author Bamzc
  */
 import { clsx, type ClassValue } from "clsx";
 

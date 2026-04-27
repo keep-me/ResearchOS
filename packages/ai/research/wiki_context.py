@@ -1,7 +1,6 @@
 """
 Wiki 生成上下文收集模块
 从多源聚合富化上下文供 Wiki 生成使用
-@author Bamzc
 """
 from __future__ import annotations
 

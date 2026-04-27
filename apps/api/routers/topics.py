@@ -1,5 +1,4 @@
 """主题订阅 & 论文摄入路由
-@author Color2333
 """
 
 import logging

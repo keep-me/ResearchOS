@@ -1,6 +1,5 @@
 """
 认证工具模块 - JWT 生成/验证，密码验证
-@author Color2333
 """
 
 from __future__ import annotations

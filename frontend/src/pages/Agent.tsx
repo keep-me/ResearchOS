@@ -1,7 +1,6 @@
 /**
  * Agent 对话页面 - 纯渲染壳，核心状态由 AssistantInstanceContext 管理
  * 切换页面不会丢失 SSE 流和进度
- * @author Bamzc
  */
 import {
   useState,

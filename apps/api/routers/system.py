@@ -1,5 +1,4 @@
 """系统状态 & 指标路由
-@author Color2333
 """
 
 from fastapi import APIRouter, Query

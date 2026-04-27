@@ -1,6 +1,5 @@
 """
 向量数学工具函数
-@author Bamzc
 """
 import math
 

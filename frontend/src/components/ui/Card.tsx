@@ -1,6 +1,5 @@
 /**
  * 卡片组件
- * @author Color2333
  */
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";

@@ -1,6 +1,5 @@
 """
 邮箱发送服务
-@author Color2333
 """
 from __future__ import annotations
 

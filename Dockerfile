@@ -1,6 +1,5 @@
 # ============================================================
 # ResearchOS Docker - 单容器部署（Nginx + API + Worker）
-# @author Bamzc
 # ============================================================
 
 # Stage 1: 前端构建
@@ -53,6 +52,6 @@ RUN mkdir -p /app/data/papers /app/data/briefs
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -sf http://localhost:8000/health || exit 1
+  CMD curl -sf http://localhost:8002/health || exit 1
 
 CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/researchos.conf"]

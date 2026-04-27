@@ -1,6 +1,5 @@
 """
 数据仓储层
-@author Bamzc
 """
 
 from __future__ import annotations

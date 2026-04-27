@@ -1,5 +1,4 @@
 """引用图谱 & 引用同步路由
-@author Color2333
 """
 import logging
 from uuid import UUID

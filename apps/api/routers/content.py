@@ -1,5 +1,4 @@
 """Wiki / 简报 / 生成内容 / 趋势路由
-@author Color2333
 """
 
 from fastapi import APIRouter, HTTPException, Query

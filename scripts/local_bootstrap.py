@@ -1,7 +1,6 @@
 """
 数据库初始化脚本
 兼容本地开发与 Docker 环境。
-@author Color2333
 
 使用方法：
     python scripts/local_bootstrap.py
