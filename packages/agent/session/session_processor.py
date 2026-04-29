@@ -224,6 +224,108 @@ def prompt_event(event: str, data: dict[str, Any] | None = None) -> PromptEvent:
     )
 
 
+_DELTA_PERSIST_EVENT_NAMES = {"reasoning_delta", "text_delta"}
+_DELTA_PERSIST_CHAR_THRESHOLD = 512
+_DELTA_PERSIST_EVENT_THRESHOLD = 24
+
+
+@dataclass
+class _DeltaPersistenceBuffer:
+    processor: Any
+    active_event_name: str | None = None
+    active_part_id: str | None = None
+    active_metadata: dict[str, Any] | None = None
+    active_first_persisted: bool = False
+    event_name: str | None = None
+    part_id: str | None = None
+    metadata: dict[str, Any] | None = None
+    chunks: list[str] = field(default_factory=list)
+    chars: int = 0
+    events: int = 0
+
+    @staticmethod
+    def can_buffer(event_name: str | None, data: dict[str, Any]) -> bool:
+        if event_name not in _DELTA_PERSIST_EVENT_NAMES:
+            return False
+        return bool(str(data.get("content") or ""))
+
+    @staticmethod
+    def _part_id(data: dict[str, Any]) -> str | None:
+        return runtime._clean_text(data.get("id")) or None
+
+    @staticmethod
+    def _metadata(data: dict[str, Any]) -> dict[str, Any] | None:
+        metadata = data.get("metadata")
+        return copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None
+
+    def _matches(self, event_name: str, part_id: str | None, metadata: dict[str, Any] | None) -> bool:
+        return (
+            self.active_event_name == event_name
+            and self.active_part_id == part_id
+            and self.active_metadata == metadata
+        )
+
+    def _clear_pending(self) -> None:
+        self.event_name = None
+        self.part_id = None
+        self.metadata = None
+        self.chunks = []
+        self.chars = 0
+        self.events = 0
+
+    def _reset_active(self, event_name: str, part_id: str | None, metadata: dict[str, Any] | None) -> None:
+        self.active_event_name = event_name
+        self.active_part_id = part_id
+        self.active_metadata = copy.deepcopy(metadata) if isinstance(metadata, dict) else None
+        self.active_first_persisted = False
+
+    def push(self, event_name: str, data: dict[str, Any]) -> list[PromptEvent]:
+        content = str(data.get("content") or "")
+        if not content:
+            return []
+        part_id = self._part_id(data)
+        metadata = self._metadata(data)
+        emitted: list[PromptEvent] = []
+        if self.active_event_name is None or not self._matches(event_name, part_id, metadata):
+            emitted.extend(self.flush())
+            self._reset_active(event_name, part_id, metadata)
+        if not self.chunks:
+            self.event_name = event_name
+            self.part_id = part_id
+            self.metadata = copy.deepcopy(metadata) if isinstance(metadata, dict) else None
+        self.chunks.append(content)
+        self.chars += len(content)
+        self.events += 1
+        if not self.active_first_persisted:
+            self.active_first_persisted = True
+            emitted.extend(self.flush())
+        elif self.chars >= _DELTA_PERSIST_CHAR_THRESHOLD or self.events >= _DELTA_PERSIST_EVENT_THRESHOLD:
+            emitted.extend(self.flush())
+        return emitted
+
+    def flush(self) -> list[PromptEvent]:
+        event_name = self.event_name
+        if not event_name or not self.chunks:
+            self._clear_pending()
+            return []
+        if event_name == "reasoning_delta":
+            content = ""
+            for chunk in self.chunks:
+                content = session_message_v2.append_reasoning_fragment(content, chunk)
+        else:
+            content = "".join(self.chunks)
+        payload: dict[str, Any] = {"content": content}
+        if self.part_id:
+            payload["id"] = self.part_id
+        if isinstance(self.metadata, dict) and self.metadata:
+            payload["metadata"] = copy.deepcopy(self.metadata)
+        self._clear_pending()
+        return [
+            prompt_event(name, payload)
+            for name, payload in self.processor.apply_event(event_name, payload)
+        ]
+
+
 def coerce_prompt_event(item: PromptEvent | str) -> tuple[str | None, dict[str, Any], str]:
     if isinstance(item, PromptEvent):
         data = copy.deepcopy(item.data) if isinstance(item.data, dict) else {}
@@ -314,6 +416,11 @@ class PromptLifecycleSession:
         self.control = control
         self.session_processor = session_processor
         self.event_driver = event_driver
+        self._delta_persistence_buffer = (
+            _DeltaPersistenceBuffer(session_processor)
+            if session_processor is not None
+            else None
+        )
 
     @classmethod
     def create(
@@ -367,12 +474,41 @@ class PromptLifecycleSession:
             prompt_event(event_name, data),
         ]
 
+    def _flush_delta_persistence(self) -> list[PromptEvent]:
+        if self._delta_persistence_buffer is None:
+            return []
+        return self._delta_persistence_buffer.flush()
+
+    def _emit_delta_persistence_flush(self, *, publish_bus: bool = False) -> Iterator[str]:
+        for emitted in self._flush_delta_persistence():
+            yield from self.event_driver.emit_raw(emitted, publish_bus=publish_bus)
+
+    def _flush_delta_persistence_silent(self) -> None:
+        self._flush_delta_persistence()
+
     def emit_item(
         self,
         item: PromptEvent | str,
         *,
         publish_bus: bool = False,
     ) -> Iterator[str]:
+        event_name, data, serialized = coerce_prompt_event(item)
+        if (
+            self._delta_persistence_buffer is not None
+            and event_name is not None
+            and _DeltaPersistenceBuffer.can_buffer(event_name, data)
+        ):
+            for emitted in self._delta_persistence_buffer.push(event_name, data):
+                yield from self.event_driver.emit_raw(emitted, publish_bus=publish_bus)
+            yield from self.event_driver.emit_raw(
+                prompt_event(event_name, data),
+                publish_bus=publish_bus,
+            )
+            return
+        yield from self._emit_delta_persistence_flush(publish_bus=publish_bus)
+        if event_name is None:
+            yield from self.event_driver.emit_raw(serialized, publish_bus=publish_bus)
+            return
         for emitted in self.persist_prompt_item(item):
             yield from self.event_driver.emit_raw(emitted, publish_bus=publish_bus)
 
@@ -448,11 +584,17 @@ class PromptLifecycleSession:
                 on_start(self)
             try:
                 yield from run()
+                yield from self._emit_delta_persistence_flush()
+            except GeneratorExit:
+                self._flush_delta_persistence_silent()
+                raise
             except Exception as exc:
+                self._flush_delta_persistence_silent()
                 if callable(on_exception):
                     on_exception(self, exc)
                 raise
             finally:
+                self._flush_delta_persistence_silent()
                 if callable(on_finalize):
                     on_finalize(self)
                 if self.session_processor is not None:
@@ -2436,7 +2578,13 @@ class _ProcessorState:
         _, parts = runtime._load_message_parts(self.session_id, message_id)
         return parts
 
-    def save_parts(self, parts: list[dict[str, Any]], *, meta: dict[str, Any] | object = ...) -> dict[str, Any]:
+    def save_parts(
+        self,
+        parts: list[dict[str, Any]],
+        *,
+        meta: dict[str, Any] | object = ...,
+        publish: bool = True,
+    ) -> dict[str, Any]:
         message_id = self.ensure_message()
         content = runtime._aggregate_message_content(parts, role="assistant")
         if meta is not ...:
@@ -2447,6 +2595,7 @@ class _ProcessorState:
             parts=parts,
             meta=self.current_message_meta if meta is not ... else ...,
             content=content,
+            publish=publish,
         )
 
     def commit_current_message(self, *, finish: str | None = None, meta: dict[str, Any] | None = None) -> None:
@@ -2616,7 +2765,7 @@ class SessionProcessor:
         part["time"] = time_payload
         if isinstance(metadata, dict) and metadata:
             part["metadata"] = copy.deepcopy(metadata)
-        self.state.save_parts(parts, meta=self.state.current_message_meta)
+        self.state.save_parts(parts, meta=self.state.current_message_meta, publish=False)
         runtime._publish_part_delta(
             self.session_id,
             str(self.state.current_message_id or ""),
@@ -2677,7 +2826,7 @@ class SessionProcessor:
             tool_state["time"] = time_payload
             part["state"] = tool_state
             break
-        self.state.save_parts(parts, meta=self.state.current_message_meta)
+        self.state.save_parts(parts, meta=self.state.current_message_meta, publish=False)
         if part_id is not None and self.state.current_message_id:
             runtime._publish_part_delta(
                 self.session_id,
@@ -3211,28 +3360,45 @@ class SessionProcessor:
         )
         if manage_lifecycle:
             self.start()
+        delta_persistence_buffer = _DeltaPersistenceBuffer(self)
+
+        def _emit_output(item: PromptEvent | str) -> Iterator[str]:
+            if driver is None:
+                if isinstance(item, PromptEvent):
+                    yield runtime._format_sse_event(item.event, item.data)
+                else:
+                    yield str(item)
+                return
+            yield from driver.emit_raw(item, publish_bus=publish_bus)
+
+        def _flush_delta_persistence() -> Iterator[str]:
+            for emitted in delta_persistence_buffer.flush():
+                yield from _emit_output(emitted)
+
         try:
             for raw in raw_stream:
-                for item in self.consume(raw):
-                    if driver is None:
-                        yield item
-                    else:
-                        yield from driver.emit_raw(item, publish_bus=publish_bus)
                 parsed = runtime._coerce_runtime_event(raw)
                 if parsed is None:
+                    yield from _flush_delta_persistence()
                     serialized = str(raw)
-                    if driver is None:
-                        yield serialized
-                    else:
-                        yield from driver.emit_raw(serialized, publish_bus=publish_bus)
-                else:
-                    event_name, data = parsed
-                    serialized = runtime._format_sse_event(event_name, data)
-                    if driver is None:
-                        yield serialized
-                    else:
-                        yield from driver.emit_raw(serialized, publish_bus=publish_bus)
+                    yield from _emit_output(serialized)
+                    continue
+                event_name, data = parsed
+                if _DeltaPersistenceBuffer.can_buffer(event_name, data):
+                    for emitted in delta_persistence_buffer.push(event_name, data):
+                        yield from _emit_output(emitted)
+                    yield from _emit_output(prompt_event(event_name, data))
+                    continue
+                yield from _flush_delta_persistence()
+                for name, payload in self.apply_event(event_name, data):
+                    yield from _emit_output(prompt_event(name, payload))
+                yield from _emit_output(prompt_event(event_name, data))
+            yield from _flush_delta_persistence()
+        except GeneratorExit:
+            delta_persistence_buffer.flush()
+            raise
         finally:
+            delta_persistence_buffer.flush()
             self.finalize(
                 manage_lifecycle=manage_lifecycle,
                 handed_off=bool(getattr(control, "handed_off", False)),

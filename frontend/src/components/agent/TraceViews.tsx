@@ -1400,65 +1400,14 @@ export const StepDataView = memo(function StepDataView({
     return raw.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
   }, []);
 
-  const normalizeToolFigureRefs = useCallback((payload: Record<string, unknown>) => {
-    const raw = Array.isArray(payload.figure_refs)
-      ? payload.figure_refs
-      : Array.isArray(payload.figureRefs)
-        ? payload.figureRefs
-        : [];
-    return raw
-      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-      .map((item) => {
-        const figureId = String(item.id ?? item.figure_ref ?? item.figure_id ?? "").trim();
-        const normalized: Record<string, unknown> = { ...item };
-        if (figureId) normalized.id = figureId;
-        if (normalized.figure_label === undefined && normalized.label !== undefined) normalized.figure_label = normalized.label;
-        if (normalized.figure_label === undefined && normalized.title !== undefined) normalized.figure_label = normalized.title;
-        if (normalized.page_number === undefined && normalized.page !== undefined) normalized.page_number = normalized.page;
-        if (normalized.image_type === undefined && normalized.figure_type !== undefined) normalized.image_type = normalized.figure_type;
-        return normalized;
-      });
-  }, []);
   const nestedPaper = data.paper && typeof data.paper === "object"
     ? data.paper as Record<string, unknown>
     : null;
-  const toolPaperId = String(data.paper_id ?? data.id ?? nestedPaper?.id ?? "").trim();
-  const hasSiblingFigureGallery = siblingSteps.some((candidate) => {
-    if (candidate.toolName !== "analyze_figures" && candidate.toolName !== "paper_figures") return false;
-    const candidateData = candidate.data && typeof candidate.data === "object"
-      ? candidate.data as Record<string, unknown>
-      : null;
-    const candidatePaper = candidateData?.paper && typeof candidateData.paper === "object"
-      ? candidateData.paper as Record<string, unknown>
-      : null;
-    const candidatePaperId = String(
-      candidateData?.paper_id
-      ?? candidateData?.id
-      ?? candidatePaper?.id
-      ?? candidate.toolArgs?.paper_id
-      ?? "",
-    ).trim();
-    return candidatePaperId === toolPaperId || !candidatePaperId || !toolPaperId;
-  });
-  const hasFreshRoundAnalysis = siblingSteps.some((candidate) => {
-    if (candidate.toolName !== "analyze_paper_rounds") return false;
-    const candidateData = candidate.data && typeof candidate.data === "object"
-      ? candidate.data as Record<string, unknown>
-      : null;
-    const candidatePaperId = String(candidateData?.paper_id ?? candidateData?.id ?? candidate.toolArgs?.paper_id ?? "").trim();
-    return candidatePaperId === toolPaperId || !candidatePaperId || !toolPaperId;
-  });
 
   const renderFigureGallery = useCallback((
     paperId: string | undefined,
     figures: Array<Record<string, unknown>>,
   ) => <ToolFigureGallery paperId={paperId} figures={figures} />, []);
-
-  const renderFigureReferences = useCallback((
-    paperId: string | undefined,
-    refs: Array<Record<string, unknown>>,
-    totalCount?: unknown,
-  ) => <ToolFigureReferences paperId={paperId} refs={refs} totalCount={totalCount} />, []);
 
   if (toolName === "inspect_workspace" && data.tree) {
     return <WorkspaceInspectView data={data} />;
@@ -1855,22 +1804,14 @@ export const StepDataView = memo(function StepDataView({
   }
   if ((toolName === "get_paper_analysis" || toolName === "analyze_paper_rounds") && data.analysis_rounds) {
     const bundle = data.analysis_rounds as Record<string, unknown>;
-    const paperId = String(data.paper_id ?? data.id ?? "").trim() || undefined;
-    const figureRefs = normalizeToolFigureRefs(data);
-    const suppressFigureRefs = hasSiblingFigureGallery || (toolName === "get_paper_analysis" && hasFreshRoundAnalysis);
-    const figureReferences = suppressFigureRefs ? null : renderFigureReferences(paperId, figureRefs, data.figure_count);
     return (
       <div className="text-[11px]">
         <div className="mb-2 flex flex-wrap gap-1.5 text-[10px] text-ink-tertiary">
           {data.title ? <span className="font-medium text-ink">{String(data.title)}</span> : null}
           {bundle.detail_level ? <span>详略: {String(bundle.detail_level)}</span> : null}
           {bundle.reasoning_level ? <span>推理: {String(bundle.reasoning_level)}</span> : null}
-          {data.figure_count ? <span>图表 {String(data.figure_count)}</span> : null}
         </div>
-        {figureReferences}
-        <div className={cn(figureReferences && "mt-3")}>
-          <PaperAnalysisBundleView bundle={bundle} />
-        </div>
+        <PaperAnalysisBundleView bundle={bundle} />
       </div>
     );
   }

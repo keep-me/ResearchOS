@@ -1732,6 +1732,7 @@ export const sessionApi = {
     sessionId: string,
     body: {
       parts: Array<Record<string, unknown>>;
+      display_text?: string | null;
       mode?: AgentMode;
       workspace_path?: string | null;
       workspace_server_id?: string | null;
@@ -1756,6 +1757,7 @@ export const sessionApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         parts: body.parts,
+        display_text: body.display_text || null,
         mode: body.mode || "build",
         workspace_path: body.workspace_path || null,
         workspace_server_id: body.workspace_server_id || null,
@@ -1775,6 +1777,7 @@ export const sessionApi = {
     sessionId: string,
     body: {
       parts: Array<Record<string, unknown>>;
+      display_text?: string | null;
       mode?: AgentMode;
       workspace_path?: string | null;
       workspace_server_id?: string | null;
@@ -1795,6 +1798,7 @@ export const sessionApi = {
       `/session/${encodeURIComponent(sessionId)}/message/detached`,
       {
         parts: body.parts,
+        display_text: body.display_text || null,
         mode: body.mode || "build",
         workspace_path: body.workspace_path || null,
         workspace_server_id: body.workspace_server_id || null,

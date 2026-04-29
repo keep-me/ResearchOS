@@ -104,6 +104,7 @@ export interface AssistantSessionRuntime {
     assistantMessageId: string | null;
     currentTextItemId: string | null;
     currentReasoningItemId: string | null;
+    busCaptured: boolean;
   };
 }
 

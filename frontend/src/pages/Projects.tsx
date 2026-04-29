@@ -693,18 +693,27 @@ export default function Projects() {
     }
   }, [deleteProjectTarget, loadProjects, navigate, projectId, setSearchParams, toast]);
 
-  const handleOpenAssistant = useCallback(() => {
+  const handleOpenAssistant = useCallback(async () => {
     if (!selectedProject) return;
     const workspacePath = targetWorkspacePath(assistantTarget) || projectWorkspacePath(selectedProject);
+    const serverId = normalizeServerId(assistantTarget?.workspace_server_id || selectedProject.workspace_server_id);
+    if (workspacePath && serverId === "local") {
+      await workspaceRootApi.create(workspacePath, selectedProject.name).catch(() => undefined);
+    }
     const workspace = workspacePath
       ? {
           path: workspacePath,
           effectivePath: workspacePath,
           title: selectedProject.name,
-          serverId: normalizeServerId(assistantTarget?.workspace_server_id || selectedProject.workspace_server_id),
+          serverId,
           serverLabel: serverLabelOf(assistantTarget?.workspace_server_id || selectedProject.workspace_server_id, servers),
         }
       : null;
+    const assistantRunId = selectedRun?.id || selectedProject.latest_run_id || "";
+    const assistantQuery = new URLSearchParams({ project: selectedProject.id });
+    if (assistantRunId) {
+      assistantQuery.set("run", assistantRunId);
+    }
     const workspaceKey = getConversationWorkspaceKey(workspace);
     const reusableWorkspaceConversationId =
       (workspaceKey
@@ -734,13 +743,13 @@ export default function Projects() {
           workspaceServerLabel: workspace.serverLabel,
         });
       }
-      navigate(`/assistant/${reusableConversationId}?project=${selectedProject.id}`);
+      navigate(`/assistant/${reusableConversationId}?${assistantQuery.toString()}`);
       return;
     }
 
     const conversationId = createConversation(workspace, { persist: true });
-    navigate(`/assistant/${conversationId}?project=${selectedProject.id}`);
-  }, [activeConv, assistantTarget, createConversation, metas, navigate, patchConversation, selectedProject, servers, switchConversation]);
+    navigate(`/assistant/${conversationId}?${assistantQuery.toString()}`);
+  }, [activeConv, assistantTarget, createConversation, metas, navigate, patchConversation, selectedProject, selectedRun?.id, servers, switchConversation]);
 
   const handleRevealPath = useCallback(async (path: string | null | undefined, serverId?: string | null) => {
     const targetPath = String(path || "").trim();
@@ -967,28 +976,28 @@ export default function Projects() {
 
   return (
     <>
-      <div className="grid gap-5 xl:grid-cols-[320px,minmax(0,1fr)] xl:gap-6">
-        <aside className="space-y-5">
+      <div className="grid min-w-0 gap-3 overflow-x-hidden sm:gap-5 xl:grid-cols-[320px,minmax(0,1fr)] xl:gap-6">
+        <aside className="min-w-0 space-y-3 sm:space-y-5">
           <section
             data-testid="projects-list-panel"
-            className="rounded-[24px] border border-border/70 bg-surface/92 p-4 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.24)] backdrop-blur-xl sm:rounded-[28px]"
+            className="rounded-[22px] border border-border/70 bg-surface/92 p-3 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.24)] backdrop-blur-xl sm:rounded-[28px] sm:p-4"
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">项目工作区</div>
                 <div className="mt-1 text-lg font-semibold tracking-[-0.04em] text-ink">项目列表</div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" icon={<FolderKanban className="h-4 w-4" />} onClick={openCreateProject}>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <Button className="w-full sm:w-auto" size="sm" icon={<FolderKanban className="h-4 w-4" />} onClick={openCreateProject}>
                   新建
                 </Button>
-                <Button size="sm" variant="secondary" icon={<FolderOpen className="h-4 w-4" />} onClick={openImportProject}>
+                <Button className="w-full sm:w-auto" size="sm" variant="secondary" icon={<FolderOpen className="h-4 w-4" />} onClick={openImportProject}>
                   导入
                 </Button>
               </div>
             </div>
 
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 max-h-[42dvh] space-y-2 overflow-y-auto pr-0.5 xl:max-h-none">
               {loadingProjects && projects.length === 0 ? (
                 <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-page/75 px-3 py-3 text-sm text-ink-secondary">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1018,7 +1027,7 @@ export default function Projects() {
                     type="button"
                     onClick={() => navigate(`/projects/${project.id}`)}
                     className={cn(
-                      "w-full rounded-[22px] border px-3.5 py-3 text-left transition",
+                      "w-full rounded-[20px] border px-3 py-2.5 text-left transition sm:rounded-[22px] sm:px-3.5 sm:py-3",
                       active
                         ? "border-primary/25 bg-primary/8 shadow-[0_18px_36px_-30px_rgba(37,99,235,0.32)]"
                         : "border-border/60 bg-page/72 hover:border-primary/15 hover:bg-surface",
@@ -1036,7 +1045,7 @@ export default function Projects() {
                     </div>
                     {project.latest_run ? (
                       <div className="mt-3 text-xs text-ink-secondary">
-                        <div className="font-medium text-ink">{project.latest_run.title || localizeLabel(project.latest_run.workflow_label)}</div>
+                        <div className="truncate font-medium text-ink">{project.latest_run.title || localizeLabel(project.latest_run.workflow_label)}</div>
                         <div className="mt-1 flex items-center gap-1.5 text-ink-tertiary">
                           <Clock3 className="h-3.5 w-3.5" />
                           <span>{timeAgo(project.latest_run.updated_at)}</span>
@@ -1050,39 +1059,39 @@ export default function Projects() {
           </section>
         </aside>
 
-        <section data-testid="projects-workbench" className="space-y-6">
+        <section data-testid="projects-workbench" className="min-w-0 space-y-4 sm:space-y-6">
           {selectedProject ? (
             <section
               data-testid="project-companion-card"
-              className="rounded-[24px] border border-border/70 bg-surface/92 p-4 shadow-[0_28px_56px_-42px_rgba(15,23,35,0.24)] backdrop-blur-xl sm:rounded-[28px] lg:p-5"
+              className="rounded-[22px] border border-border/70 bg-surface/92 p-3 shadow-[0_28px_56px_-42px_rgba(15,23,35,0.24)] backdrop-blur-xl sm:rounded-[28px] sm:p-4 lg:p-5"
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">项目工作区</div>
                   <h2 className="mt-1.5 text-xl font-semibold tracking-[-0.04em] text-ink">{selectedProject.name}</h2>
                   {selectedProject.description ? (
                     <p className="mt-1.5 max-w-3xl text-sm leading-6 text-ink-secondary">{selectedProject.description}</p>
                   ) : null}
-                  <div className="mt-2.5 flex flex-wrap gap-2">
-                    <Badge>{serverLabelOf(selectedProject.workspace_server_id, servers)}</Badge>
-                    {projectWorkspacePath(selectedProject) ? <Badge>{projectWorkspacePath(selectedProject)}</Badge> : null}
+                  <div className="mt-2.5 flex min-w-0 flex-wrap gap-2">
+                    <Badge className="max-w-full truncate">{serverLabelOf(selectedProject.workspace_server_id, servers)}</Badge>
+                    {projectWorkspacePath(selectedProject) ? <Badge className="max-w-full truncate">{projectWorkspacePath(selectedProject)}</Badge> : null}
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" icon={<RefreshCw className="h-4 w-4" />} loading={refreshing} onClick={() => void refreshCurrentProject(true)}>
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+                  <Button className="w-full sm:w-auto" variant="secondary" icon={<RefreshCw className="h-4 w-4" />} loading={refreshing} onClick={() => void refreshCurrentProject(true)}>
                     刷新
                   </Button>
-                  <Button icon={<Play className="h-4 w-4" />} onClick={() => setWorkflowDrawerOpen(true)}>
+                  <Button className="w-full sm:w-auto" icon={<Play className="h-4 w-4" />} onClick={() => setWorkflowDrawerOpen(true)}>
                     启动工作流
                   </Button>
-                  <Button variant="secondary" icon={<Play className="h-4 w-4" />} onClick={handleOpenAssistant}>
+                  <Button className="w-full sm:w-auto" variant="secondary" icon={<Play className="h-4 w-4" />} onClick={handleOpenAssistant}>
                     打开助手
                   </Button>
-                  <Button variant="secondary" icon={<Pencil className="h-4 w-4" />} onClick={() => openEditProject(selectedProject)}>
+                  <Button className="w-full sm:w-auto" variant="secondary" icon={<Pencil className="h-4 w-4" />} onClick={() => openEditProject(selectedProject)}>
                     编辑
                   </Button>
-                  <Button variant="danger" icon={<Trash2 className="h-4 w-4" />} loading={deletingProjectId === selectedProject.id} onClick={() => setDeleteProjectTarget(selectedProject)}>
+                  <Button className="col-span-2 w-full sm:col-span-1 sm:w-auto" variant="danger" icon={<Trash2 className="h-4 w-4" />} loading={deletingProjectId === selectedProject.id} onClick={() => setDeleteProjectTarget(selectedProject)}>
                     删除项目
                   </Button>
                 </div>
@@ -1100,7 +1109,7 @@ export default function Projects() {
           ) : null}
 
           {selectedProject && runs.length > 0 ? (
-            <section className="rounded-[24px] border border-border/70 bg-surface/88 p-4 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.18)] backdrop-blur-xl sm:rounded-[28px]">
+            <section className="rounded-[22px] border border-border/70 bg-surface/88 p-3 shadow-[0_24px_48px_-36px_rgba(15,23,35,0.18)] backdrop-blur-xl sm:rounded-[28px] sm:p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm font-semibold text-ink">运行列表</div>
                 <div className="text-xs text-ink-tertiary">{runs.length} 条记录</div>
@@ -1175,29 +1184,30 @@ export default function Projects() {
 
           {selectedRun ? (
             <>
-              <section className="rounded-[28px] border border-border/70 bg-surface/92 p-4 shadow-[0_28px_56px_-40px_rgba(15,23,35,0.22)] backdrop-blur-xl lg:p-5">
+              <section className="rounded-[22px] border border-border/70 bg-surface/92 p-3 shadow-[0_28px_56px_-40px_rgba(15,23,35,0.22)] backdrop-blur-xl sm:rounded-[28px] sm:p-4 lg:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant={statusVariant(selectedRun.status)}>{runStatusLabel(selectedRun.status, selectedRun.active_phase)}</Badge>
-                      <Badge>{localizeLabel(selectedRun.workflow_label)}</Badge>
-                      <Badge>{localizeLabel(selectedRun.target_label) || "默认目标"}</Badge>
+                      <Badge className="max-w-full truncate" variant={statusVariant(selectedRun.status)}>{runStatusLabel(selectedRun.status, selectedRun.active_phase)}</Badge>
+                      <Badge className="max-w-full truncate">{localizeLabel(selectedRun.workflow_label)}</Badge>
+                      <Badge className="max-w-full truncate">{localizeLabel(selectedRun.target_label) || "默认目标"}</Badge>
                     </div>
-                    <h3 className="mt-2 text-xl font-semibold tracking-[-0.04em] text-ink">
+                    <h3 className="mt-2 break-words text-lg font-semibold tracking-[-0.04em] text-ink sm:text-xl">
                       {selectedRun.title || localizeLabel(selectedRun.workflow_label)}
                     </h3>
                     <p className="mt-1.5 max-w-4xl text-sm leading-6 text-ink-secondary">
                       {selectedRun.summary || selectedRun.prompt || "暂无摘要"}
                     </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge>{runEngineSummary(selectedRun.executor_engine_label, selectedRun.executor_model)}</Badge>
-                      <Badge>{runEngineSummary(selectedRun.reviewer_engine_label, selectedRun.reviewer_model)}</Badge>
-                      <Badge>{serverLabelOf(selectedRun.workspace_server_id || selectedTarget?.workspace_server_id || selectedProject?.workspace_server_id, servers)}</Badge>
+                    <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+                      <Badge className="max-w-full truncate">{runEngineSummary(selectedRun.executor_engine_label, selectedRun.executor_model)}</Badge>
+                      <Badge className="max-w-full truncate">{runEngineSummary(selectedRun.reviewer_engine_label, selectedRun.reviewer_model)}</Badge>
+                      <Badge className="max-w-full truncate">{serverLabelOf(selectedRun.workspace_server_id || selectedTarget?.workspace_server_id || selectedProject?.workspace_server_id, servers)}</Badge>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                     <Button
+                      className="w-full sm:w-auto"
                       variant="secondary"
                       icon={<RotateCcw className="h-4 w-4" />}
                       loading={retryingRunId === selectedRun.id}
@@ -1206,6 +1216,7 @@ export default function Projects() {
                       重试
                     </Button>
                     <Button
+                      className="w-full sm:w-auto"
                       variant="secondary"
                       icon={<FolderOpen className="h-4 w-4" />}
                       loading={revealingPath === (selectedRun.run_directory || selectedRunWorkspaceRoot)}
@@ -1214,6 +1225,7 @@ export default function Projects() {
                       打开目录
                     </Button>
                     <Button
+                      className="w-full sm:w-auto"
                       variant="danger"
                       icon={<Trash2 className="h-4 w-4" />}
                       loading={deletingRunId === selectedRun.id}
@@ -1234,7 +1246,7 @@ export default function Projects() {
                 </div>
 
                 <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr),340px]">
-                  <div className="rounded-[24px] border border-border/60 bg-page/72 p-4">
+                  <div className="min-w-0 rounded-[22px] border border-border/60 bg-page/72 p-3 sm:rounded-[24px] sm:p-4">
                     <div className="text-sm font-semibold text-ink">任务说明</div>
                     <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink-secondary">
                       {selectedRun.prompt || "暂无说明"}
@@ -1243,11 +1255,11 @@ export default function Projects() {
                       <div>创建于 {formatDateTime(selectedRun.created_at)}</div>
                       <div>更新于 {formatDateTime(selectedRun.updated_at)}</div>
                       {selectedRun.finished_at ? <div>结束于 {formatDateTime(selectedRun.finished_at)}</div> : null}
-                      {selectedRunWorkspaceRoot ? <div>工作区 {selectedRunWorkspaceRoot}</div> : null}
+                      {selectedRunWorkspaceRoot ? <div className="break-all">工作区 {selectedRunWorkspaceRoot}</div> : null}
                     </div>
                   </div>
 
-                  <div className="rounded-[24px] border border-border/60 bg-surface p-4">
+                  <div className="min-w-0 rounded-[22px] border border-border/60 bg-surface p-3 sm:rounded-[24px] sm:p-4">
                     <div className="text-sm font-semibold text-ink">后续流程</div>
                     <div className="mt-3 space-y-3">
                       <div className="space-y-1.5">

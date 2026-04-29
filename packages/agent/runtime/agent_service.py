@@ -1100,9 +1100,11 @@ def _opencode_mounted_paper_turn_prompt(
             lines.append("- If the user asks for exact table values, ablation rows, plotted trends, or metric numbers, verify them with analyze_figures or the original paper content instead of relying only on summaries.")
     elif intent == "figure":
         lines.append("- This turn is figure-grounded on an already mounted local paper.")
+        if "paper_figures" in tool_names:
+            lines.append("- If the user only wants to view already extracted pictures/figures/tables, call paper_figures; do not call analyze_paper_rounds.")
         if "analyze_figures" in tool_names:
-            lines.append("- For architecture/framework/encoder-decoder questions on a mounted paper, call analyze_figures before answering unless the relevant figure card already exists.")
-            lines.append("- Use analyze_figures as the primary evidence source for diagram and table questions, and stop once the needed figure is found.")
+            lines.append("- Use analyze_figures only when existing figure cards are missing or the user asks to extract/analyze figure content.")
+            lines.append("- Use analyze_figures as the primary evidence source for diagram and table interpretation, and stop once the needed figure is found.")
         if "get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names:
             lines.append("- Do not call get_paper_analysis / analyze_paper_rounds just to recover figure refs or restate cached notes when the user only wants a figure-grounded explanation.")
     elif intent == "formula":
@@ -1119,8 +1121,8 @@ def _opencode_mounted_paper_turn_prompt(
         if "deep_read_paper" in tool_names:
             lines.append("- Use deep_read_paper when the answer depends on concrete method or implementation details.")
 
-    if "analyze_figures" in tool_names:
-        lines.append("- When tool output includes figure_refs with image_url, embed the most relevant original paper figure once and then explain it.")
+    if "paper_figures" in tool_names or "analyze_figures" in tool_names:
+        lines.append("- When a dedicated figure tool output includes figure_refs with image_url, embed the most relevant original paper figure once and then explain it.")
         lines.append("- Do not output raw figure_ref IDs alone when image_url is available.")
     return "\n".join(lines)
 
@@ -1162,7 +1164,9 @@ def _opencode_research_lookup_prompt(
     if "ingest_external_literature" in tool_names:
         lines.append("- After search_literature finds useful papers, use ingest_external_literature to import selected results into the local paper library when the user wants them saved.")
     if "analyze_paper_rounds" in tool_names:
-        lines.append("- Use analyze_paper_rounds when the user wants the local paper library to generate the coarse-to-fine three-round analysis for a paper.")
+        lines.append("- Use analyze_paper_rounds when the user wants the local paper library to generate the coarse-to-fine three-round analysis for a paper; it is not a figure viewing tool.")
+    if "paper_figures" in tool_names:
+        lines.append("- Use paper_figures when the user asks to view already extracted pictures, figures, tables, or original image cards from a local paper.")
     if "skim_paper" in tool_names or "deep_read_paper" in tool_names:
         lines.append("- Use skim_paper / deep_read_paper for lightweight or deeper single-paper reading passes when the user wants staged analysis instead of a full three-round run.")
     if "generate_wiki" in tool_names:
@@ -1178,9 +1182,11 @@ def _opencode_research_lookup_prompt(
     if "research_wiki_update_node" in tool_names:
         lines.append("- Use research_wiki_update_node to persist important project facts as structured wiki nodes instead of leaving them only in transient chat text.")
     if "analyze_figures" in tool_names:
-        lines.append("- Use analyze_figures when the user wants figure/table extraction or chart-centric interpretation from a local paper.")
+        lines.append("- Use analyze_figures when the user wants figure/table extraction or chart-centric interpretation from a local paper; prefer paper_figures for view-only requests.")
     if "get_paper_detail" in tool_names and ("get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names):
         lines.append("- When the user asks to analyze an already imported local paper, inspect get_paper_detail first so the UI can surface the mounted paper metadata and available figures alongside the answer.")
+    if "paper_figures" in tool_names and ("get_paper_detail" in tool_names or "get_paper_analysis" in tool_names):
+        lines.append("- If already extracted figure cards are enough for the request, call paper_figures instead of a three-round analysis tool.")
     if "analyze_figures" in tool_names and ("get_paper_detail" in tool_names or "get_paper_analysis" in tool_names):
         lines.append("- If a mounted paper has PDF support but no figure cards are available yet and figures matter for the request, run analyze_figures before giving the final paper analysis.")
     if "list_topics" in tool_names or "manage_subscription" in tool_names:

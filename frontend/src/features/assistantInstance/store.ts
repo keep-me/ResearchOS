@@ -100,6 +100,7 @@ function createRuntime(): AssistantSessionRuntime {
       assistantMessageId: null,
       currentTextItemId: null,
       currentReasoningItemId: null,
+      busCaptured: false,
     },
   };
 }
@@ -385,15 +386,16 @@ export function createAssistantInstanceStore(initialContext: AssistantInstanceSt
 
   function resetTransientStreamState(
     sessionId: string,
-    options?: { notifyView?: boolean },
+    options?: { notifyView?: boolean; assistantMessageId?: string | null; busCaptured?: boolean },
   ): void {
     const runtime = ensureRuntime(sessionId);
     runtime.localItems = runtime.localItems.filter((item) => !isTransientStreamItem(item));
     runtime.streamState = {
       token: null,
-      assistantMessageId: null,
+      assistantMessageId: options?.assistantMessageId || null,
       currentTextItemId: null,
       currentReasoningItemId: null,
+      busCaptured: Boolean(options?.busCaptured),
     };
     if (options?.notifyView) notify();
   }
@@ -418,6 +420,27 @@ export function createAssistantInstanceStore(initialContext: AssistantInstanceSt
       }
       return false;
     });
+  }
+
+  function latestVisibleAssistantMessageId(sessionId: string): string | null {
+    const messages = busState.messages[sessionId] || [];
+    let latestUserIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const info = (messages[index].info && typeof messages[index].info === "object" ? messages[index].info : {}) as Record<string, unknown>;
+      if (String(info.role || "").trim() === "user") {
+        latestUserIndex = index;
+        break;
+      }
+    }
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (latestUserIndex >= 0 && index <= latestUserIndex) break;
+      const message = messages[index];
+      const info = (message.info && typeof message.info === "object" ? message.info : {}) as Record<string, unknown>;
+      if (String(info.role || "").trim() !== "assistant") continue;
+      if (!backendMessageHasVisibleParts(message)) continue;
+      return backendMessageId(message) || null;
+    }
+    return null;
   }
 
   function shouldSuppressTransientStreamItem(
@@ -491,13 +514,19 @@ export function createAssistantInstanceStore(initialContext: AssistantInstanceSt
 
   function reconcileTransientStreamWithBus(sessionId: string): void {
     const runtime = ensureRuntime(sessionId);
-    const assistantMessageId = String(runtime.streamState.assistantMessageId || "").trim();
+    let assistantMessageId = String(runtime.streamState.assistantMessageId || "").trim();
+    if (!assistantMessageId) {
+      assistantMessageId = latestVisibleAssistantMessageId(sessionId) || "";
+      if (assistantMessageId) {
+        runtime.streamState.assistantMessageId = assistantMessageId;
+      }
+    }
     if (!assistantMessageId) return;
     const currentMessage = (busState.messages[sessionId] || []).find(
       (message) => backendMessageId(message) === assistantMessageId,
     );
     if (!backendMessageHasVisibleParts(currentMessage)) return;
-    resetTransientStreamState(sessionId);
+    resetTransientStreamState(sessionId, { assistantMessageId, busCaptured: true });
   }
 
   function upsertLocalChatItem(sessionId: string, item: ChatItem): void {
@@ -669,6 +698,16 @@ export function createAssistantInstanceStore(initialContext: AssistantInstanceSt
         }
         return;
       }
+      case "done":
+        markTransientAssistantItemsFinished(sessionId);
+        return;
+      default:
+        break;
+    }
+    if (runtime.streamState.busCaptured) {
+      return;
+    }
+    switch (eventName) {
       case "text-start":
         closeLiveAssistantItem(sessionId, "assistant");
         ensureLiveAssistantItem(sessionId, "assistant");
@@ -772,9 +811,6 @@ export function createAssistantInstanceStore(initialContext: AssistantInstanceSt
         });
         return;
       }
-      case "done":
-        markTransientAssistantItemsFinished(sessionId);
-        return;
       default:
         return;
     }
@@ -2034,6 +2070,7 @@ export function createAssistantInstanceStore(initialContext: AssistantInstanceSt
         const request = requestContextFor(conversationId);
         const payload = {
           parts: [{ type: "text", text: requestText }],
+          display_text: displayText,
           agent_backend_id: request.agentBackendId,
           mode: request.agentMode,
           workspace_path: request.workspacePath,

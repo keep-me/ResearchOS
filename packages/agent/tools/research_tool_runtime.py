@@ -458,7 +458,6 @@ def _get_paper_analysis(paper_id: str) -> ToolResult:
         title = paper.title
         metadata = dict(paper.metadata_json or {})
     bundle = metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
-    figures = _paper_figure_items(pid, limit=6)
     ok, summary = _analysis_rounds_is_effective(bundle)
     return ToolResult(
         success=ok,
@@ -466,11 +465,32 @@ def _get_paper_analysis(paper_id: str) -> ToolResult:
             "paper_id": str(pid),
             "title": title,
             "analysis_rounds": bundle,
-            "figure_count": len(FigureService.get_paper_analyses(pid)),
-            "figure_refs": _paper_figure_refs(figures),
         },
         summary=summary,
-        internal_data={"display_data": {"figures": figures}},
+    )
+
+
+def _paper_figures(paper_id: str) -> ToolResult:
+    pid, err = _require_paper_id(paper_id)
+    if err:
+        return err
+    assert pid is not None
+    with session_scope() as session:
+        paper = PaperRepository(session).get_by_id(pid)
+        title = paper.title
+    figure_items = _paper_figure_items(pid, limit=None)
+    return ToolResult(
+        success=True,
+        data={
+            "paper_id": str(pid),
+            "title": title,
+            "count": len(figure_items),
+            "items": figure_items,
+            "figures": figure_items,
+            "figure_refs": _paper_figure_refs(figure_items, limit=None),
+        },
+        summary=f"已读取 {len(figure_items)} 个已提取图表",
+        internal_data={"display_data": {"figures": figure_items}},
     )
 
 
@@ -852,9 +872,6 @@ def _analyze_paper_rounds(
             reasoning_level=reasoning_level,
             progress_callback=progress_callback,
         )
-        figures = _paper_figure_items(pid, limit=6)
-        payload["figure_count"] = len(FigureService.get_paper_analyses(pid))
-        payload["figure_refs"] = _paper_figure_refs(figures)
         bundle = dict(payload.get("analysis_rounds") or {})
         ok, summary = _analysis_rounds_is_effective(bundle)
         if ok:
@@ -864,7 +881,6 @@ def _analyze_paper_rounds(
             success=ok,
             data=payload,
             summary=summary,
-            internal_data={"display_data": {"figures": figures}},
         )
 
     yield from _stream_background_call(_runner, start_message="正在启动论文三轮分析...")

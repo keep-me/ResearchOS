@@ -267,9 +267,13 @@ def build_user_message_meta(
     mounted_paper_ids: list[str] | None = None,
     mounted_primary_paper_id: str | None = None,
     reasoning_level: str | None = None,
+    display_text: str | None = None,
     fallback_agent: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
+    normalized_display_text = _clean_text(display_text)
+    if normalized_display_text:
+        payload["displayText"] = normalized_display_text
     normalized_agent = _clean_text(agent) or _clean_text(fallback_agent)
     if normalized_agent:
         payload["agent"] = normalized_agent
@@ -308,6 +312,9 @@ def build_user_message_meta(
 def _normalize_user_message_meta(meta: dict[str, Any] | None) -> dict[str, Any]:
     payload = dict(meta or {})
     normalized: dict[str, Any] = {}
+    display_text = _clean_text(payload.get("displayText") or payload.get("display_text"))
+    if display_text:
+        normalized["displayText"] = display_text
     agent = _clean_text(payload.get("agent"))
     if agent:
         normalized["agent"] = agent
@@ -1073,6 +1080,7 @@ def _update_message_parts(
     parts: list[dict[str, Any]],
     meta: dict[str, Any] | object = ...,
     content: str | None = None,
+    publish: bool = True,
 ) -> dict[str, Any]:
     message = session_store.update_message_parts(
         session_id=session_id,
@@ -1081,9 +1089,10 @@ def _update_message_parts(
         meta=meta,
         content=content,
     )
-    _publish_message_updated(message)
-    for part in message["parts"]:
-        _publish_part_updated(session_id, part)
+    if publish:
+        _publish_message_updated(message)
+        for part in message["parts"]:
+            _publish_part_updated(session_id, part)
     return message
 
 
@@ -1358,7 +1367,13 @@ class _StreamPersistenceState:
         _, parts = _load_message_parts(self.session_id, message_id)
         return parts
 
-    def save_parts(self, parts: list[dict[str, Any]], *, meta: dict[str, Any] | object = ...) -> dict[str, Any]:
+    def save_parts(
+        self,
+        parts: list[dict[str, Any]],
+        *,
+        meta: dict[str, Any] | object = ...,
+        publish: bool = True,
+    ) -> dict[str, Any]:
         message_id = self.ensure_message()
         content = _aggregate_message_content(parts, role="assistant")
         if meta is not ...:
@@ -1369,6 +1384,7 @@ class _StreamPersistenceState:
             parts=parts,
             meta=self.current_message_meta if meta is not ... else ...,
             content=content,
+            publish=publish,
         )
 
     def commit_current_message(self, *, finish: str | None = None, meta: dict[str, Any] | None = None) -> None:

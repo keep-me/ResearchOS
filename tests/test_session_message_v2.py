@@ -176,6 +176,22 @@ def test_message_v2_from_error_adds_provider_context():
     assert payload["providerID"] == "openai"
 
 
+def test_user_message_display_text_is_preserved_in_info(monkeypatch: pytest.MonkeyPatch):
+    _configure_test_db(monkeypatch)
+    ensure_session_record("message_v2_display_text_session")
+
+    user = append_session_message(
+        session_id="message_v2_display_text_session",
+        role="user",
+        content="hidden context\n\n用户本轮问题：\n请总结导入的报告",
+        message_id="msg_user_display",
+        meta={"displayText": "请总结导入的报告"},
+    )
+
+    assert user["info"]["displayText"] == "请总结导入的报告"
+    assert user["parts"][0]["text"].startswith("hidden context")
+
+
 def test_message_v2_runtime_info_aligns_user_and_assistant_shapes(monkeypatch: pytest.MonkeyPatch):
     _configure_test_db(monkeypatch)
     ensure_session_record("message_v2_info_session")

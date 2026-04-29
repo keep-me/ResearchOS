@@ -57,7 +57,19 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
     ),
     _research_tool(
         name="get_paper_analysis",
-        description="读取论文已有的三轮分析、最终结构化笔记和相关分析元数据，适合实验解读、优缺点判断和综合结论问题。",
+        description="读取论文已有的三轮分析、最终结构化笔记和相关分析元数据，适合实验解读、优缺点判断和综合结论问题；不返回图表图片。",
+        parameters={
+            "type": "object",
+            "properties": {
+                "paper_id": {"type": "string", "description": "论文 UUID"},
+            },
+            "required": ["paper_id"],
+        },
+        spec=_DEFAULT_RESEARCH_READ_TOOL_SPEC,
+    ),
+    _research_tool(
+        name="paper_figures",
+        description="只读取论文已提取的图片、图表与表格候选，不启动三轮分析，也不重新提取或分析图表。用户明确要查看图片、查看已提取图表或打开原图时使用。",
         parameters={
             "type": "object",
             "properties": {
@@ -273,7 +285,7 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
     ),
     _research_action_tool(
         name="analyze_paper_rounds",
-        description="对论文执行粗到深的三轮分析，并生成最终结构化笔记，适合实验结论解读、证据充分性、局限性和综合判断。",
+        description="对论文执行粗到深的三轮分析，并生成最终结构化笔记，适合实验结论解读、证据充分性、局限性和综合判断；不负责查看或返回已提取图表图片。",
         parameters={
             "type": "object",
             "properties": {

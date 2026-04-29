@@ -89,6 +89,7 @@ class SessionCreateRequest(BaseModel):
 
 class SessionPromptRequest(BaseModel):
     parts: list[dict[str, Any]] = Field(default_factory=list)
+    display_text: str | None = None
     mode: str = "build"
     workspace_path: str | None = None
     workspace_server_id: str | None = None
@@ -244,6 +245,7 @@ def _prepare_prompt_stream(
             mounted_paper_ids=body.mounted_paper_ids if body.mounted_paper_ids else None,
             mounted_primary_paper_id=body.mounted_primary_paper_id,
             reasoning_level=reasoning_level,
+            display_text=body.display_text,
             fallback_agent=body.mode,
         )
         or None,

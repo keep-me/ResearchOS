@@ -429,6 +429,9 @@ def _assistant_path(meta: dict[str, Any] | None) -> dict[str, str] | None:
 def _normalize_user_message_meta(meta: dict[str, Any] | None) -> dict[str, Any]:
     payload = dict(meta or {})
     normalized: dict[str, Any] = {}
+    display_text = _clean_text(payload.get("displayText") or payload.get("display_text"))
+    if display_text:
+        normalized["displayText"] = display_text
     agent = _clean_text(payload.get("agent"))
     if agent:
         normalized["agent"] = agent
@@ -745,6 +748,9 @@ def _message_info(row, parts: list[dict[str, Any]]) -> dict[str, Any]:  # noqa: 
     )
     if model is not None:
         info["model"] = model
+    display_text = _clean_text(meta.get("displayText"))
+    if display_text:
+        info["displayText"] = display_text
     agent = _clean_text(meta.get("agent"))
     if agent:
         info["agent"] = agent

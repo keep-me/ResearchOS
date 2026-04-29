@@ -72,6 +72,7 @@ export function promptAssistantSession(
   sessionId: string,
   payload: {
     parts: Array<Record<string, unknown>>;
+    display_text?: string | null;
     agent_backend_id: string;
     mode: AgentMode;
     workspace_path: string | null;
@@ -90,6 +91,7 @@ export function promptAssistantSessionDetached(
   sessionId: string,
   payload: {
     parts: Array<Record<string, unknown>>;
+    display_text?: string | null;
     agent_backend_id: string;
     mode: AgentMode;
     workspace_path: string | null;

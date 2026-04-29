@@ -648,88 +648,6 @@ function buildAnalysisRoundLayout(markdown: string): AnalysisRoundLayout {
   };
 }
 
-function buildFigureReferenceKey(kind: "figure" | "table", index: string): string {
-  return `${kind}:${String(index || "").trim().toLowerCase()}`;
-}
-
-function parseFigureReferenceToken(raw: string): { kind: "figure" | "table"; index: string } | null {
-  const match = String(raw || "").match(
-    /\b(fig(?:ure)?\.?|table|tab\.?|图|表)\s*([a-z]?\d+[a-z]?|[ivxlcdm]+)/i,
-  );
-  if (!match) return null;
-  const kind = /^(?:tab|table|表)/i.test(match[1]) ? "table" : "figure";
-  const index = String(match[2] || "").trim().toUpperCase();
-  if (!index) return null;
-  return { kind, index };
-}
-
-function extractAnalysisFigureRefs(markdown: string): Array<{ kind: "figure" | "table"; index: string }> {
-  const refs: Array<{ kind: "figure" | "table"; index: string }> = [];
-  const seen = new Set<string>();
-  const pattern = /\b(fig(?:ure)?\.?|table|tab\.?|图|表)\s*([a-z]?\d+[a-z]?|[ivxlcdm]+)/gi;
-  for (const match of String(markdown || "").matchAll(pattern)) {
-    const parsed = parseFigureReferenceToken(match[0]);
-    if (!parsed) continue;
-    const key = buildFigureReferenceKey(parsed.kind, parsed.index);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    refs.push(parsed);
-  }
-  return refs;
-}
-
-function buildFigureReferenceIndex(figures: FigureAnalysisItem[]): Map<string, FigureAnalysisItem> {
-  const index = new Map<string, FigureAnalysisItem>();
-  for (const figure of figures) {
-    const candidates = [figure.figure_label, figure.caption];
-    for (const candidate of candidates) {
-      const parsed = parseFigureReferenceToken(String(candidate || ""));
-      if (!parsed) continue;
-      const key = buildFigureReferenceKey(parsed.kind, parsed.index);
-      if (!index.has(key)) {
-        index.set(key, figure);
-      }
-    }
-  }
-  return index;
-}
-
-function resolveAnalysisSectionFigures(
-  markdown: string,
-  figures: FigureAnalysisItem[],
-): FigureAnalysisItem[] {
-  if (!figures.length) return [];
-  const figureIndex = buildFigureReferenceIndex(figures);
-  const resolved: FigureAnalysisItem[] = [];
-  const seen = new Set<string>();
-  for (const ref of extractAnalysisFigureRefs(markdown)) {
-    const key = buildFigureReferenceKey(ref.kind, ref.index);
-    const figure = figureIndex.get(key);
-    const figureId = String(figure?.id || key);
-    if (!figure || seen.has(figureId)) continue;
-    seen.add(figureId);
-    resolved.push(figure);
-  }
-  return resolved;
-}
-
-function getFigureReferenceTitle(figure: FigureAnalysisItem): string {
-  const label = String(figure.figure_label || "").trim();
-  if (label) return label;
-  const parsed = parseFigureReferenceToken(figure.caption || "");
-  if (parsed) {
-    return `${parsed.kind === "table" ? "Table" : "Fig."} ${parsed.index}`;
-  }
-  return figure.image_type === "table" ? "Table" : "Figure";
-}
-
-function getFigureReferenceExcerpt(figure: FigureAnalysisItem): string {
-  const preview = stripMarkdownForPreview(
-    normalizeMarkdown(figure.analysis_markdown || figure.ocr_markdown || figure.description || ""),
-  );
-  return truncatePreview(preview, figure.image_type === "table" ? 260 : 180);
-}
-
 function getAnalysisSectionIcon(label: string): React.ReactNode {
   if (label.includes("贡献")) return <Sparkles className="h-4 w-4 text-amber-500" />;
   if (label.includes("问题") || label.includes("定位")) return <Target className="h-4 w-4 text-blue-500" />;
@@ -2308,7 +2226,7 @@ export default function PaperDetail() {
                     description="鸟瞰扫描 -> 内容理解 -> 深度分析 -> 最终结构化笔记"
                     action={<ReportSourceBadge source={analysisRounds.content_source} detail={analysisRounds.content_source_detail} />}
                   />
-                  <PaperAnalysisRoundsPanel bundle={analysisRounds} figures={figures} paperId={id!} />
+                  <PaperAnalysisRoundsPanel bundle={analysisRounds} />
                 </Card>
               ) : (
                 <EmptyReport
@@ -3008,65 +2926,10 @@ function ReportSourceBadge({
   );
 }
 
-function AnalysisSectionFigureRefs({
-  paperId,
-  figures,
-}: {
-  paperId: string;
-  figures: FigureAnalysisItem[];
-}) {
-  if (!figures.length) return null;
-
-  return (
-    <div className="mt-4 grid gap-3 lg:grid-cols-2">
-      {figures.map((figure, index) => {
-        const imageUrl = resolveFigurePreviewUrl(paperId, figure);
-        const excerpt = getFigureReferenceExcerpt(figure);
-        return (
-          <div
-            key={figure.id || `${figure.page_number}-${figure.image_index || index}-${figure.image_type}`}
-            className="overflow-hidden rounded-2xl border border-border/80 bg-surface/82"
-          >
-            <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-3 py-2.5">
-              <span className="rounded-full bg-page px-2 py-0.5 text-[11px] font-semibold text-ink">
-                {getFigureReferenceTitle(figure)}
-              </span>
-              <span className="rounded-full bg-blue-500/8 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-                {figure.image_type === "table" ? "表格" : "图片"}
-              </span>
-              <span className="text-[11px] text-ink-tertiary">第 {figure.page_number} 页</span>
-            </div>
-            <div className="space-y-3 px-3 py-3">
-              {figure.caption ? (
-                <p className="text-sm font-medium leading-6 text-ink">{figure.caption}</p>
-              ) : null}
-              {imageUrl ? (
-                <SignedAssetImage
-	                  src={imageUrl}
-	                  alt={figure.caption || getFigureReferenceTitle(figure)}
-	                  className="max-h-56 w-full rounded-xl border border-border/70 object-contain bg-page/70"
-                  loading="lazy"
-                />
-              ) : null}
-              {excerpt ? (
-                <p className="text-sm leading-6 text-ink-secondary">{excerpt}</p>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function PaperAnalysisRoundsPanel({
   bundle,
-  figures,
-  paperId,
 }: {
   bundle: PaperAnalysisBundle;
-  figures: FigureAnalysisItem[];
-  paperId: string;
 }) {
   const rounds = [
     {
@@ -3109,20 +2972,6 @@ function PaperAnalysisRoundsPanel({
     () => (activeRound ? buildAnalysisRoundLayout(activeRound.item?.markdown || "") : null),
     [activeRound],
   );
-  const summaryFigureRefs = useMemo(
-    () => resolveAnalysisSectionFigures(activeRoundLayout?.summaryMarkdown || "", figures),
-    [activeRoundLayout?.summaryMarkdown, figures],
-  );
-  const sectionFigureRefs = useMemo(() => {
-    const refs = new Map<string, FigureAnalysisItem[]>();
-    for (const section of activeRoundLayout?.sections || []) {
-      const matched = resolveAnalysisSectionFigures(section.markdown, figures);
-      if (matched.length) {
-        refs.set(section.id, matched);
-      }
-    }
-    return refs;
-  }, [activeRoundLayout, figures]);
 
   return (
     <div className="space-y-4">
@@ -3205,9 +3054,6 @@ function PaperAnalysisRoundsPanel({
                     <Markdown autoMath>{activeRoundLayout.summaryMarkdown}</Markdown>
                   </Suspense>
                 </div>
-                {summaryFigureRefs.length ? (
-                  <AnalysisSectionFigureRefs paperId={paperId} figures={summaryFigureRefs} />
-                ) : null}
               </div>
             ) : null}
 
@@ -3250,9 +3096,6 @@ function PaperAnalysisRoundsPanel({
                         <Markdown autoMath>{section.markdown}</Markdown>
                       </Suspense>
                     </div>
-                    {sectionFigureRefs.get(section.id)?.length ? (
-                      <AnalysisSectionFigureRefs paperId={paperId} figures={sectionFigureRefs.get(section.id) || []} />
-                    ) : null}
                   </section>
                 ))}
               </div>
@@ -3263,12 +3106,6 @@ function PaperAnalysisRoundsPanel({
                     <Markdown autoMath>{activeRound.item!.markdown}</Markdown>
                   </Suspense>
                 </div>
-                {resolveAnalysisSectionFigures(activeRound.item?.markdown || "", figures).length ? (
-                  <AnalysisSectionFigureRefs
-                    paperId={paperId}
-                    figures={resolveAnalysisSectionFigures(activeRound.item?.markdown || "", figures)}
-                  />
-                ) : null}
               </>
             )}
           </div>

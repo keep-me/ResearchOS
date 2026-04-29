@@ -1,6 +1,6 @@
-import { ExternalLink, Loader2, Play, RefreshCw, X } from "@/lib/lucide";
+import { CheckCircle2, Circle, ExternalLink, Loader2, Play, RefreshCw, X } from "@/lib/lucide";
 import { Badge, Button } from "@/components/ui";
-import type { ProjectRun } from "@/types";
+import type { ProjectRun, ProjectStageStatus } from "@/types";
 
 function runStatusLabel(status: string | null | undefined, activePhase?: string | null) {
   switch (status) {
@@ -37,6 +37,21 @@ function statusVariant(status: string | null | undefined): "default" | "success"
   }
 }
 
+function stageStatusLabel(status: ProjectStageStatus | string | null | undefined) {
+  switch (status) {
+    case "completed":
+      return "已完成";
+    case "running":
+      return "进行中";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "已取消";
+    default:
+      return "未开始";
+  }
+}
+
 interface AssistantWorkflowStripProps {
   run?: ProjectRun | null;
   loading?: boolean;
@@ -57,6 +72,8 @@ export default function AssistantWorkflowStrip({
   onDismiss,
 }: AssistantWorkflowStripProps) {
   if (!run && !loading && !error) return null;
+  const stages = run?.stage_trace || [];
+  const completedStageCount = stages.filter((stage) => stage.status === "completed").length;
 
   return (
     <div className="mx-auto mt-3 max-w-[1040px]">
@@ -76,6 +93,29 @@ export default function AssistantWorkflowStrip({
           {run?.active_phase ? (
             <div className="mt-1 text-[11px] text-ink-secondary">当前阶段：{run.active_phase}</div>
           ) : null}
+          {stages.length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-ink-secondary">
+              <span className="inline-flex items-center rounded-full border border-border/70 bg-page/70 px-2 py-0.5 font-medium">
+                阶段 {completedStageCount}/{stages.length}
+              </span>
+              {stages.slice(0, 5).map((stage) => (
+                <span
+                  key={stage.stage_id}
+                  className="inline-flex max-w-[180px] items-center gap-1 rounded-full border border-border/60 bg-white/72 px-2 py-0.5"
+                  title={`${stage.label}：${stageStatusLabel(stage.status)}`}
+                >
+                  {stage.status === "completed" ? (
+                    <CheckCircle2 className="h-3 w-3 shrink-0 text-success" />
+                  ) : (
+                    <Circle className="h-2.5 w-2.5 shrink-0 text-ink-tertiary" />
+                  )}
+                  <span className="truncate">{stage.label}</span>
+                </span>
+              ))}
+              {stages.length > 5 ? <span>+{stages.length - 5}</span> : null}
+            </div>
+          ) : null}
+
         </div>
 
         <div className="flex shrink-0 items-center gap-2">

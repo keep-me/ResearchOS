@@ -31,6 +31,21 @@ function backendText(parts: Array<Record<string, unknown>>): string {
     .join("");
 }
 
+function userDisplayText(info: Record<string, unknown>, fallback: string): string {
+  const explicit = String(info.displayText || info.display_text || "").trim();
+  if (explicit) return explicit;
+
+  const text = String(fallback || "");
+  const contextPrefix = "以下是用户已选择导入当前对话上下文";
+  const questionMarker = "用户本轮问题：";
+  if (!text.includes(contextPrefix) || !text.includes(questionMarker)) {
+    return text;
+  }
+  const markerIndex = text.lastIndexOf(questionMarker);
+  const visible = text.slice(markerIndex + questionMarker.length).trim();
+  return visible || text;
+}
+
 function backendMessageMode(info: Record<string, unknown>): string | undefined {
   const mode = String(info.mode || info.agent || "").trim().toLowerCase();
   return mode || undefined;
@@ -283,7 +298,7 @@ export function sessionMessagesToChatItems(
       : [];
     const timestamp = backendTimestamp((info.time && typeof info.time === "object" ? (info.time as Record<string, unknown>).created : undefined));
     if (role === "user") {
-      const text = backendText(parts) || String(message.content || "");
+      const text = userDisplayText(info, backendText(parts) || String(message.content || ""));
       if (text.trim()) {
         messageItems.push({
           id: String(info.id || `user_${timestamp.getTime()}`),

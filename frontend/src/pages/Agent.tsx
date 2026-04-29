@@ -45,6 +45,7 @@ import type {
   McpServerInfo,
   Paper,
   Project,
+  ProjectArtifactRef,
   ProjectRun,
   ProjectWorkflowPreset,
   ProjectWorkflowType,
@@ -53,6 +54,164 @@ import type {
 
 // Markdown 含 katex，懒加载避免首屏拉取大 chunk
 const Markdown = lazy(() => import("@/components/Markdown"));
+
+type ImportedWorkflowArtifact = ProjectArtifactRef & {
+  key: string;
+  label: string;
+  runId: string;
+  runTitle: string;
+  workflowLabel: string;
+  workspacePath: string;
+  workspaceServerId: string | null;
+};
+
+type WorkflowArtifactImportEntry = {
+  key: string;
+  artifact: ProjectArtifactRef;
+  imported: ImportedWorkflowArtifact;
+  run: ProjectRun;
+};
+
+const WORKFLOW_ARTIFACT_CONTEXT_MAX_TOTAL = 52000;
+const WORKFLOW_ARTIFACT_CONTEXT_MAX_SINGLE = 18000;
+const WORKFLOW_ARTIFACT_TEXT_EXTENSIONS = new Set([
+  ".md",
+  ".markdown",
+  ".txt",
+  ".json",
+  ".jsonl",
+  ".csv",
+  ".tsv",
+  ".yaml",
+  ".yml",
+  ".html",
+  ".htm",
+]);
+
+function normalizeArtifactPath(value: string | null | undefined): string {
+  return String(value || "").trim().replace(/\\/g, "/");
+}
+
+function workflowArtifactKey(artifact: ProjectArtifactRef): string {
+  const path = normalizeArtifactPath(artifact.path || artifact.relative_path || "");
+  return `${String(artifact.kind || "artifact").trim()}:${path}`;
+}
+
+function artifactBasename(value: string): string {
+  const normalized = normalizeArtifactPath(value).replace(/\/+$/, "");
+  return normalized.split("/").filter(Boolean).pop() || normalized || "产物";
+}
+
+function workflowArtifactKindLabel(kind: string | null | undefined): string {
+  switch (String(kind || "").trim().toLowerCase()) {
+    case "report":
+      return "报告";
+    case "log":
+      return "日志";
+    case "paper":
+      return "论文";
+    case "state":
+      return "状态";
+    default:
+      return "产物";
+  }
+}
+
+function workflowArtifactLabel(artifact: ProjectArtifactRef): string {
+  const basename = artifactBasename(String(artifact.relative_path || artifact.path || ""));
+  return `${workflowArtifactKindLabel(artifact.kind)} · ${basename}`;
+}
+
+function workflowRunTitle(run: ProjectRun): string {
+  return run.title?.trim() || run.workflow_label || run.workflow_type || "科研工作流";
+}
+
+function workflowRunWorkspacePath(run: ProjectRun | null, fallbackWorkspacePath: string): string {
+  return run?.workspace_path || run?.remote_workdir || run?.workdir || fallbackWorkspacePath;
+}
+
+function workflowArtifactExtension(artifact: ProjectArtifactRef): string {
+  const basename = artifactBasename(String(artifact.path || artifact.relative_path || "")).toLowerCase();
+  const dotIndex = basename.lastIndexOf(".");
+  return dotIndex >= 0 ? basename.slice(dotIndex) : "";
+}
+
+function isLogWorkflowArtifact(artifact: ProjectArtifactRef): boolean {
+  const kind = String(artifact.kind || "").trim().toLowerCase();
+  if (kind === "log") return true;
+  const basename = artifactBasename(String(artifact.path || artifact.relative_path || "")).toLowerCase();
+  return basename === "run.log" || basename.endsWith(".log");
+}
+
+function isImportableWorkflowArtifact(artifact: ProjectArtifactRef): boolean {
+  if (isLogWorkflowArtifact(artifact)) return false;
+  const kind = String(artifact.kind || "").trim().toLowerCase();
+  if (kind === "report" || kind === "state") return true;
+  return WORKFLOW_ARTIFACT_TEXT_EXTENSIONS.has(workflowArtifactExtension(artifact));
+}
+
+function workflowArtifactRelativePath(artifact: ProjectArtifactRef, workspacePath: string): string {
+  const path = normalizeArtifactPath(artifact.path);
+  const workspace = normalizeArtifactPath(workspacePath).replace(/\/+$/, "");
+  if (path && workspace && path.toLowerCase().startsWith(`${workspace.toLowerCase()}/`)) {
+    return path.slice(workspace.length + 1).replace(/^\/+/, "");
+  }
+  const explicit = normalizeArtifactPath(artifact.relative_path);
+  if (explicit) return explicit.replace(/^\/+/, "");
+  return path && !/^[a-zA-Z]:\//.test(path) && !path.startsWith("/") ? path : "";
+}
+
+function mergeWorkflowArtifacts(
+  run: ProjectRun | null,
+  workspacePath: string,
+): ProjectArtifactRef[] {
+  if (!run) return [];
+  const items: ProjectArtifactRef[] = [];
+  const add = (artifact: ProjectArtifactRef | null | undefined) => {
+    const path = normalizeArtifactPath(artifact?.path || artifact?.relative_path || "");
+    if (!artifact || !path) return;
+    items.push({
+      ...artifact,
+      kind: String(artifact.kind || "artifact").trim() || "artifact",
+      path,
+      relative_path: workflowArtifactRelativePath(artifact, workspacePath) || artifact.relative_path || null,
+    });
+  };
+  for (const artifact of run.artifact_refs || []) {
+    add(artifact);
+  }
+  if (run.result_path) {
+    add({ kind: "report", path: run.result_path, relative_path: workflowArtifactRelativePath({ kind: "report", path: run.result_path }, workspacePath) });
+  }
+  if (run.log_path) {
+    add({ kind: "log", path: run.log_path, relative_path: workflowArtifactRelativePath({ kind: "log", path: run.log_path }, workspacePath) });
+  }
+  const seen = new Set<string>();
+  return items.filter((artifact) => {
+    const key = workflowArtifactKey(artifact);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function createImportedWorkflowArtifact(
+  run: ProjectRun,
+  artifact: ProjectArtifactRef,
+  workspacePath: string,
+): ImportedWorkflowArtifact {
+  const key = workflowArtifactKey(artifact);
+  return {
+    ...artifact,
+    key,
+    label: workflowArtifactLabel(artifact),
+    runId: run.id,
+    runTitle: workflowRunTitle(run),
+    workflowLabel: run.workflow_label || run.workflow_type,
+    workspacePath,
+    workspaceServerId: run.workspace_server_id || null,
+  };
+}
 import {
   Send,
   CheckCircle2,
@@ -174,6 +333,8 @@ import {
 export default function Agent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const assistantProjectId = String(searchParams.get("project") || "").trim();
+  const assistantRunIdParam = String(searchParams.get("run") || "").trim();
   const { toast } = useToast();
   const {
     activeConversationId,
@@ -308,6 +469,14 @@ export default function Agent() {
   const [workspaceServerProbeResult, setWorkspaceServerProbeResult] = useState<string | null>(null);
   const [workspaceServerProbeSuccess, setWorkspaceServerProbeSuccess] = useState<boolean | null>(null);
   const [mountedPaperPanelOpen, setMountedPaperPanelOpen] = useState(false);
+  const [showArtifactImportModal, setShowArtifactImportModal] = useState(false);
+  const [workflowArtifactPanelOpen, setWorkflowArtifactPanelOpen] = useState(false);
+  const [importedWorkflowArtifacts, setImportedWorkflowArtifacts] = useState<ImportedWorkflowArtifact[]>([]);
+  const [artifactImportRuns, setArtifactImportRuns] = useState<ProjectRun[]>([]);
+  const [artifactImportLoading, setArtifactImportLoading] = useState(false);
+  const [artifactImportError, setArtifactImportError] = useState<string | null>(null);
+  const [artifactWorkflowScope, setArtifactWorkflowScope] = useState("all");
+  const [selectedWorkflowArtifactKeys, setSelectedWorkflowArtifactKeys] = useState<string[]>([]);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileChromeCollapsed, setMobileChromeCollapsed] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
@@ -324,6 +493,7 @@ export default function Agent() {
   const workspaceOverviewRequestSeqRef = useRef(0);
   const gitDiffRequestSeqRef = useRef(0);
   const terminalSessionRequestSeqRef = useRef(0);
+  const workflowBootstrapKeyRef = useRef("");
   const workspaceOverviewRefreshTimerRef = useRef<number | null>(null);
   const terminalSpawnModeRef = useRef<"append" | "replaceClosed" | null>(null);
   const terminalSessionsRef = useRef<WorkspaceTerminalSession[]>([]);
@@ -344,6 +514,106 @@ export default function Agent() {
     [activeSessionDirectory, assistantDirectory, assistantSourceDirectory],
   );
   const workspaceDirectory = assistantDirectory || "";
+  const importedWorkflowArtifactKeys = useMemo(
+    () => new Set(importedWorkflowArtifacts.map((artifact) => artifact.key)),
+    [importedWorkflowArtifacts],
+  );
+  const artifactImportRunItems = useMemo(() => {
+    const items: ProjectRun[] = [];
+    const seen = new Set<string>();
+    const add = (run: ProjectRun | null | undefined) => {
+      if (!run?.id || seen.has(run.id)) return;
+      seen.add(run.id);
+      items.push(run);
+    };
+    add(assistantWorkflowRun);
+    for (const run of artifactImportRuns) {
+      add(run);
+    }
+    return items.sort((first, second) => {
+      const firstTime = Date.parse(first.updated_at || first.created_at || "");
+      const secondTime = Date.parse(second.updated_at || second.created_at || "");
+      return (Number.isFinite(secondTime) ? secondTime : 0) - (Number.isFinite(firstTime) ? firstTime : 0);
+    });
+  }, [artifactImportRuns, assistantWorkflowRun]);
+  const allWorkflowArtifactImportEntries = useMemo<WorkflowArtifactImportEntry[]>(() => {
+    const entries: WorkflowArtifactImportEntry[] = [];
+    const seen = new Set<string>();
+    for (const run of artifactImportRunItems) {
+      const runWorkspacePath = workflowRunWorkspacePath(run, workspaceDirectory);
+      for (const artifact of mergeWorkflowArtifacts(run, runWorkspacePath)) {
+        if (!isImportableWorkflowArtifact(artifact)) continue;
+        const imported = createImportedWorkflowArtifact(run, artifact, runWorkspacePath);
+        if (seen.has(imported.key)) continue;
+        seen.add(imported.key);
+        entries.push({
+          key: imported.key,
+          artifact,
+          imported,
+          run,
+        });
+      }
+    }
+    return entries;
+  }, [artifactImportRunItems, workspaceDirectory]);
+  const artifactWorkflowScopeOptions = useMemo(() => {
+    const byWorkflow = new Map<string, { value: string; label: string; count: number }>();
+    for (const entry of allWorkflowArtifactImportEntries) {
+      const value = entry.run.workflow_type || "unknown";
+      const existing = byWorkflow.get(value) || {
+        value,
+        label: entry.run.workflow_label || value,
+        count: 0,
+      };
+      existing.count += 1;
+      byWorkflow.set(value, existing);
+    }
+    return Array.from(byWorkflow.values()).sort((first, second) => first.label.localeCompare(second.label, "zh-CN"));
+  }, [allWorkflowArtifactImportEntries]);
+  const visibleWorkflowArtifactImportEntries = useMemo(
+    () => artifactWorkflowScope === "all"
+      ? allWorkflowArtifactImportEntries
+      : allWorkflowArtifactImportEntries.filter((entry) => entry.run.workflow_type === artifactWorkflowScope),
+    [allWorkflowArtifactImportEntries, artifactWorkflowScope],
+  );
+  const visibleWorkflowArtifactGroups = useMemo(() => {
+    const groups = new Map<string, {
+      key: string;
+      label: string;
+      runs: Array<{ run: ProjectRun; entries: WorkflowArtifactImportEntry[] }>;
+    }>();
+    const runIndexes = new Map<string, Map<string, number>>();
+    for (const entry of visibleWorkflowArtifactImportEntries) {
+      const groupKey = entry.run.workflow_type || "unknown";
+      const group = groups.get(groupKey) || {
+        key: groupKey,
+        label: entry.run.workflow_label || groupKey,
+        runs: [],
+      };
+      let runIndex = runIndexes.get(groupKey);
+      if (!runIndex) {
+        runIndex = new Map<string, number>();
+        runIndexes.set(groupKey, runIndex);
+      }
+      let index = runIndex.get(entry.run.id);
+      if (index === undefined) {
+        index = group.runs.length;
+        runIndex.set(entry.run.id, index);
+        group.runs.push({ run: entry.run, entries: [] });
+      }
+      group.runs[index].entries.push(entry);
+      groups.set(groupKey, group);
+    }
+    return Array.from(groups.values());
+  }, [visibleWorkflowArtifactImportEntries]);
+  const selectedWorkflowArtifactEntries = useMemo(() => {
+    const selected = new Set(selectedWorkflowArtifactKeys);
+    return allWorkflowArtifactImportEntries.filter((entry) => selected.has(entry.key));
+  }, [allWorkflowArtifactImportEntries, selectedWorkflowArtifactKeys]);
+  const selectedWorkflowArtifactKeySet = useMemo(
+    () => new Set(selectedWorkflowArtifactKeys),
+    [selectedWorkflowArtifactKeys],
+  );
   const gitEntries = workspaceOverview?.git?.entries || [];
   const selectedGitEntry = useMemo(
     () => gitEntries.find((entry) => entry.path === selectedDiffFile) || null,
@@ -447,6 +717,27 @@ export default function Agent() {
     }
     return steps.slice(-24).reverse();
   }, [items]);
+  const showGeneratingPlaceholder = useMemo(() => {
+    if (!loading) return false;
+    let latestUserIndex = -1;
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      if (items[index].type === "user") {
+        latestUserIndex = index;
+        break;
+      }
+    }
+    const responseItems = latestUserIndex >= 0 ? items.slice(latestUserIndex + 1) : items;
+    const hasVisibleResponse = responseItems.some((item) => {
+      if (item.type === "assistant" || item.type === "reasoning") {
+        return Boolean(item.streaming || item.content.trim());
+      }
+      if (item.type === "step_group") {
+        return Boolean(item.steps?.length);
+      }
+      return item.type === "action_confirm" || item.type === "question" || item.type === "error" || item.type === "artifact";
+    });
+    return !hasVisibleResponse;
+  }, [items, loading]);
   const selectedSessionDiff = useMemo(
     () => sessionDiffEntries.find((entry) => getSessionDiffIdentity(entry) === selectedSessionDiffId)
       || sessionDiffEntries[0]
@@ -583,6 +874,12 @@ export default function Agent() {
       toastOnError: false,
     });
   }, [persistWorkflowRun, syncAssistantWorkflowRun]);
+  const handleRemoveWorkflowArtifact = useCallback((key: string) => {
+    setImportedWorkflowArtifacts((current) => current.filter((item) => item.key !== key));
+  }, []);
+  const handleClearWorkflowArtifacts = useCallback(() => {
+    setImportedWorkflowArtifacts([]);
+  }, []);
   const handleOpenWorkflowRunDetail = useCallback(() => {
     if (!assistantWorkflowRun?.id || !assistantWorkflowRun.project_id) return;
     navigate(`/projects/${assistantWorkflowRun.project_id}?run=${assistantWorkflowRun.id}`);
@@ -603,7 +900,7 @@ export default function Agent() {
 
     const projectList = await projectApi.list();
     const projects = projectList.items || [];
-    const preferredProjectId = String(searchParams.get("project") || "").trim();
+    const preferredProjectId = assistantProjectId;
     const storedProjectId = readStoredWorkflowProjectId();
     const normalizedWorkspacePath = normalizeComparableWorkspacePath(workspaceDirectory);
     const normalizedServerId = normalizeComparableServerId(workspaceServerId === "local" ? null : workspaceServerId);
@@ -639,7 +936,7 @@ export default function Agent() {
     activeWorkspace?.title,
     conversationTitle,
     readStoredWorkflowProjectId,
-    searchParams,
+    assistantProjectId,
     workspaceDirectory,
     workspaceServerId,
   ]);
@@ -711,8 +1008,16 @@ export default function Agent() {
       });
 
       const nextSearchParams = new URLSearchParams(searchParams);
+      let searchChanged = false;
       if (nextSearchParams.get("project") !== project.id) {
         nextSearchParams.set("project", project.id);
+        searchChanged = true;
+      }
+      if (nextSearchParams.get("run") !== result.item.id) {
+        nextSearchParams.set("run", result.item.id);
+        searchChanged = true;
+      }
+      if (searchChanged) {
         navigate({
           pathname: "/assistant",
           search: `?${nextSearchParams.toString()}`,
@@ -744,6 +1049,7 @@ export default function Agent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (assistantProjectId || assistantRunIdParam) return;
     const raw = localStorage.getItem(WORKFLOW_RUN_STORAGE_KEY);
     if (!raw) return;
     try {
@@ -757,7 +1063,62 @@ export default function Agent() {
     } catch {
       localStorage.removeItem(WORKFLOW_RUN_STORAGE_KEY);
     }
-  }, [syncAssistantWorkflowRun]);
+  }, [assistantProjectId, assistantRunIdParam, syncAssistantWorkflowRun]);
+
+  useEffect(() => {
+    if (!assistantProjectId && !assistantRunIdParam) return;
+    const bootstrapKey = `${assistantProjectId}:${assistantRunIdParam}`;
+    if (workflowBootstrapKeyRef.current === bootstrapKey) return;
+    workflowBootstrapKeyRef.current = bootstrapKey;
+
+    let cancelled = false;
+    const loadWorkflowRunFromRoute = async () => {
+      if (assistantRunIdParam) {
+        await syncAssistantWorkflowRun(assistantRunIdParam, { toastOnError: false });
+        return;
+      }
+      if (!assistantProjectId) return;
+      setWorkflowRunLoading(true);
+      try {
+        const result = await projectApi.workspaceContext(assistantProjectId);
+        if (cancelled) return;
+        const runs = result.item.runs || [];
+        const defaultRunId = String(result.item.default_selections?.run_id || "").trim();
+        const preferredRun = (defaultRunId ? runs.find((item) => item.id === defaultRunId) : null) || runs[0] || null;
+        if (!preferredRun) {
+          setAssistantWorkflowRun(null);
+          setWorkflowRunError(null);
+          persistWorkflowRun(null);
+          return;
+        }
+        setAssistantWorkflowRun(preferredRun);
+        setWorkflowRunError(null);
+        persistWorkflowRun(preferredRun);
+        void syncAssistantWorkflowRun(preferredRun.id, {
+          background: true,
+          toastOnError: false,
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setWorkflowRunError(error instanceof Error ? error.message : "读取项目流程状态失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setWorkflowRunLoading(false);
+        }
+      }
+    };
+
+    void loadWorkflowRunFromRoute();
+    return () => {
+      cancelled = true;
+    };
+  }, [assistantProjectId, assistantRunIdParam, persistWorkflowRun, syncAssistantWorkflowRun]);
+
+  useEffect(() => {
+    const runId = assistantWorkflowRun?.id || "";
+    setImportedWorkflowArtifacts((current) => current.filter((item) => item.runId === runId));
+  }, [assistantWorkflowRun?.id]);
 
   useEffect(() => {
     const runId = assistantWorkflowRun?.id;
@@ -1828,6 +2189,53 @@ export default function Agent() {
     };
   }, [paperQuery, paperScope, showImportModal]);
 
+  useEffect(() => {
+    if (!showArtifactImportModal) return;
+    let cancelled = false;
+    const loadRuns = async () => {
+      setArtifactImportLoading(true);
+      setArtifactImportError(null);
+      try {
+        if (assistantProjectId) {
+          const result = await projectApi.listRuns(assistantProjectId, 80);
+          if (!cancelled) {
+            setArtifactImportRuns(result.items || []);
+          }
+          return;
+        }
+        if (assistantWorkflowRun?.id) {
+          const result = await projectApi.getRun(assistantWorkflowRun.id);
+          if (!cancelled) {
+            setArtifactImportRuns([result.item]);
+          }
+          return;
+        }
+        if (!cancelled) {
+          setArtifactImportRuns([]);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setArtifactImportRuns([]);
+          setArtifactImportError(error instanceof Error ? error.message : "读取工作流产物失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setArtifactImportLoading(false);
+        }
+      }
+    };
+    void loadRuns();
+    return () => {
+      cancelled = true;
+    };
+  }, [assistantProjectId, assistantWorkflowRun?.id, showArtifactImportModal]);
+
+  useEffect(() => {
+    if (artifactWorkflowScope === "all") return;
+    if (artifactWorkflowScopeOptions.some((item) => item.value === artifactWorkflowScope)) return;
+    setArtifactWorkflowScope("all");
+  }, [artifactWorkflowScope, artifactWorkflowScopeOptions]);
+
   const handleModelChange = useCallback(async (configId: string) => {
     if (!configId || configId === activeLlm?.config?.id) return;
     setModelSwitching(true);
@@ -1884,6 +2292,49 @@ export default function Agent() {
       setImportingPapers(false);
     }
   }, [activeConv?.title, ensureConversation, focusedPaperId, selectedPaperIds, setMountedPapers, toast]);
+
+  const handleOpenArtifactImportModal = useCallback(() => {
+    setSelectedWorkflowArtifactKeys(importedWorkflowArtifacts.map((artifact) => artifact.key));
+    setArtifactWorkflowScope(assistantWorkflowRun?.workflow_type || "all");
+    setShowArtifactImportModal(true);
+  }, [assistantWorkflowRun?.workflow_type, importedWorkflowArtifacts]);
+
+  const handleToggleWorkflowArtifactSelection = useCallback((key: string) => {
+    setSelectedWorkflowArtifactKeys((current) => (
+      current.includes(key)
+        ? current.filter((item) => item !== key)
+        : [...current, key]
+    ));
+  }, []);
+
+  const handleToggleWorkflowRunArtifactSelection = useCallback((runId: string) => {
+    const runKeys = visibleWorkflowArtifactImportEntries
+      .filter((entry) => entry.run.id === runId)
+      .map((entry) => entry.key);
+    if (runKeys.length === 0) return;
+    setSelectedWorkflowArtifactKeys((current) => {
+      const currentSet = new Set(current);
+      const allSelected = runKeys.every((key) => currentSet.has(key));
+      if (allSelected) {
+        return current.filter((key) => !runKeys.includes(key));
+      }
+      for (const key of runKeys) {
+        currentSet.add(key);
+      }
+      return Array.from(currentSet);
+    });
+  }, [visibleWorkflowArtifactImportEntries]);
+
+  const handleImportSelectedWorkflowArtifacts = useCallback(() => {
+    if (selectedWorkflowArtifactEntries.length === 0) {
+      toast("warning", "请先选择至少一个产物");
+      return;
+    }
+    setImportedWorkflowArtifacts(selectedWorkflowArtifactEntries.map((entry) => entry.imported));
+    setShowArtifactImportModal(false);
+    setWorkflowArtifactPanelOpen(false);
+    toast("success", `已导入 ${selectedWorkflowArtifactEntries.length} 个产物`);
+  }, [selectedWorkflowArtifactEntries, toast]);
 
   const handleRemoveMountedPaper = useCallback((paperId: string) => {
     removeMountedPaper(paperId, { focusedPaperId });
@@ -2232,6 +2683,54 @@ export default function Agent() {
     navigate(`/assistant/${conversationId}`);
   }, [createConversationWithRuntime, navigate]);
 
+  const buildImportedWorkflowArtifactContext = useCallback(async (): Promise<string> => {
+    if (importedWorkflowArtifacts.length === 0) return "";
+    const lines: string[] = [
+      "以下是用户已选择导入当前对话上下文的科研工作流产物。请优先基于这些产物回答；如果需要完整内容，可以继续读取对应工作区文件。",
+    ];
+    let remaining = WORKFLOW_ARTIFACT_CONTEXT_MAX_TOTAL;
+    for (const artifact of importedWorkflowArtifacts) {
+      const artifactWorkspacePath = artifact.workspacePath || workspaceDirectory;
+      const relativePath = workflowArtifactRelativePath(artifact, artifactWorkspacePath);
+      const displayPath = relativePath || normalizeArtifactPath(artifact.path);
+      lines.push([
+        `\n## ${artifact.label}`,
+        `- workflow: ${artifact.workflowLabel}`,
+        `- run: ${artifact.runTitle}`,
+        `- kind: ${workflowArtifactKindLabel(artifact.kind)}`,
+        displayPath ? `- path: ${displayPath}` : "",
+      ].filter(Boolean).join("\n"));
+      if (!relativePath || !artifactWorkspacePath || remaining <= 0) {
+        lines.push("- content: 未内联内容；请按 path 读取工作区文件。");
+        continue;
+      }
+      const maxChars = Math.max(2000, Math.min(WORKFLOW_ARTIFACT_CONTEXT_MAX_SINGLE, remaining));
+      try {
+        const result = await assistantWorkspaceApi.readFile(
+          artifactWorkspacePath,
+          relativePath,
+          maxChars,
+          artifact.workspaceServerId || workspaceServerId,
+        );
+        const content = String(result.content || "").trim();
+        if (content) {
+          lines.push("```markdown");
+          lines.push(content);
+          lines.push("```");
+          remaining -= content.length;
+          if (result.truncated) {
+            lines.push(`_该产物内容已截断；完整文件路径：${relativePath}_`);
+          }
+        } else {
+          lines.push("- content: 文件为空。");
+        }
+      } catch (error) {
+        lines.push(`- content: 读取失败（${error instanceof Error ? error.message : "未知错误"}）；请按 path 读取工作区文件。`);
+      }
+    }
+    return lines.join("\n");
+  }, [importedWorkflowArtifacts, workspaceDirectory, workspaceServerId]);
+
   const handleSend = useCallback(async (text: string) => {
     const cleaned = text.trim();
     const activeCommand = selectedSlashCommand;
@@ -2256,16 +2755,20 @@ export default function Agent() {
         await launchWorkflowFromChatCommand(workflowLaunchRequest);
         return;
       }
+      const importedWorkflowContext = await buildImportedWorkflowArtifactContext();
+      const requestText = importedWorkflowContext
+        ? `${importedWorkflowContext}\n\n用户本轮问题：\n${requestPayload}`
+        : requestPayload;
       await sendMessage({
         displayText,
-        requestText: requestPayload,
+        requestText,
       });
     } catch (error) {
       setInput(savedInput);
       setSelectedSlashCommand(savedCommand);
       toast("error", error instanceof Error ? error.message : "发送失败");
     }
-  }, [launchWorkflowFromChatCommand, selectedSlashCommand, sendMessage, toast]);
+  }, [buildImportedWorkflowArtifactContext, launchWorkflowFromChatCommand, selectedSlashCommand, sendMessage, toast]);
 
   const handleConfirmAction = useCallback((actionId: string) => {
     isAtBottomRef.current = true;
@@ -2475,8 +2978,10 @@ export default function Agent() {
                 </div>
 
                 <div className={cn(
-                  "flex shrink-0 flex-wrap items-center sm:justify-end",
-                  isMobileViewport ? "gap-1" : "gap-1.5",
+                  "flex min-w-0 shrink-0 items-center sm:justify-end",
+                  isMobileViewport
+                    ? "max-w-full gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    : "flex-wrap gap-1.5",
                 )}>
                   {loading && (
                     <button
@@ -2511,26 +3016,31 @@ export default function Agent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowMcpModal(true)}
-                    className={cn(
-                      "inline-flex rounded-full border border-border/70 bg-white/72 font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary",
-                      isMobileViewport ? "h-7 gap-1 px-2.5 text-[10px]" : "h-8 gap-1.5 px-3 text-[11px]",
-                    )}
-                  >
-                    <Server className="h-3.5 w-3.5 text-primary" />
-                    集成
-                    {builtinMcpAvailable && builtinMcpToolCount > 0 ? (
-                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700">
-                        {builtinMcpToolCount}
-                      </span>
-                    ) : null}
-                  </button>
+                      onClick={() => setShowMcpModal(true)}
+                      className={cn(
+                        "inline-flex items-center whitespace-nowrap rounded-full border border-border/70 bg-white/72 font-medium leading-none text-ink-secondary transition hover:border-primary/20 hover:text-primary",
+                        isMobileViewport ? "h-7 gap-1 px-2.5 text-[10px]" : "h-8 gap-1.5 px-3 text-[11px]",
+                      )}
+                    >
+                      <Server className="h-3.5 w-3.5 text-primary" />
+                      集成
+                      {builtinMcpAvailable && builtinMcpToolCount > 0 ? (
+                        <span
+                          className={cn(
+                            "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 px-1 font-semibold leading-none text-emerald-700",
+                            isMobileViewport ? "text-[9px]" : "text-[10px]",
+                          )}
+                        >
+                          {builtinMcpToolCount > 99 ? "99+" : builtinMcpToolCount}
+                        </span>
+                      ) : null}
+                    </button>
                   <button
                     type="button"
                     data-testid="assistant-ssh-button"
                     onClick={handleCreateWorkspaceServer}
                     className={cn(
-                      "inline-flex rounded-full border border-border/70 bg-white/88 font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary",
+                      "inline-flex items-center whitespace-nowrap rounded-full border border-border/70 bg-white/88 font-medium leading-none text-ink-secondary transition hover:border-primary/20 hover:text-primary",
                       isMobileViewport ? "h-7 gap-1 px-2.5 text-[10px]" : "h-8 gap-1.5 px-3 text-[11px]",
                     )}
                   >
@@ -2663,7 +3173,7 @@ export default function Agent() {
                   />
                 );
               })}
-              {loading && items[items.length - 1]?.type !== "action_confirm" && items[items.length - 1]?.type !== "question" && (
+              {showGeneratingPlaceholder && (
                 <div className="flex items-center gap-2 py-4 text-sm text-ink-tertiary">
                   <div className="flex gap-1">
                     <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:0ms]" />
@@ -2826,6 +3336,25 @@ export default function Agent() {
                 >
                   <Link2 className="h-3.5 w-3.5" />
                   导入论文
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenArtifactImportModal}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-colors duration-150",
+                    importedWorkflowArtifacts.length > 0
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100/70"
+                      : "border-border bg-page text-ink-secondary hover:bg-hover hover:text-ink",
+                  )}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  导入产物
+                  {importedWorkflowArtifacts.length > 0 ? (
+                    <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">
+                      {importedWorkflowArtifacts.length}
+                    </span>
+                  ) : null}
                 </button>
 
                 <button
@@ -3022,6 +3551,85 @@ export default function Agent() {
                             onClick={() => handleRemoveMountedPaper(paper.id)}
                             className="rounded-full p-0.5 transition hover:bg-primary/10"
                             aria-label="移除导入论文"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {importedWorkflowArtifacts.length > 0 && (
+                <div className={cn(
+                  "mt-2 rounded-[22px] border border-emerald-200/70 bg-emerald-50/70",
+                  isMobileViewport ? "px-2.5 py-2" : "px-3 py-2.5",
+                )}>
+                  <div className={cn("flex flex-wrap items-center text-[11px]", isMobileViewport ? "gap-1.5" : "gap-2")}>
+                    <span className={cn(
+                      "inline-flex items-center rounded-full bg-white/88 font-medium text-emerald-700",
+                      isMobileViewport ? "gap-1 px-2 py-0.5 text-[10px]" : "gap-1.5 px-2.5 py-1",
+                    )}>
+                      <FileText className="h-3.5 w-3.5" />
+                      已导入 {importedWorkflowArtifacts.length} 个流程产物
+                    </span>
+                    <span className={cn(
+                      "min-w-0 break-words text-emerald-900/75",
+                      isMobileViewport ? "order-3 basis-full text-[10px] leading-4" : "flex-1",
+                    )}>
+                      {importedWorkflowArtifacts.map((artifact) => artifact.label).join("、")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleOpenArtifactImportModal}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white/86 font-medium text-emerald-800 transition hover:border-emerald-300",
+                        isMobileViewport ? "h-6 px-2 text-[10px]" : "h-7 px-2.5 text-[11px]",
+                      )}
+                    >
+                      管理
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowArtifactPanelOpen((current) => !current)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white/86 font-medium text-emerald-800 transition hover:border-emerald-300",
+                        isMobileViewport ? "h-6 px-2 text-[10px]" : "h-7 px-2.5 text-[11px]",
+                      )}
+                    >
+                      {workflowArtifactPanelOpen ? "收起" : "详情"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearWorkflowArtifacts}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white/86 font-medium text-emerald-800 transition hover:border-error/25 hover:text-error",
+                        isMobileViewport ? "h-6 px-2 text-[10px]" : "h-7 px-2.5 text-[11px]",
+                      )}
+                    >
+                      清空
+                    </button>
+                  </div>
+                  {workflowArtifactPanelOpen && (
+                    <div className={cn("mt-2 flex flex-wrap", isMobileViewport ? "gap-1.5" : "gap-2")}>
+                      {importedWorkflowArtifacts.map((artifact) => (
+                        <span
+                          key={artifact.key}
+                          className={cn(
+                            "inline-flex max-w-full items-center rounded-full border border-emerald-200 bg-white/86 text-emerald-800",
+                            isMobileViewport ? "gap-1.5 px-2.5 py-1 text-[10px]" : "gap-2 px-3 py-1 text-[11px]",
+                          )}
+                          title={normalizeArtifactPath(artifact.path)}
+                        >
+                          <span className={cn("break-words text-left", isMobileViewport ? "max-w-[220px]" : "max-w-[360px]")}>
+                            {artifact.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveWorkflowArtifact(artifact.key)}
+                            className="rounded-full p-0.5 transition hover:bg-emerald-100"
+                            aria-label="移除导入产物"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -4039,6 +4647,176 @@ export default function Agent() {
               >
                 {importingPapers ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                 导入选中论文
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showArtifactImportModal}
+        onClose={() => setShowArtifactImportModal(false)}
+        title="导入工作流产物到当前聊天"
+        maxWidth="xl"
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <label className="flex items-center gap-3 rounded-2xl border border-border/70 bg-white/82 px-4 py-3">
+              <FolderTree className="h-4 w-4 text-primary" />
+              <select
+                value={artifactWorkflowScope}
+                onChange={(event) => setArtifactWorkflowScope(event.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
+              >
+                <option value="all">全部工作流</option>
+                {artifactWorkflowScopeOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}（{item.count}）
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 text-[12px] leading-5 text-emerald-800">
+              这里只导入报告和文本类产物，已自动过滤运行日志、run.log 和 .log 文件。
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-page/45 px-4 py-3 text-[12px] text-ink-secondary">
+            <span>当前范围：<span className="font-medium text-ink">{artifactWorkflowScope === "all" ? "全部工作流" : artifactWorkflowScopeOptions.find((item) => item.value === artifactWorkflowScope)?.label || artifactWorkflowScope}</span></span>
+            <span>可导入 {visibleWorkflowArtifactImportEntries.length} 个产物</span>
+            {artifactImportLoading ? <span>正在加载项目运行...</span> : null}
+            {artifactImportError ? <span className="text-error">{artifactImportError}</span> : null}
+          </div>
+
+          <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-1">
+            {artifactImportLoading ? (
+              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-page/55 px-4 py-4 text-sm text-ink-secondary">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                正在读取工作流产物...
+              </div>
+            ) : visibleWorkflowArtifactGroups.length === 0 ? (
+              <div className="rounded-2xl border border-border/70 bg-page/55 px-4 py-4 text-sm text-ink-secondary">
+                当前项目还没有可导入的工作流产物。已过滤日志文件；如果工作流未生成报告，请先运行对应流程。
+              </div>
+            ) : (
+              visibleWorkflowArtifactGroups.map((group) => (
+                <section key={group.key} className="rounded-2xl border border-border/70 bg-white/72 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-ink">{group.label}</div>
+                      <div className="mt-0.5 text-[11px] text-ink-tertiary">
+                        {group.runs.length} 次运行 · {group.runs.reduce((total, runGroup) => total + runGroup.entries.length, 0)} 个产物
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {group.runs.map((runGroup) => {
+                      const runKeys = runGroup.entries.map((entry) => entry.key);
+                      const runSelected = runKeys.length > 0 && runKeys.every((key) => selectedWorkflowArtifactKeySet.has(key));
+                      return (
+                        <div key={runGroup.run.id} className="rounded-2xl border border-border/60 bg-page/45 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-ink">{workflowRunTitle(runGroup.run)}</div>
+                              <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-ink-tertiary">
+                                <span>{runGroup.run.status}</span>
+                                <span>{runGroup.entries.length} 个产物</span>
+                                {runGroup.run.updated_at ? <span>{new Date(runGroup.run.updated_at).toLocaleString("zh-CN")}</span> : null}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleWorkflowRunArtifactSelection(runGroup.run.id)}
+                              className="shrink-0 rounded-full border border-border/70 bg-white/86 px-3 py-1 text-[11px] font-medium text-ink-secondary transition hover:border-primary/20 hover:text-primary"
+                            >
+                              {runSelected ? "取消本次运行" : "选择本次运行"}
+                            </button>
+                          </div>
+
+                          <div className="mt-2 space-y-1.5">
+                            {runGroup.entries.map((entry) => {
+                              const selected = selectedWorkflowArtifactKeySet.has(entry.key);
+                              const imported = importedWorkflowArtifactKeys.has(entry.key);
+                              const relativePath = workflowArtifactRelativePath(entry.artifact, entry.imported.workspacePath);
+                              return (
+                                <button
+                                  type="button"
+                                  key={entry.key}
+                                  onClick={() => handleToggleWorkflowArtifactSelection(entry.key)}
+                                  className={cn(
+                                    "w-full rounded-xl border px-3 py-2.5 text-left transition",
+                                    selected
+                                      ? "border-emerald-300 bg-emerald-50"
+                                      : imported
+                                        ? "border-primary/20 bg-primary/6"
+                                        : "border-border/60 bg-white/82 hover:border-primary/20 hover:bg-page/55",
+                                  )}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="text-sm font-medium text-ink">{workflowArtifactLabel(entry.artifact)}</span>
+                                        {imported ? (
+                                          <span className="rounded-full border border-primary/15 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                                            已导入
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div className="mt-1 break-all text-[11px] text-ink-tertiary">
+                                        {relativePath || normalizeArtifactPath(entry.artifact.path)}
+                                      </div>
+                                    </div>
+                                    <span className={cn(
+                                      "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                                      selected
+                                        ? "border-emerald-300 bg-emerald-600 text-white"
+                                        : "border-border/70 bg-white text-transparent",
+                                    )}>
+                                      <BadgeCheck className="h-3.5 w-3.5" />
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-page/45 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="min-w-0 text-sm text-ink-secondary">
+              {selectedWorkflowArtifactEntries.length > 0 ? (
+                <>已选 {selectedWorkflowArtifactEntries.length} 个产物</>
+              ) : importedWorkflowArtifacts.length > 0 ? (
+                <>当前聊天已导入 {importedWorkflowArtifacts.length} 个产物</>
+              ) : (
+                "未选择产物"
+              )}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => setSelectedWorkflowArtifactKeys([])}
+                disabled={selectedWorkflowArtifactKeys.length === 0}
+                className="inline-flex items-center gap-2 rounded-2xl border border-border/75 bg-white/86 px-4 py-2 text-sm font-medium text-ink transition hover:bg-page/80 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                清空选择
+              </button>
+              <button
+                type="button"
+                onClick={handleImportSelectedWorkflowArtifacts}
+                disabled={selectedWorkflowArtifactEntries.length === 0}
+                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FileText className="h-4 w-4" />
+                导入选中产物
               </button>
             </div>
           </div>
