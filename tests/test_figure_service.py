@@ -36,6 +36,24 @@ def test_compose_ocr_candidate_markdown_converts_html_table_to_markdown():
     assert "<table>" not in markdown
 
 
+def test_mineru_content_list_keeps_table_footnote_in_candidate_markdown():
+    blocks = FigureService._collect_mineru_content_list_item_blocks([
+        {
+            "type": "table",
+            "page_idx": 2,
+            "bbox": [10, 20, 300, 420],
+            "table_caption": ["Table 1. Main results."],
+            "table_body": "| Method | Score |\n|---|---:|\n| MVP | 92.0 |",
+            "table_footnote": ["Best results are bolded."],
+        }
+    ])
+
+    assert len(blocks) == 1
+    assert blocks[0]["image_type"] == "table"
+    assert blocks[0]["caption"] == "Table 1. Main results."
+    assert "Best results are bolded." in blocks[0]["content_markdown"]
+
+
 def test_description_payload_roundtrip_preserves_candidate_source():
     encoded = FigureService._encode_description_payload(
         ocr_markdown="structured text",

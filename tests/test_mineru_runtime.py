@@ -24,6 +24,13 @@ def test_mineru_runtime_uses_repo_runtime_dir(tmp_path, monkeypatch):
     assert MinerUOcrRuntime.runtime_dir() == paths.runtime_dir
 
 
+def test_mineru_runtime_default_base_dir_is_project_root_mineru():
+    project_root = Path(__file__).resolve().parents[1]
+    assert MinerUOcrRuntime.repo_root() == project_root
+    assert MinerUOcrRuntime.base_dir() == project_root / "MinerU"
+    assert MinerUOcrRuntime.runtime_dir() == project_root / "MinerU" / "runtime"
+
+
 def test_mineru_runtime_reads_api_settings(monkeypatch):
     monkeypatch.setenv("MINERU_API_TOKEN", "token-123")
     monkeypatch.setenv("MINERU_API_BASE_URL", "https://mineru.example.com/")

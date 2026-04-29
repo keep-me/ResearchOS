@@ -634,6 +634,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
 
   const [readerDocument, setReaderDocument] = useState<PaperReaderDocumentResponse | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
+  const [documentChecked, setDocumentChecked] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<PaperOcrStatus | null>(null);
   const [ocrTaskLabel, setOcrTaskLabel] = useState<string | null>(null);
   const [ocrHoveredBlockId, setOcrHoveredBlockId] = useState<string | null>(null);
@@ -801,6 +802,10 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
   const selectionOverlayVisible = Boolean(selectedText && !regionMode && (!isMobileViewport || activeTab === "pdf"));
   const workspaceVisible = !isMobileViewport ? panelOpen : activeTab !== "pdf";
   const currentWorkspaceTitle = activeTab === "ocr" ? "OCR" : activeTab === "notes" ? "笔记" : activeTab === "results" ? "助手" : "PDF";
+  const shouldForceOcr = useMemo(() => {
+    const status = String(ocrStatus?.status || "").trim().toLowerCase();
+    return Boolean(ocrStatus?.available) || status === "success" || status === "failed";
+  }, [ocrStatus?.available, ocrStatus?.status]);
   const mobileSheetBounds = useMemo(() => {
     const viewport = mobileViewportHeight || 820;
     const max = Math.max(360, viewport - MOBILE_TOPBAR_HEIGHT - 10);
@@ -939,6 +944,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
       setReaderDocument(doc);
       setOcrStatus(status);
     } finally {
+      setDocumentChecked(true);
       if (!silent) setDocumentLoading(false);
     }
   }, [paperId]);
@@ -1482,10 +1488,15 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
   useEffect(() => {
     autoOcrAttemptedRef.current = false;
     ocrRunRef.current = false;
+    setDocumentChecked(false);
+    setReaderDocument(null);
+    setOcrStatus(null);
+    setOcrTaskLabel("");
   }, [paperId]);
 
-  const handleStartOcr = useCallback(async (options?: { openWorkspace?: boolean }) => {
+  const handleStartOcr = useCallback(async (options?: { openWorkspace?: boolean; force?: boolean }) => {
     const openWorkspace = options?.openWorkspace ?? true;
+    const force = options?.force === true;
     if (ocrRunRef.current) return;
     const currentStatus = String(ocrStatus?.status || "").trim().toLowerCase();
     if (["running", "queued", "pending"].includes(currentStatus)) {
@@ -1502,7 +1513,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
       ensureWorkspaceTab("ocr");
     }
     try {
-      const kickoff = await paperApi.processOcrAsync(paperId);
+      const kickoff = await paperApi.processOcrAsync(paperId, force);
       await pollTaskResult(kickoff.task_id, {
         timeoutMessage: "OCR 处理超时，请到任务中心查看",
         onStatus: (status) => setOcrTaskLabel(status.message || `OCR 处理中... ${Math.max(0, Math.min(100, status.progress_pct))}%`),
@@ -1519,6 +1530,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
   }, [ensureWorkspaceTab, loadDocument, loadNotes, ocrStatus?.status, onOcrUpdated, paperId, pollTaskResult]);
 
   useEffect(() => {
+    if (!documentChecked) return;
     if (documentLoading) return;
     if (readerDocument?.available) return;
     if (autoOcrAttemptedRef.current || ocrRunRef.current) return;
@@ -1532,8 +1544,8 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
     }
 
     autoOcrAttemptedRef.current = true;
-    void handleStartOcr({ openWorkspace: false });
-  }, [documentLoading, handleStartOcr, ocrStatus?.available, ocrStatus?.status, readerDocument?.available]);
+    void handleStartOcr({ openWorkspace: false, force: false });
+  }, [documentChecked, documentLoading, handleStartOcr, ocrStatus?.available, ocrStatus?.status, readerDocument?.available]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1695,10 +1707,10 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
           ) : null}
           {ocrTaskLabel ? <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">{ocrTaskLabel}</div> : null}
           <div className="mt-4 flex flex-wrap gap-2">
-            <ActionButton onClick={() => void handleStartOcr()} tone="primary">
+            <ActionButton onClick={() => void handleStartOcr({ force: shouldForceOcr })} tone="primary">
               <span className="inline-flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
-                启动 OCR
+                {shouldForceOcr ? "重跑 OCR" : "启动 OCR"}
               </span>
             </ActionButton>
             <ActionButton onClick={() => void loadDocument()}>
@@ -2335,7 +2347,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
                     <ActionButton onClick={() => void loadDocument()} disabled={documentLoading}>
                       <span className="inline-flex items-center gap-1.5"><RefreshCw className="h-3.5 w-3.5" />刷新</span>
                     </ActionButton>
-                    <ActionButton onClick={() => void handleStartOcr()} tone="primary">
+                    <ActionButton onClick={() => void handleStartOcr({ force: shouldForceOcr })} tone="primary">
                       <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" />重跑 OCR</span>
                     </ActionButton>
                   </div>
@@ -2388,7 +2400,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
                     <ActionButton onClick={() => void loadDocument()} disabled={documentLoading}>
                       <span className="inline-flex items-center gap-1.5"><RefreshCw className="h-3.5 w-3.5" />刷新</span>
                     </ActionButton>
-                    <ActionButton onClick={() => void handleStartOcr()} tone="primary">
+                    <ActionButton onClick={() => void handleStartOcr({ force: shouldForceOcr })} tone="primary">
                       <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" />重跑 OCR</span>
                     </ActionButton>
                   </div>

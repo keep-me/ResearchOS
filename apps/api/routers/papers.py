@@ -328,7 +328,7 @@ def _resolve_reader_structured_visual_block(item: dict, paper_id: UUID) -> tuple
         image_url = _reader_ocr_asset_url(paper_id, img_path) if img_path else ""
         markdown_parts: list[str] = []
         if image_url:
-            markdown_parts.append(f"![{caption or 'figure'}]({image_url})")
+            markdown_parts.append(f"![figure]({image_url})")
         if caption:
             markdown_parts.append(caption)
         if footnote and footnote.lower() != caption.lower():
@@ -344,7 +344,7 @@ def _resolve_reader_structured_visual_block(item: dict, paper_id: UUID) -> tuple
         image_url = _reader_ocr_asset_url(paper_id, img_path) if img_path else ""
         markdown_parts: list[str] = []
         if image_url:
-            markdown_parts.append(f"![{caption or 'table'}]({image_url})")
+            markdown_parts.append(f"![table]({image_url})")
         if caption:
             markdown_parts.append(caption)
         if table_body:
@@ -567,10 +567,59 @@ def _build_reader_markdown_document(bundle) -> dict[str, Any] | None:  # noqa: A
     }
 
 
-def _reader_ocr_asset_url(paper_id: UUID, asset_path: str) -> str:
+def _normalize_reader_ocr_asset_path(asset_path: str) -> tuple[str, list[str]]:
     normalized = str(asset_path or "").replace("\\", "/").lstrip("./").lstrip("/")
-    encoded = "/".join(quote(part) for part in normalized.split("/") if part not in {"", ".", ".."})
+    parts = [part for part in normalized.split("/") if part not in {"", ".", ".."}]
+    return "/".join(parts), parts
+
+
+def _reader_ocr_asset_url(paper_id: UUID, asset_path: str) -> str:
+    normalized, parts = _normalize_reader_ocr_asset_path(asset_path)
+    encoded = "/".join(quote(part) for part in parts)
     return f"/papers/{paper_id}/ocr/assets/{encoded}" if encoded else ""
+
+
+def _is_path_inside(parent: Path, candidate: Path) -> bool:
+    try:
+        candidate.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_reader_ocr_asset_path(bundle, asset_path: str) -> Path | None:  # noqa: ANN001
+    normalized, parts = _normalize_reader_ocr_asset_path(asset_path)
+    if not normalized or not parts:
+        return None
+
+    output_root = Path(bundle.output_root).resolve()
+    candidate_bases: list[Path] = [output_root]
+    for markdown_file in getattr(bundle, "markdown_files", []) or []:
+        try:
+            parent = Path(str(markdown_file)).expanduser().resolve(strict=False).parent
+        except Exception:
+            continue
+        if _is_path_inside(output_root, parent) and parent not in candidate_bases:
+            candidate_bases.append(parent)
+
+    for base in candidate_bases:
+        candidate = (base / Path(*parts)).resolve(strict=False)
+        if _is_path_inside(output_root, candidate) and candidate.exists() and candidate.is_file():
+            return candidate
+
+    # MinerU often emits Markdown links like images/x.jpg relative to the
+    # generated Markdown folder (.../auto/images), not the OCR output root.
+    filename = parts[-1]
+    for candidate in output_root.rglob(filename):
+        if not candidate.is_file():
+            continue
+        resolved = candidate.resolve(strict=False)
+        if not _is_path_inside(output_root, resolved):
+            continue
+        relative = resolved.relative_to(output_root).as_posix()
+        if relative == normalized or relative.endswith(f"/{normalized}"):
+            return resolved
+    return None
 
 
 def _rewrite_reader_markdown_assets(markdown: str, paper_id: UUID) -> str:
@@ -2403,11 +2452,8 @@ def get_paper_ocr_asset(paper_id: UUID, asset_path: str):
     if bundle is None:
         raise HTTPException(status_code=404, detail="ocr bundle not found")
 
-    output_root = Path(bundle.output_root).resolve()
-    candidate = (output_root / normalized).resolve(strict=False)
-    if candidate != output_root and output_root not in candidate.parents:
-        raise HTTPException(status_code=400, detail="invalid asset path")
-    if not candidate.exists() or not candidate.is_file():
+    candidate = _resolve_reader_ocr_asset_path(bundle, normalized)
+    if candidate is None:
         raise HTTPException(status_code=404, detail="ocr asset not found")
     return FileResponse(candidate)
 
@@ -2429,7 +2475,7 @@ def process_paper_ocr_async(
         metadata = dict(getattr(paper, "metadata_json", None) or {})
 
     previous_status = str(_paper_ocr_status_payload(metadata).get("status") or "").strip().lower()
-    effective_force = force or previous_status in {"failed", "success"}
+    effective_force = force or previous_status == "failed"
 
     task_title = f"OCR 处理: {(title[:36] + '...') if len(title) > 36 else title}" if title else f"OCR 处理: {str(paper_id)[:8]}"
 

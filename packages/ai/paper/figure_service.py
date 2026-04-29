@@ -701,16 +701,18 @@ class FigureService:
             if bbox is None:
                 continue
             caption_key = "table_caption" if raw_type == "table" else "image_caption"
+            footnote_key = "table_footnote" if raw_type == "table" else "image_footnote"
             caption = cls._join_mineru_caption_parts(item.get(caption_key))
+            footnote = cls._join_mineru_caption_parts(item.get(footnote_key))
             results.append(
                 {
                     "page_number": int(item.get("page_idx") or 0) + 1,
                     "bbox": bbox,
                     "normalized_bbox": True,
                     "image_type": "table" if raw_type == "table" else "figure",
-                    "caption": caption,
+                    "caption": caption or footnote,
                     "content_markdown": cls._compose_ocr_candidate_markdown(
-                        caption,
+                        caption or footnote,
                         cls._resolve_mineru_content_list_body(item),
                     ),
                 }
@@ -1161,7 +1163,14 @@ class FigureService:
     @staticmethod
     def _resolve_mineru_content_list_body(item: dict) -> str:
         parts: list[str] = []
-        for key in ("table_body", "image_body", "table_caption", "image_caption"):
+        for key in (
+            "table_body",
+            "image_body",
+            "table_caption",
+            "image_caption",
+            "table_footnote",
+            "image_footnote",
+        ):
             value = item.get(key)
             if isinstance(value, str):
                 text = value.strip()

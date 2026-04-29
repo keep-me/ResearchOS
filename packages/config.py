@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     mineru_backend: str = "api"
     mineru_api_base_url: str = "https://mineru.net"
     mineru_api_token: str | None = None
-    mineru_api_model_version: str = "vlm"
+    mineru_api_model_version: str = "pipeline"
     mineru_api_poll_interval_seconds: float = 3.0
     mineru_api_timeout_seconds: int = 300
     mineru_api_upload_timeout_seconds: int = 600

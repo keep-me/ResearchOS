@@ -15,6 +15,7 @@ function isAbsoluteOrSpecialUrl(value: string): boolean {
 const PATH_TOKEN_ELIGIBLE_PATTERNS = [
   /^\/papers\/[^/]+\/pdf$/,
   /^\/papers\/[^/]+\/figures\/[^/]+\/image$/,
+  /^\/papers\/[^/]+\/ocr\/assets\/.+$/,
   /^\/global\/event$/,
   /^\/global\/ws$/,
   /^\/agent\/workspace\/terminal\/session\/[^/]+\/ws$/,

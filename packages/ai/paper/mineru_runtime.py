@@ -168,7 +168,7 @@ class MinerUOcrRuntime:
 
     @classmethod
     def repo_root(cls) -> Path:
-        return Path(__file__).resolve().parents[2]
+        return Path(__file__).resolve().parents[3]
 
     @classmethod
     def base_dir(cls) -> Path:
@@ -323,7 +323,6 @@ class MinerUOcrRuntime:
             has_structured_output=bool(manifest["has_structured_output"]),
         )
 
-    @classmethod
     @classmethod
     def _resolve_backend(cls) -> str:
         api_token = cls._mineru_api_token()

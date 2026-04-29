@@ -710,6 +710,75 @@ def test_reader_document_uses_output_root_metadata_when_cached_bundle_misses(
     assert asset_response.content == b"fake-image"
 
 
+def test_reader_ocr_asset_resolves_relative_to_markdown_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_test_db(monkeypatch)
+    output_root = tmp_path / "ocr-output"
+    auto_dir = output_root / "paper.pdf" / "auto"
+    images_dir = auto_dir / "images"
+    images_dir.mkdir(parents=True)
+    (images_dir / "fig.png").write_bytes(b"nested-image")
+    auto_dir.joinpath("paper.md").write_text(
+        "# Figure\n\n![](images/fig.png)",
+        encoding="utf-8",
+    )
+    output_root.joinpath("manifest.json").write_text(
+        json.dumps({"status": "success", "pdf_sha256": "abc123", "output_root": str(output_root)}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    paper_id = _create_paper(
+        metadata={
+            "mineru_ocr": {
+                "status": "success",
+                "output_root": str(output_root),
+                "pdf_sha256": "abc123",
+                "has_structured_output": False,
+            }
+        }
+    )
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 nested-asset")
+
+    monkeypatch.setattr(
+        papers_router,
+        "_ensure_paper_pdf",
+        lambda session, repo, paper, pid: str(pdf_path),
+    )
+    monkeypatch.setattr(
+        "packages.ai.paper.mineru_runtime.MinerUOcrRuntime.get_cached_bundle",
+        lambda *args, **kwargs: None,
+    )
+
+    client = TestClient(_build_app())
+    document_response = client.get(f"/papers/{paper_id}/reader/document")
+    assert document_response.status_code == 200
+    assert f"/papers/{paper_id}/ocr/assets/images/fig.png" in document_response.json()["markdown"]
+
+    asset_response = client.get(f"/papers/{paper_id}/ocr/assets/images/fig.png")
+    assert asset_response.status_code == 200
+    assert asset_response.content == b"nested-image"
+
+
+def test_reader_structured_visual_uses_generic_image_alt() -> None:
+    paper_id = uuid4()
+    caption = "Fig. 1. Detailed caption"
+    block_type, text, markdown = papers_router._resolve_reader_structured_visual_block(
+        {
+            "type": "image",
+            "image_caption": [caption],
+            "img_path": "images/fig.png",
+        },
+        paper_id,
+    )
+
+    assert block_type == "image"
+    assert text == caption
+    assert markdown.startswith(f"![figure](/papers/{paper_id}/ocr/assets/images/fig.png)")
+    assert markdown.count(caption) == 1
+
+
 def test_reader_note_draft_returns_unsaved_ai_note(monkeypatch: pytest.MonkeyPatch) -> None:
     _configure_test_db(monkeypatch)
     paper_id = _create_paper()
