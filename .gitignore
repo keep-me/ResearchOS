@@ -48,6 +48,7 @@ reference/
 tmp/
 paper.db
 backups/
+roots.sst
 
 # Node / Frontend
 node_modules/
