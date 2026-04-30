@@ -87,7 +87,7 @@ print(json.dumps({"tables": tables, "revision": revision}, ensure_ascii=False))
     assert "topic_subscriptions" in payload["tables"]
     assert "analysis_reports" in payload["tables"]
     assert "projects" in payload["tables"]
-    assert payload["revision"] == "20260414_0012_schema_reconciliation"
+    assert payload["revision"] == "20260430_0013_add_research_kg"
 
 
 def test_explicit_bootstrap_stamps_legacy_runtime_schema(tmp_path: Path) -> None:
@@ -125,4 +125,4 @@ print(json.dumps({"tables": tables, "revision": revision}, ensure_ascii=False))
 
     assert "alembic_version" in payload["tables"]
     assert "project_runs" in payload["tables"]
-    assert payload["revision"] == "20260414_0012_schema_reconciliation"
+    assert payload["revision"] == "20260430_0013_add_research_kg"

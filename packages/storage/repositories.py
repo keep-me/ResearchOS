@@ -9,7 +9,7 @@ import time
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import Select, delete, func, select, update
+from sqlalchemy import Select, delete, func, or_, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,9 @@ from packages.storage.models import (
     ProjectResearchWikiNode,
     ProjectGpuLease,
     PromptTrace,
+    ResearchKGEdge,
+    ResearchKGNode,
+    ResearchKGPaperState,
     SourceCheckpoint,
 )
 from packages.storage import task_repository as _task_repository
@@ -574,6 +577,294 @@ class CitationRepository:
             Citation.source_paper_id.in_(paper_ids) | Citation.target_paper_id.in_(paper_ids)
         )
         return list(self.session.execute(q).scalars())
+
+
+class ResearchKGRepository:
+    """论文库级 GraphRAG 知识图谱仓储。"""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    @staticmethod
+    def normalize_name(value: str | None) -> str:
+        import re
+
+        normalized = re.sub(r"\s+", " ", str(value or "").strip().casefold())
+        return normalized[:512]
+
+    @staticmethod
+    def _merge_unique(existing: list | None, values: list | None, *, limit: int = 100) -> list:
+        merged: list = []
+        seen: set[str] = set()
+        for item in list(existing or []) + list(values or []):
+            key = str(item).strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+            if len(merged) >= limit:
+                break
+        return merged
+
+    def get_node(self, node_id: str) -> ResearchKGNode | None:
+        return self.session.get(ResearchKGNode, node_id)
+
+    def get_paper_state(self, paper_id: str) -> ResearchKGPaperState | None:
+        return self.session.get(ResearchKGPaperState, str(paper_id))
+
+    def upsert_paper_state(
+        self,
+        *,
+        paper_id: str,
+        content_hash: str,
+        status: str,
+        node_count: int = 0,
+        edge_count: int = 0,
+        error: str = "",
+        built_at: datetime | None = None,
+    ) -> ResearchKGPaperState:
+        state = self.get_paper_state(paper_id)
+        if state is None:
+            state = ResearchKGPaperState(paper_id=str(paper_id))
+            self.session.add(state)
+        state.content_hash = str(content_hash or "")
+        state.status = str(status or "pending").strip() or "pending"
+        state.node_count = max(0, int(node_count or 0))
+        state.edge_count = max(0, int(edge_count or 0))
+        state.error = str(error or "").strip()
+        state.built_at = built_at
+        self.session.flush()
+        return state
+
+    def list_paper_states(self, paper_ids: list[str] | None = None) -> list[ResearchKGPaperState]:
+        query = select(ResearchKGPaperState)
+        if paper_ids:
+            query = query.where(ResearchKGPaperState.paper_id.in_([str(pid) for pid in paper_ids]))
+        query = query.order_by(ResearchKGPaperState.updated_at.desc())
+        return list(self.session.execute(query).scalars())
+
+    def upsert_node(
+        self,
+        *,
+        node_type: str,
+        name: str,
+        summary: str | None = None,
+        paper_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> ResearchKGNode:
+        normalized_name = self.normalize_name(name)
+        cleaned_type = str(node_type or "concept").strip().lower()[:64] or "concept"
+        if not normalized_name:
+            raise ValueError("KG node name is empty")
+        node = self.session.execute(
+            select(ResearchKGNode).where(
+                ResearchKGNode.node_type == cleaned_type,
+                ResearchKGNode.normalized_name == normalized_name,
+            )
+        ).scalar_one_or_none()
+        if node is None:
+            node = ResearchKGNode(
+                node_type=cleaned_type,
+                name=str(name or "").strip()[:512],
+                normalized_name=normalized_name,
+            )
+            self.session.add(node)
+        if len(str(summary or "").strip()) > len(node.summary or ""):
+            node.summary = str(summary or "").strip()
+        elif not node.summary:
+            node.summary = str(summary or "").strip()
+        merged_metadata = dict(node.metadata_json or {})
+        merged_metadata.update(dict(metadata or {}))
+        if paper_id:
+            merged_metadata["paper_ids"] = self._merge_unique(
+                list(merged_metadata.get("paper_ids") or []),
+                [str(paper_id)],
+                limit=500,
+            )
+        node.metadata_json = merged_metadata
+        self.session.flush()
+        return node
+
+    def upsert_edge(
+        self,
+        *,
+        source_node_id: str,
+        target_node_id: str,
+        edge_type: str,
+        paper_id: str | None = None,
+        evidence: str | None = None,
+        weight: float = 1.0,
+        metadata: dict | None = None,
+    ) -> ResearchKGEdge:
+        cleaned_type = str(edge_type or "related_to").strip().lower()[:64] or "related_to"
+        edge = self.session.execute(
+            select(ResearchKGEdge).where(
+                ResearchKGEdge.source_node_id == str(source_node_id),
+                ResearchKGEdge.target_node_id == str(target_node_id),
+                ResearchKGEdge.edge_type == cleaned_type,
+            )
+        ).scalar_one_or_none()
+        if edge is None:
+            edge = ResearchKGEdge(
+                source_node_id=str(source_node_id),
+                target_node_id=str(target_node_id),
+                edge_type=cleaned_type,
+            )
+            self.session.add(edge)
+        cleaned_evidence = str(evidence or "").strip()
+        if cleaned_evidence and (not edge.evidence or len(cleaned_evidence) > len(edge.evidence)):
+            edge.evidence = cleaned_evidence[:2000]
+        edge.weight = max(float(edge.weight or 0), float(weight or 1.0))
+        merged_metadata = dict(edge.metadata_json or {})
+        merged_metadata.update(dict(metadata or {}))
+        if paper_id:
+            merged_metadata["paper_ids"] = self._merge_unique(
+                list(merged_metadata.get("paper_ids") or []),
+                [str(paper_id)],
+                limit=500,
+            )
+        if cleaned_evidence:
+            evidence_items = list(merged_metadata.get("evidence_items") or [])
+            evidence_items.append(
+                {
+                    "paper_id": str(paper_id or ""),
+                    "evidence": cleaned_evidence[:600],
+                }
+            )
+            unique_items: list[dict] = []
+            seen_items: set[tuple[str, str]] = set()
+            for item in evidence_items:
+                if not isinstance(item, dict):
+                    continue
+                key = (str(item.get("paper_id") or ""), str(item.get("evidence") or ""))
+                if not key[1] or key in seen_items:
+                    continue
+                seen_items.add(key)
+                unique_items.append(item)
+                if len(unique_items) >= 12:
+                    break
+            merged_metadata["evidence_items"] = unique_items
+        edge.metadata_json = merged_metadata
+        self.session.flush()
+        return edge
+
+    def list_nodes(
+        self,
+        *,
+        node_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[ResearchKGNode]:
+        query = select(ResearchKGNode)
+        if node_type:
+            query = query.where(ResearchKGNode.node_type == str(node_type).strip().lower())
+        query = query.order_by(ResearchKGNode.updated_at.desc(), ResearchKGNode.created_at.desc())
+        if isinstance(limit, int) and limit > 0:
+            query = query.limit(limit)
+        return list(self.session.execute(query).scalars())
+
+    def search_nodes(self, query_text: str, *, limit: int = 20) -> list[ResearchKGNode]:
+        tokens = [
+            token
+            for token in str(query_text or "").strip().casefold().replace("/", " ").replace("-", " ").split()
+            if len(token) >= 2
+        ]
+        if not tokens:
+            return self.list_nodes(limit=limit)
+        conditions = []
+        for token in tokens[:8]:
+            like = f"%{token}%"
+            conditions.append(
+                func.lower(ResearchKGNode.name).like(like)
+                | func.lower(ResearchKGNode.summary).like(like)
+                | func.lower(ResearchKGNode.normalized_name).like(like)
+            )
+        query = select(ResearchKGNode).where(or_(*conditions)).limit(max(1, min(limit * 3, 200)))
+        candidates = list(self.session.execute(query).scalars())
+        scored: list[tuple[int, str, ResearchKGNode]] = []
+        for node in candidates:
+            haystack = " ".join(
+                [
+                    str(node.name or ""),
+                    str(node.normalized_name or ""),
+                    str(node.summary or ""),
+                ]
+            ).casefold()
+            score = sum(1 for token in tokens if token in haystack)
+            scored.append((score, str(node.updated_at or ""), node))
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [node for score, _updated, node in scored if score > 0][: max(1, limit)]
+
+    def list_edges_for_node_ids(
+        self,
+        node_ids: list[str],
+        *,
+        limit: int = 80,
+    ) -> list[ResearchKGEdge]:
+        normalized_ids = [str(node_id) for node_id in node_ids if str(node_id or "").strip()]
+        if not normalized_ids:
+            return []
+        query = (
+            select(ResearchKGEdge)
+            .where(
+                ResearchKGEdge.source_node_id.in_(normalized_ids)
+                | ResearchKGEdge.target_node_id.in_(normalized_ids)
+            )
+            .order_by(ResearchKGEdge.weight.desc(), ResearchKGEdge.updated_at.desc())
+            .limit(max(1, min(limit, 500)))
+        )
+        return list(self.session.execute(query).scalars())
+
+    def list_edges_for_paper_ids(
+        self,
+        paper_ids: list[str],
+        *,
+        limit: int = 80,
+    ) -> list[ResearchKGEdge]:
+        normalized_ids = {str(paper_id) for paper_id in paper_ids if str(paper_id or "").strip()}
+        if not normalized_ids:
+            return []
+        edges = self.session.execute(
+            select(ResearchKGEdge)
+            .order_by(ResearchKGEdge.weight.desc(), ResearchKGEdge.updated_at.desc())
+            .limit(max(1, min(limit * 5, 1000)))
+        ).scalars()
+        matched: list[ResearchKGEdge] = []
+        for edge in edges:
+            metadata = dict(edge.metadata_json or {})
+            edge_paper_ids = {str(item) for item in list(metadata.get("paper_ids") or [])}
+            if normalized_ids & edge_paper_ids:
+                matched.append(edge)
+                if len(matched) >= limit:
+                    break
+        return matched
+
+    def stats(self) -> dict:
+        node_count = int(self.session.scalar(select(func.count()).select_from(ResearchKGNode)) or 0)
+        edge_count = int(self.session.scalar(select(func.count()).select_from(ResearchKGEdge)) or 0)
+        state_count = int(self.session.scalar(select(func.count()).select_from(ResearchKGPaperState)) or 0)
+        complete_count = int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(ResearchKGPaperState)
+                .where(ResearchKGPaperState.status == "complete")
+            )
+            or 0
+        )
+        failed_count = int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(ResearchKGPaperState)
+                .where(ResearchKGPaperState.status == "failed")
+            )
+            or 0
+        )
+        return {
+            "node_count": node_count,
+            "edge_count": edge_count,
+            "paper_state_count": state_count,
+            "complete_paper_count": complete_count,
+            "failed_paper_count": failed_count,
+        }
 
 
 class LLMConfigRepository:

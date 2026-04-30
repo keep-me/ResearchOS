@@ -132,6 +132,86 @@ class Citation(Base):
     context: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ResearchKGNode(Base):
+    """论文库级 GraphRAG 实体节点。"""
+
+    __tablename__ = "research_kg_nodes"
+    __table_args__ = (
+        UniqueConstraint("node_type", "normalized_name", name="uq_research_kg_node_type_name"),
+        Index("ix_research_kg_nodes_type_name", "node_type", "normalized_name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    node_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False, index=True
+    )
+
+
+class ResearchKGEdge(Base):
+    """论文库级 GraphRAG 实体关系边。"""
+
+    __tablename__ = "research_kg_edges"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_node_id",
+            "target_node_id",
+            "edge_type",
+            name="uq_research_kg_edge",
+        ),
+        Index("ix_research_kg_edges_type", "edge_type"),
+        Index("ix_research_kg_edges_source_target", "source_node_id", "target_node_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    source_node_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("research_kg_nodes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_node_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("research_kg_nodes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    edge_type: Mapped[str] = mapped_column(String(64), nullable=False, default="related_to")
+    evidence: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False, index=True
+    )
+
+
+class ResearchKGPaperState(Base):
+    """单篇论文 GraphRAG 构建状态。"""
+
+    __tablename__ = "research_kg_paper_states"
+
+    paper_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("papers.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    node_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    edge_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    built_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False, index=True
+    )
+
+
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
 

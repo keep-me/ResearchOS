@@ -340,6 +340,18 @@ class ExternalLiteratureIngestReq(BaseModel):
     topic_id: str | None = None
 
 
+class GraphRAGBuildReq(BaseModel):
+    paper_ids: list[str] = Field(default_factory=list)
+    limit: int = Field(default=12, ge=1, le=200)
+    force: bool = False
+
+
+class GraphRAGQueryReq(BaseModel):
+    query: str
+    top_k: int = Field(default=6, ge=1, le=20)
+    paper_ids: list[str] = Field(default_factory=list)
+
+
 class WritingProcessReq(BaseModel):
     action: str
     topic: str = ""

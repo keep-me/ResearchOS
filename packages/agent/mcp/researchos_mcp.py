@@ -872,6 +872,50 @@ def get_timeline(keyword: str, limit: int = 100) -> dict[str, Any]:
 
 
 @server.tool(
+    name="research_kg_status",
+    description="查看论文库级 Research KG / GraphRAG 构建状态。",
+)
+def research_kg_status() -> dict[str, Any]:
+    return _tool_result_payload(research_runtime._research_kg_status())
+
+
+@server.tool(
+    name="build_research_kg",
+    description="为本地论文库构建或刷新 GraphRAG 实体关系图。",
+)
+def build_research_kg(
+    paper_ids: list[str] | None = None,
+    limit: int = 12,
+    force: bool = False,
+) -> dict[str, Any]:
+    return _tool_result_payload(
+        research_runtime._build_research_kg(
+            paper_ids=paper_ids,
+            limit=max(1, min(int(limit), 200)),
+            force=bool(force),
+        )
+    )
+
+
+@server.tool(
+    name="graph_rag_query",
+    description="基于本地论文库 Research KG 查询实体、关系、论文、引用和已有分析证据包。",
+)
+def graph_rag_query(
+    query: str,
+    top_k: int = 6,
+    paper_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    return _tool_result_payload(
+        research_runtime._graph_rag_query(
+            query=query,
+            top_k=max(1, min(int(top_k), 20)),
+            paper_ids=paper_ids,
+        )
+    )
+
+
+@server.tool(
     name="list_topics",
     description="列出当前研究工作区与订阅。",
 )

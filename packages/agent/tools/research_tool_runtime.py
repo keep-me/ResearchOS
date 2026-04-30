@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import suppress
@@ -11,6 +12,7 @@ from uuid import UUID
 from packages.ai.research.brief_service import DailyBriefService
 from packages.ai.paper.external_paper_preview_service import ExternalPaperPreviewService
 from packages.ai.paper.figure_service import FigureService
+from packages.ai.research.graph_rag_service import GraphRAGService
 from packages.ai.research.graph_service import GraphService
 from packages.ai.research.keyword_service import KeywordService
 from packages.ai.paper.paper_analysis_service import PaperAnalysisService
@@ -411,13 +413,124 @@ def _dedupe_literature_items(items: list[dict]) -> list[dict]:
     return deduped
 
 
+_LOCAL_SEARCH_QUERY_EXPANSIONS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        ("遥感", "对地观测", "地球观测", "卫星影像", "卫星图像", "遥感影像", "遥感图像", "地理空间"),
+        ("remote sensing", "earth observation", "satellite imagery", "geospatial"),
+    ),
+    (
+        ("大模型", "基础模型", "基座模型"),
+        ("foundation model", "large model", "large language model", "vision-language model", "vlm"),
+    ),
+    (
+        ("多模态", "视觉语言", "图文"),
+        ("multimodal", "vision-language", "visual language", "vlm"),
+    ),
+    (
+        ("世界模型",),
+        ("world model",),
+    ),
+    (
+        ("视觉定位", "视觉指代", "目标定位"),
+        ("visual grounding", "spatial reasoning"),
+    ),
+)
+
+
+def _expanded_local_search_queries(keyword: str) -> list[str]:
+    raw = str(keyword or "").strip()
+    if not raw:
+        return []
+    lowered = raw.casefold()
+    queries: list[str] = []
+    seen: set[str] = set()
+
+    def add(query: str) -> None:
+        normalized = re.sub(r"\s+", " ", str(query or "").strip())
+        key = normalized.casefold()
+        if normalized and key not in seen:
+            seen.add(key)
+            queries.append(normalized)
+
+    add(raw)
+    for triggers, expansions in _LOCAL_SEARCH_QUERY_EXPANSIONS:
+        if any(trigger.casefold() in lowered for trigger in triggers):
+            for expansion in expansions:
+                add(expansion)
+
+    remote_terms = next(
+        (
+            expansions
+            for triggers, expansions in _LOCAL_SEARCH_QUERY_EXPANSIONS
+            if any(trigger.casefold() in lowered for trigger in triggers)
+            and "remote sensing" in expansions
+        ),
+        (),
+    )
+    model_terms = next(
+        (
+            expansions
+            for triggers, expansions in _LOCAL_SEARCH_QUERY_EXPANSIONS
+            if any(trigger.casefold() in lowered for trigger in triggers)
+            and "foundation model" in expansions
+        ),
+        (),
+    )
+    if remote_terms and model_terms:
+        for suffix in ("model", "foundation model", "large model", "vision-language model", "vlm", "world model"):
+            add(f"remote sensing {suffix}")
+        add("earth observation foundation model")
+        add("satellite imagery foundation model")
+
+    # English multi-word user queries often fail strict AND matching; keep useful phrases as fallbacks.
+    for phrase in re.findall(r"\b[A-Za-z][A-Za-z0-9]*(?:[- ][A-Za-z0-9]+){1,3}\b", raw):
+        add(phrase)
+    return queries
+
+
 def _search_papers(keyword: str, limit: int = 20) -> ToolResult:
+    normalized_limit = max(1, min(limit, 20))
+    expanded_queries = _expanded_local_search_queries(keyword)
     with session_scope() as session:
-        papers = PaperRepository(session).full_text_candidates(keyword.strip(), limit=max(1, min(limit, 20)))
+        repo = PaperRepository(session)
+        papers = []
+        for query in expanded_queries:
+            for paper in repo.full_text_candidates(query, limit=normalized_limit):
+                if all(str(existing.id) != str(paper.id) for existing in papers):
+                    papers.append(paper)
+                if len(papers) >= normalized_limit:
+                    break
+            if len(papers) >= normalized_limit:
+                break
+        if not papers:
+            candidate_terms = [
+                term.strip(" -")
+                for term in re.findall(r"\b[A-Za-z][A-Za-z0-9]*(?:[- ][A-Za-z0-9]+){0,3}\b", keyword)
+            ]
+            for query in expanded_queries[1:]:
+                candidate_terms.extend(
+                    term.strip(" -")
+                    for term in re.findall(r"\b[A-Za-z][A-Za-z0-9]*(?:[- ][A-Za-z0-9]+){0,3}\b", query)
+                )
+            seen_terms: set[str] = set()
+            fallback_papers = []
+            for term in candidate_terms[:8]:
+                term_key = term.casefold()
+                if len(term_key) < 3 or term_key in seen_terms:
+                    continue
+                seen_terms.add(term_key)
+                for paper in repo.full_text_candidates(term, limit=normalized_limit):
+                    if all(str(existing.id) != str(paper.id) for existing in fallback_papers):
+                        fallback_papers.append(paper)
+                    if len(fallback_papers) >= normalized_limit:
+                        break
+                if len(fallback_papers) >= normalized_limit:
+                    break
+            papers = fallback_papers
         items = [_paper_to_search_item(paper) for paper in papers]
     return ToolResult(
         success=True,
-        data={"papers": items, "count": len(items)},
+        data={"papers": items, "count": len(items), "expanded_queries": expanded_queries[:12]},
         summary=f"找到 {len(items)} 篇匹配论文",
     )
 
@@ -458,6 +571,7 @@ def _get_paper_analysis(paper_id: str) -> ToolResult:
         title = paper.title
         metadata = dict(paper.metadata_json or {})
     bundle = metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
+    figure_items = _paper_figure_items(pid, limit=None)
     ok, summary = _analysis_rounds_is_effective(bundle)
     return ToolResult(
         success=ok,
@@ -465,8 +579,11 @@ def _get_paper_analysis(paper_id: str) -> ToolResult:
             "paper_id": str(pid),
             "title": title,
             "analysis_rounds": bundle,
+            "figure_count": len(figure_items),
+            "figure_refs": _paper_figure_refs(figure_items, limit=None),
         },
         summary=summary,
+        internal_data={"display_data": {"figures": figure_items}},
     )
 
 
@@ -542,6 +659,62 @@ def _get_timeline(keyword: str, limit: int = 100) -> ToolResult:
         success=True,
         data=timeline,
         summary=f"时间线已生成，包含 {len(milestones)} 个里程碑",
+    )
+
+
+def _research_kg_status() -> ToolResult:
+    payload = GraphRAGService().status()
+    return ToolResult(
+        success=True,
+        data=payload,
+        summary=(
+            f"Research KG 包含 {int(payload.get('node_count', 0) or 0)} 个实体、"
+            f"{int(payload.get('edge_count', 0) or 0)} 条关系，"
+            f"已构建 {int(payload.get('complete_paper_count', 0) or 0)} 篇论文"
+        ),
+    )
+
+
+def _build_research_kg(
+    paper_ids: list[str] | None = None,
+    limit: int = 12,
+    force: bool = False,
+) -> ToolResult:
+    payload = GraphRAGService().build_papers(
+        paper_ids=[str(pid) for pid in (paper_ids or []) if str(pid or "").strip()] or None,
+        limit=max(1, min(int(limit or 12), 200)),
+        force=bool(force),
+    )
+    return ToolResult(
+        success=int(payload.get("failed", 0) or 0) == 0,
+        data=payload,
+        summary=(
+            f"Research KG 构建完成：构建 {int(payload.get('built', 0) or 0)} 篇，"
+            f"跳过 {int(payload.get('skipped', 0) or 0)} 篇，"
+            f"失败 {int(payload.get('failed', 0) or 0)} 篇"
+        ),
+    )
+
+
+def _graph_rag_query(
+    query: str,
+    top_k: int = 6,
+    paper_ids: list[str] | None = None,
+) -> ToolResult:
+    payload = GraphRAGService().query(
+        query=str(query or "").strip(),
+        top_k=max(1, min(int(top_k or 6), 20)),
+        paper_ids=[str(pid) for pid in (paper_ids or []) if str(pid or "").strip()] or None,
+    )
+    coverage = dict(payload.get("coverage") or {})
+    return ToolResult(
+        success=True,
+        data=payload,
+        summary=(
+            f"GraphRAG 查询完成：命中 {int(coverage.get('node_count', 0) or 0)} 个实体、"
+            f"{int(coverage.get('edge_count', 0) or 0)} 条关系、"
+            f"{int(coverage.get('paper_count', 0) or 0)} 篇论文"
+        ),
     )
 
 
@@ -877,10 +1050,17 @@ def _analyze_paper_rounds(
         if ok:
             final_notes = bundle.get("final_notes") if isinstance(bundle, dict) else None
             summary = f"论文三轮分析完成：{str((final_notes or {}).get('title') or '最终结构化笔记')}"
+        figure_items = _paper_figure_items(pid, limit=None)
+        enriched_payload = {
+            **payload,
+            "figure_count": len(figure_items),
+            "figure_refs": _paper_figure_refs(figure_items, limit=None),
+        }
         return ToolResult(
             success=ok,
-            data=payload,
+            data=enriched_payload,
             summary=summary,
+            internal_data={"display_data": {"figures": figure_items}},
         )
 
     yield from _stream_background_call(_runner, start_message="正在启动论文三轮分析...")

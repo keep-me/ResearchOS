@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge, Button, Card } from "@/components/ui";
 import { useConversationCtx } from "@/contexts/ConversationContext";
@@ -107,8 +107,10 @@ export default function DashboardHome() {
     acp: null,
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [trendRefreshing, setTrendRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [trendSubdomain, setTrendSubdomain] = useState("all");
+  const autoTrendRefreshKeys = useRef<Set<string>>(new Set());
 
   const loadSnapshot = useCallback(async () => {
     setRefreshing(true);
@@ -128,6 +130,24 @@ export default function DashboardHome() {
     void loadSnapshot();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const refreshTrendSnapshot = useCallback(async (subdomain: string, auto = false) => {
+    const normalized = String(subdomain || "all").trim() || "all";
+    setTrendRefreshing(true);
+    try {
+      const trend = await dashboardApi.arxivTrend(normalized, true);
+      setSnapshot((prev) => ({ ...prev, arxiv_trend: trend }));
+      setTrendSubdomain(trend.subdomain_key || normalized);
+      setLoadError("");
+    } catch (error) {
+      if (auto) {
+        autoTrendRefreshKeys.current.delete(normalized);
+      }
+      setLoadError(error instanceof Error ? error.message : "arXiv 趋势生成失败，请稍后重试。");
+    } finally {
+      setTrendRefreshing(false);
+    }
+  }, []);
+
   const sortedConversations = useMemo(
     () => [...metas].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [metas],
@@ -140,6 +160,12 @@ export default function DashboardHome() {
   const arxivSubmissionCount = arxivTrend?.available && typeof arxivTrend.total_submissions === "number"
     ? arxivTrend.total_submissions
     : null;
+  const isSyncing = refreshing || trendRefreshing;
+  const arxivSubmissionLabel = arxivSubmissionCount !== null
+    ? `当日投稿 ${formatCount(arxivSubmissionCount)} 篇`
+    : trendRefreshing
+      ? "正在统计"
+      : "等待统计";
   const libraryFocus = snapshot.library_focus;
   const folderCards = (libraryFocus?.topic_cards || []).filter((item) => item.kind === "folder");
   const libraryKeywords = libraryFocus?.keywords || [];
@@ -185,6 +211,14 @@ export default function DashboardHome() {
     }
   }, [trendSubdomain]);
 
+  useEffect(() => {
+    if (!arxivTrend || arxivTrend.available || trendRefreshing) return;
+    const key = arxivTrend.subdomain_key || trendSubdomain || "all";
+    if (autoTrendRefreshKeys.current.has(key)) return;
+    autoTrendRefreshKeys.current.add(key);
+    void refreshTrendSnapshot(key, true);
+  }, [arxivTrend, refreshTrendSnapshot, trendRefreshing, trendSubdomain]);
+
   return (
     <div className="animate-fade-in space-y-4 pb-8 sm:space-y-5 sm:pb-10">
       <section className="page-hero rounded-[28px] p-4 sm:p-5 lg:p-6">
@@ -204,7 +238,7 @@ export default function DashboardHome() {
                 <Settings className="h-3.5 w-3.5" />
                 {acpReady ? "管理 ACP" : "配置 ACP"}
               </button>
-              {refreshing ? (
+              {isSyncing ? (
                 <Badge variant="info">
                   <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
                   同步中
@@ -251,17 +285,23 @@ export default function DashboardHome() {
             <span className="inline-flex min-w-0 flex-1 flex-col items-start justify-center rounded-md border border-border bg-page px-3 py-2 sm:flex-none">
               <span className="inline-flex items-center gap-2 text-sm font-semibold text-ink">
               <FileStack className="h-4 w-4 text-primary" />
-                {arxivSubmissionCount !== null ? `当日投稿 ${formatCount(arxivSubmissionCount)} 篇` : "等待统计"}
+                {arxivSubmissionLabel}
               </span>
             </span>
             <button
               type="button"
-              onClick={() => void loadSnapshot()}
+              onClick={() => {
+                if (arxivTrend && !arxivTrend.available) {
+                  void refreshTrendSnapshot(arxivTrend.subdomain_key || trendSubdomain);
+                  return;
+                }
+                void loadSnapshot();
+              }}
               className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-ink-secondary transition-colors duration-150 hover:bg-hover hover:text-ink"
               aria-label="刷新首页"
               title="刷新首页"
             >
-              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
             </button>
           </div>
         </div>

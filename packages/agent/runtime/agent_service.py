@@ -882,9 +882,19 @@ def _looks_like_academic_lookup_request(user_request: str) -> bool:
         "知识库",
         "相似论文",
         "时间线",
+        "研究任务",
+        "方法思路",
+        "训练信号",
+        "数据集",
+        "指标",
+        "局限",
+        "研究空白",
         "会议",
         "期刊",
         "ccf",
+        "grounding",
+        "multimodal",
+        "visual",
     )
     return bool(_ACADEMIC_LOOKUP_RE.search(normalized)) or any(
         marker in lowered for marker in chinese_markers
@@ -1142,8 +1152,19 @@ def _opencode_research_lookup_prompt(
     ]
     if options.mounted_paper_ids:
         lines.append("- This session already has imported papers. If the user's question can be answered from them, inspect those papers before using search_papers or external literature search.")
+    if "graph_rag_query" in tool_names:
+        lines.append("- Mandatory routing: for multi-paper comparison questions, method relationship questions, and questions mentioning two or more paper/model names, call graph_rag_query first. Do not start with search_papers/search_literature/websearch for these cases.")
+        lines.append("- For any request that says local library / 本地论文库 / 当前论文库 / 库内, call graph_rag_query before external search tools.")
+        lines.append("- For trend overviews, multi-paper comparisons, method lineage, dataset/metric/limitation summaries, citation/method context, and research-gap questions, call graph_rag_query first with the full user question as query.")
+        lines.append("- If graph_rag_query returns useful entities, relations, or papers, answer from that evidence pack and avoid search_literature/websearch unless the user explicitly asks for external sources.")
     if "search_papers" in tool_names:
         lines.append("- Use search_papers first for papers already in the local library. It returns a compact candidate list; call get_paper_detail only for the few papers you will cite or compare.")
+        lines.append("- If search_papers returns 0 for a broad topic, Chinese query, or translated domain phrase, do not conclude the local library has no relevant papers. Continue with graph_rag_query when available, or use search_literature/search_arxiv for external discovery.")
+    if "graph_rag_query" in tool_names:
+        lines.append("- Use graph_rag_query for research trends, method relationships, dataset/metric/limitation questions, citation/method lineage, research gaps, and any question that needs a structured evidence pack across local papers.")
+        lines.append("- If graph_rag_query reports an empty or stale Research KG and build_research_kg is available, build or refresh a small batch before answering instead of falling back directly to broad web search.")
+    if "research_kg_status" in tool_names:
+        lines.append("- Use research_kg_status when you need to check whether the local GraphRAG knowledge graph has enough coverage.")
     if "get_paper_detail" in tool_names:
         lines.append("- Use get_paper_detail after local search to inspect title, abstract, venue, saved analysis metadata, and any already extracted figures for a paper.")
     if "get_paper_analysis" in tool_names:
@@ -1157,6 +1178,8 @@ def _opencode_research_lookup_prompt(
     if "search_literature" in tool_names:
         lines.append("- Use search_literature for external paper discovery across arXiv, conferences, and journals, especially for venue-filtered or CCF-A requests.")
         lines.append("- For broad discovery or comparison, prefer one focused local search and one focused external search before answering; avoid repeated near-duplicate searches unless results are clearly off-target.")
+        if "graph_rag_query" in tool_names:
+            lines.append("- Do not use search_literature before graph_rag_query when the user asks about the local library, already imported papers, or named papers likely present in the library.")
     if "preview_external_paper_head" in tool_names:
         lines.append("- If an external arXiv paper is not imported yet and the user wants a quick triage pass, use preview_external_paper_head to inspect abstract metadata and section headings before ingesting it.")
     if "preview_external_paper_section" in tool_names:
@@ -1189,6 +1212,8 @@ def _opencode_research_lookup_prompt(
         lines.append("- If already extracted figure cards are enough for the request, call paper_figures instead of a three-round analysis tool.")
     if "analyze_figures" in tool_names and ("get_paper_detail" in tool_names or "get_paper_analysis" in tool_names):
         lines.append("- If a mounted paper has PDF support but no figure cards are available yet and figures matter for the request, run analyze_figures before giving the final paper analysis.")
+    if "graph_rag_query" in tool_names and ("analyze_figures" in tool_names or "deep_read_paper" in tool_names):
+        lines.append("- For ordinary method summaries and evidence overviews across local papers, graph_rag_query plus saved analysis is enough; do not start analyze_figures or deep_read_paper unless the user explicitly asks for figures, tables, exact visual evidence, or a new deep read.")
     if "list_topics" in tool_names or "manage_subscription" in tool_names:
         lines.append("- Use list_topics / manage_subscription for the user's local folders, subscriptions, and recurring literature tracking workflows.")
     if _active_skill_items(options) and ("list_local_skills" in tool_names or "read_local_skill" in tool_names or "skill" in tool_names):

@@ -281,6 +281,7 @@ from apps.api.routers import (  # noqa: E402
     papers,
     pipelines,
     projects,
+    research_kg,
     session_runtime,
     settings as settings_router,
     system,
@@ -298,6 +299,7 @@ app.include_router(agent.router)
 app.include_router(agents.router)
 app.include_router(agent_workspace.router)
 app.include_router(projects.router)
+app.include_router(research_kg.router)
 app.include_router(session_runtime.router)
 app.include_router(content.router)
 app.include_router(dashboard.router)

@@ -151,6 +151,99 @@ def test_search_papers_returns_compact_candidates(monkeypatch: pytest.MonkeyPatc
     assert "embedding_status" not in item
 
 
+def test_search_papers_expands_chinese_research_terms(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    with session_scope() as session:
+        paper = PaperRepository(session).upsert_paper(
+            PaperCreate(
+                arxiv_id="2603.14941",
+                title="RS-WorldModel: a Unified Model for Remote Sensing Understanding",
+                abstract="A remote sensing world model for geospatial image understanding.",
+                publication_date=date(2026, 3, 20),
+                metadata={
+                    "title_zh": "遥感世界模型",
+                    "abstract_zh": "面向遥感影像理解的大模型方法。",
+                },
+            )
+        )
+        paper_id = str(paper.id)
+
+    result = research_tool_runtime._search_papers("帮我找找遥感大模型相关论文", limit=5)
+
+    assert result.success is True
+    assert result.data["count"] >= 1
+    assert result.data["papers"][0]["id"] == paper_id
+    assert "remote sensing" in result.data["expanded_queries"]
+
+
+def test_graph_rag_tools_build_status_and_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    paper_id, _ = _seed_local_paper()
+
+    def fake_extract(self, ctx):  # noqa: ANN001
+        return {
+            "nodes": [
+                {
+                    "id": "n1",
+                    "type": "method",
+                    "name": "Research Agent Memory",
+                    "summary": "显式记忆路由方法。",
+                },
+                {
+                    "id": "n2",
+                    "type": "task",
+                    "name": "research assistant context reuse",
+                    "summary": "复用研究助手上下文。",
+                },
+                {
+                    "id": "n3",
+                    "type": "limitation",
+                    "name": "memory routing evaluation gap",
+                    "summary": "缺少记忆命中率评测。",
+                },
+            ],
+            "edges": [
+                {
+                    "source": "n1",
+                    "target": "n2",
+                    "type": "addresses",
+                    "evidence": "A paper about research assistants.",
+                    "weight": 1.0,
+                },
+                {
+                    "source": "n1",
+                    "target": "n3",
+                    "type": "has_limitation",
+                    "evidence": "需要把记忆命中率和回答质量一起评估。",
+                    "weight": 0.8,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(research_tool_runtime.GraphRAGService, "extract_paper_kg", fake_extract)
+
+    build = research_tool_runtime._build_research_kg(paper_ids=[paper_id], limit=5, force=True)
+    status = research_tool_runtime._research_kg_status()
+    query = research_tool_runtime._graph_rag_query("memory route evaluation gap", top_k=5)
+
+    assert build.success is True
+    assert build.data["built"] == 1
+    assert build.data["items"][0]["node_count"] == 3
+    assert build.data["items"][0]["edge_count"] == 2
+
+    assert status.success is True
+    assert status.data["node_count"] == 3
+    assert status.data["edge_count"] == 2
+    assert status.data["complete_paper_count"] == 1
+
+    assert query.success is True
+    assert query.data["used_graph"] is True
+    assert query.data["coverage"]["node_count"] >= 1
+    assert query.data["coverage"]["edge_count"] >= 1
+    assert "GraphRAG Evidence Pack" in query.data["evidence_pack"]
+    assert any(edge["type"] == "has_limitation" for edge in query.data["edges"])
+
+
 def test_research_wiki_tools_seed_query_and_update_by_workspace_context(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

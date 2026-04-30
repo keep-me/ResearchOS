@@ -119,6 +119,46 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
         spec=_DEFAULT_RESEARCH_READ_TOOL_SPEC,
     ),
     _research_tool(
+        name="research_kg_status",
+        description="查看论文库级 Research KG / GraphRAG 构建状态、实体数、关系数和已构建论文数。",
+        parameters={"type": "object", "properties": {}},
+        spec=_DEFAULT_RESEARCH_READ_TOOL_SPEC,
+    ),
+    _research_action_tool(
+        name="build_research_kg",
+        description="为本地论文库构建或刷新 GraphRAG 实体关系图。用户明确要求构建、刷新，或 graph_rag_query 显示图谱为空时使用。",
+        parameters={
+            "type": "object",
+            "properties": {
+                "paper_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "可选的论文 UUID 列表；缺省时按最近论文批量构建",
+                },
+                "limit": {"type": "integer", "description": "缺省构建数量", "default": 12},
+                "force": {"type": "boolean", "description": "是否强制重建", "default": False},
+            },
+        },
+    ),
+    _research_tool(
+        name="graph_rag_query",
+        description="基于本地论文库 Research KG 执行 GraphRAG 查询，返回实体、关系、论文、引用和已有分析组成的证据包。适合研究趋势、方法关系、数据集指标、研究空白和论文脉络问题。",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "用户研究问题或聚焦关键词"},
+                "top_k": {"type": "integer", "description": "返回证据规模", "default": 6},
+                "paper_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "可选的论文 UUID 约束范围",
+                },
+            },
+            "required": ["query"],
+        },
+        spec=_DEFAULT_RESEARCH_READ_TOOL_SPEC,
+    ),
+    _research_tool(
         name="list_topics",
         description="列出研究工作区与订阅。",
         parameters={"type": "object", "properties": {}},

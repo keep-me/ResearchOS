@@ -1580,6 +1580,116 @@ export const StepDataView = memo(function StepDataView({
       </div>
     );
   }
+  /* research_kg_status — KG 状态 */
+  if (toolName === "research_kg_status") {
+    const nodeCount = Number(data.node_count ?? 0);
+    const edgeCount = Number(data.edge_count ?? 0);
+    const completeCount = Number(data.complete_paper_count ?? 0);
+    const failedCount = Number(data.failed_paper_count ?? 0);
+    return (
+      <div className="grid grid-cols-4 gap-1.5 text-[10px]">
+        {[
+          { label: "实体", value: nodeCount, color: "text-primary" },
+          { label: "关系", value: edgeCount, color: "text-success" },
+          { label: "论文", value: completeCount, color: "text-amber-600" },
+          { label: "失败", value: failedCount, color: failedCount ? "text-danger" : "text-ink-tertiary" },
+        ].map((item) => (
+          <div key={item.label} className="rounded-lg bg-surface px-2 py-1.5 text-center">
+            <p className={cn("font-bold", item.color)}>{item.value}</p>
+            <p className="text-ink-tertiary">{item.label}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  /* build_research_kg — 构建 KG */
+  if (toolName === "build_research_kg") {
+    const items = Array.isArray(data.items) ? (data.items as Array<Record<string, unknown>>) : [];
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="font-medium text-ink">构建 {String(data.built ?? 0)} 篇</span>
+          <span className="text-ink-tertiary">跳过 {String(data.skipped ?? 0)} 篇</span>
+          <span className={cn(Number(data.failed ?? 0) ? "text-danger" : "text-ink-tertiary")}>失败 {String(data.failed ?? 0)} 篇</span>
+        </div>
+        {items.length > 0 && (
+          <div className="max-h-32 space-y-1 overflow-y-auto">
+            {items.slice(0, 6).map((item, index) => (
+              <div key={index} className="rounded-lg bg-surface px-2 py-1.5 text-[10px]">
+                <p className="truncate font-medium text-ink">{String(item.title ?? item.paper_id ?? "")}</p>
+                <p className="text-ink-tertiary">
+                  {String(item.status ?? "")}
+                  {item.node_count !== undefined ? ` · ${String(item.node_count)} 实体` : ""}
+                  {item.edge_count !== undefined ? ` · ${String(item.edge_count)} 关系` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+  /* graph_rag_query — GraphRAG 证据包 */
+  if (toolName === "graph_rag_query") {
+    const coverage = asObjectRecord(data.coverage) || {};
+    const nodes = Array.isArray(data.nodes) ? (data.nodes as Array<Record<string, unknown>>) : [];
+    const edges = Array.isArray(data.edges) ? (data.edges as Array<Record<string, unknown>>) : [];
+    const papers = Array.isArray(data.papers) ? (data.papers as Array<Record<string, unknown>>) : [];
+    return (
+      <div className="space-y-2 text-[11px]">
+        <div className="grid grid-cols-4 gap-1.5 text-[10px]">
+          {[
+            { label: "实体", value: coverage.node_count ?? nodes.length },
+            { label: "关系", value: coverage.edge_count ?? edges.length },
+            { label: "论文", value: coverage.paper_count ?? papers.length },
+            { label: "引用", value: coverage.citation_count ?? 0 },
+          ].map((item) => (
+            <div key={item.label} className="rounded-lg bg-surface px-2 py-1.5 text-center">
+              <p className="font-bold text-primary">{String(item.value ?? 0)}</p>
+              <p className="text-ink-tertiary">{item.label}</p>
+            </div>
+          ))}
+        </div>
+        {nodes.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {nodes.slice(0, 8).map((node, index) => (
+              <span key={index} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                {String(node.type ?? "entity")} · {String(node.name ?? "")}
+              </span>
+            ))}
+          </div>
+        )}
+        {edges.length > 0 && (
+          <div className="space-y-1">
+            {edges.slice(0, 3).map((edge, index) => (
+              <div key={index} className="rounded-lg bg-surface px-2.5 py-1.5">
+                <p className="font-medium text-ink">
+                  {String(edge.source_name ?? "")} → {String(edge.target_name ?? "")}
+                </p>
+                <p className="text-[10px] text-ink-tertiary">
+                  {String(edge.type ?? "related_to")} · {String(edge.evidence ?? "").slice(0, 140)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {papers.length > 0 && (
+          <div className="space-y-1">
+            {papers.slice(0, 3).map((paper, index) => (
+              <button
+                key={index}
+                onClick={() => paper.id && navigate(`/papers/${String(paper.id)}`)}
+                className="flex w-full items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5 text-left hover:bg-hover"
+              >
+                <FileText className="h-3 w-3 shrink-0 text-primary" />
+                <span className="truncate text-ink">{String(paper.title ?? "")}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
   /* suggest_keywords — 关键词建议 */
   if (toolName === "suggest_keywords" && Array.isArray(data.suggestions)) {
     const suggestions = data.suggestions as Array<Record<string, unknown>>;

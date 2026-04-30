@@ -581,6 +581,7 @@ class PaperRepository:
             return []
 
         group_conditions = []
+        metadata_text = func.lower(cast(Paper.metadata_json, Text))
         for group in or_groups:
             cleaned_group = re.sub(r"[()\"']", " ", group)
             and_chunks = [
@@ -606,7 +607,10 @@ class PaperRepository:
                 continue
 
             term_conditions = [
-                func.lower(Paper.title).contains(token) | func.lower(Paper.abstract).contains(token)
+                func.lower(Paper.title).contains(token)
+                | func.lower(Paper.abstract).contains(token)
+                | func.lower(Paper.arxiv_id).contains(token)
+                | metadata_text.contains(token)
                 for token in dedup_terms
             ]
             if term_conditions:
@@ -624,7 +628,10 @@ class PaperRepository:
             group_conditions = [
                 and_(
                     *[
-                        func.lower(Paper.title).contains(token) | func.lower(Paper.abstract).contains(token)
+                        func.lower(Paper.title).contains(token)
+                        | func.lower(Paper.abstract).contains(token)
+                        | func.lower(Paper.arxiv_id).contains(token)
+                        | metadata_text.contains(token)
                         for token in fallback_terms
                     ]
                 )
