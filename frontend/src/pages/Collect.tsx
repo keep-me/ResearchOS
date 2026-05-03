@@ -1542,6 +1542,10 @@ function SubscriptionCard({
   onNavigate: () => void;
 }) {
   const scheduleLabel = `${FREQ_LABEL[topic.schedule_frequency]} ${String(utcToBj(topic.schedule_time_utc || 21)).padStart(2, "0")}:00`;
+  const lastRunFailed = topic.last_run_status === "failed";
+  const lastRunLabel = topic.last_run_at
+    ? `${lastRunFailed ? "上次抓取失败" : "上次抓取"} ${relativeTime(topic.last_run_at)}`
+    : "";
 
   return (
     <div className={`rounded-[24px] border p-4 transition-all ${topic.enabled ? "border-border bg-page" : "border-border/70 bg-page/70 opacity-80"}`}>
@@ -1566,8 +1570,8 @@ function SubscriptionCard({
           </div>
           <div className="mt-3 flex flex-wrap gap-3 text-xs text-ink-tertiary">
             <span>{topic.paper_count || 0} 篇已收集</span>
-            {topic.last_run_at && <span>上次抓取 {relativeTime(topic.last_run_at)}</span>}
-            {topic.last_run_count != null && <span>上次新增 {topic.last_run_count} 篇</span>}
+            {topic.last_run_at && <span className={lastRunFailed ? "text-error" : ""} title={topic.last_run_error || undefined}>{lastRunLabel}</span>}
+            {topic.last_run_count != null && !lastRunFailed && <span>上次新增 {topic.last_run_count} 篇</span>}
           </div>
         </div>
 

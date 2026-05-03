@@ -187,6 +187,46 @@ def test_run_topic_ingest_does_not_outer_retry_arxiv_rate_limit(monkeypatch):
     assert result["inserted"] == 0
     assert "429" in result["error"]
 
+    with session_scope() as session:
+        topic = TopicRepository(session).get_by_id(topic_id)
+        assert topic is not None
+        assert topic.last_run_at is not None
+        assert topic.last_run_status == "failed"
+        assert topic.last_run_count == 0
+        assert "429" in str(topic.last_run_error)
+
+
+def test_run_topic_ingest_updates_last_run_when_no_new_papers(monkeypatch):
+    _configure_test_db(monkeypatch)
+
+    class _FakePipelines:
+        def ingest_arxiv_with_stats(self, **kwargs):
+            return {"inserted_ids": [], "new_count": 0, "total_count": 12}
+
+    monkeypatch.setattr(daily_runner, "PaperPipelines", _FakePipelines)
+
+    with session_scope() as session:
+        topic = TopicRepository(session).upsert_topic(
+            name="No New Papers Topic",
+            kind="subscription",
+            query="multimodal",
+            source="arxiv",
+            enabled=True,
+            max_results_per_run=5,
+        )
+        topic_id = topic.id
+
+    result = daily_runner.run_topic_ingest(topic_id)
+
+    assert result["status"] == "no_new_papers"
+    with session_scope() as session:
+        topic = TopicRepository(session).get_by_id(topic_id)
+        assert topic is not None
+        assert topic.last_run_at is not None
+        assert topic.last_run_status == "no_new_papers"
+        assert topic.last_run_count == 0
+        assert topic.last_run_error is None
+
 
 def test_fetch_status_prefers_latest_matching_task(monkeypatch):
     monkeypatch.setattr(TaskTracker, "_sync_task", lambda self, task: None)

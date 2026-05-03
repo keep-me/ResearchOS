@@ -301,6 +301,10 @@ class TopicSubscription(Base):
     date_filter_days: Mapped[int] = mapped_column(nullable=False, default=7)  # 日期范围（最近 N 天）
     date_filter_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     date_filter_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_run_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_run_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_run_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False

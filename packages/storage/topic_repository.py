@@ -95,6 +95,10 @@ class TopicRepository:
                 or "topic_subscriptions.default_folder_id" in str(exc)
                 or "topic_subscriptions.date_filter_start" in str(exc)
                 or "topic_subscriptions.date_filter_end" in str(exc)
+                or "topic_subscriptions.last_run_at" in str(exc)
+                or "topic_subscriptions.last_run_status" in str(exc)
+                or "topic_subscriptions.last_run_count" in str(exc)
+                or "topic_subscriptions.last_run_error" in str(exc)
             ):
                 logger.warning(
                     "topic_subscriptions schema is outdated; "

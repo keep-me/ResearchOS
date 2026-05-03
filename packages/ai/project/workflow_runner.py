@@ -5147,16 +5147,15 @@ def _emit_reviewer_agent_heartbeat(
     event_count: int,
 ) -> None:
     task_id = str(context.run.task_id or "").strip()
-    if not task_id:
-        return
     label = _stage_label(context, stage_id)
     suffix = f"已接收约 {text_chars} 字" if text_chars > 0 else f"已接收 {event_count} 个事件"
     message = f"{label} 正在由 reviewer agent 输出...（{suffix}）"
     current = _reviewer_agent_task_current(context, stage_id)
-    try:
-        global_tracker.update(task_id, current, message, total=_TOTAL_PROGRESS)
-    except Exception:
-        logger.debug("Failed to update reviewer heartbeat for task %s", task_id, exc_info=True)
+    if task_id:
+        try:
+            global_tracker.update(task_id, current, message, total=_TOTAL_PROGRESS)
+        except Exception:
+            logger.debug("Failed to update reviewer heartbeat for task %s", task_id, exc_info=True)
     try:
         _patch_run(context.run.id, active_phase=stage_id, summary=message)
     except Exception:

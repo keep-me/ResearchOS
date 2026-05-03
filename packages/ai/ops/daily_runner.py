@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Optional
 from uuid import UUID
@@ -34,6 +34,19 @@ PAPER_CONCURRENCY = 3
 def _is_rate_limit_error(exc: Exception) -> bool:
     message = str(exc).lower()
     return "429" in message or "too many requests" in message or "rate limit" in message
+
+
+def _mark_topic_run(
+    topic: TopicSubscription,
+    *,
+    status: str,
+    count: int = 0,
+    error: str | None = None,
+) -> None:
+    topic.last_run_at = datetime.now(UTC)
+    topic.last_run_status = status
+    topic.last_run_count = max(0, int(count or 0))
+    topic.last_run_error = str(error or "")[:2000] if error else None
 
 
 def _resolve_topic_priority_sort(topic: TopicSubscription) -> str:
@@ -311,6 +324,7 @@ def run_topic_ingest(
                     break
 
         if last_error is not None:
+            _mark_topic_run(topic, status="failed", count=0, error=last_error)
             report("抓取失败", 100)
             return {
                 "topic_id": topic_id,
@@ -322,6 +336,7 @@ def run_topic_ingest(
             }
 
         if new_count == 0:
+            _mark_topic_run(topic, status="no_new_papers", count=0)
             report("未发现新论文", 100)
             logger.info("topic [%s] no new papers (duplicates=%d)", topic_name, len(ids))
             return {
@@ -435,6 +450,10 @@ def run_topic_ingest(
                 )
 
     report("主题抓取完成", 100)
+    with session_scope() as session:
+        topic = session.get(TopicSubscription, topic_id)
+        if topic:
+            _mark_topic_run(topic, status="ok", count=len(ids))
     return {
         "topic_id": topic_id,
         "topic_name": topic_name,

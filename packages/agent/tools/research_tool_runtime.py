@@ -731,6 +731,10 @@ def _list_topics() -> ToolResult:
                 "sort_by": topic.sort_by,
                 "schedule_frequency": topic.schedule_frequency,
                 "schedule_time_utc": topic.schedule_time_utc,
+                "last_run_at": topic.last_run_at.isoformat() if topic.last_run_at else None,
+                "last_run_status": topic.last_run_status,
+                "last_run_count": topic.last_run_count,
+                "last_run_error": topic.last_run_error,
                 "date_filter_start": topic.date_filter_start.isoformat() if topic.date_filter_start else None,
                 "date_filter_end": topic.date_filter_end.isoformat() if topic.date_filter_end else None,
             }

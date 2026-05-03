@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import types
+from datetime import datetime, timezone
 
 import pytest
 
@@ -96,3 +97,35 @@ def test_cron_display_uses_configured_user_timezone() -> None:
     assert worker_main._cron_display("30 4 * * *", user_timezone="Asia/Shanghai") == (
         "UTC 04:30，Asia/Shanghai 12:30"
     )
+
+
+def test_topic_due_for_dispatch_catches_missed_daily_slot() -> None:
+    due_at = worker_main._topic_due_for_dispatch(
+        freq="daily",
+        time_utc=1,
+        now=datetime(2026, 5, 3, 15, 30, tzinfo=timezone.utc),
+        last_run_at=datetime(2026, 4, 28, 1, 0, tzinfo=timezone.utc),
+    )
+
+    assert due_at == datetime(2026, 5, 3, 1, 0, tzinfo=timezone.utc)
+
+
+def test_topic_due_for_dispatch_skips_when_latest_slot_already_recorded() -> None:
+    due_at = worker_main._topic_due_for_dispatch(
+        freq="daily",
+        time_utc=1,
+        now=datetime(2026, 5, 3, 15, 30, tzinfo=timezone.utc),
+        last_run_at=datetime(2026, 5, 3, 1, 5, tzinfo=timezone.utc),
+    )
+
+    assert due_at is None
+
+
+def test_latest_due_slot_handles_twice_daily_schedule() -> None:
+    due_at = worker_main._latest_due_slot(
+        "twice_daily",
+        21,
+        datetime(2026, 5, 3, 13, 30, tzinfo=timezone.utc),
+    )
+
+    assert due_at == datetime(2026, 5, 3, 9, 0, tzinfo=timezone.utc)

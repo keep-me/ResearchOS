@@ -74,7 +74,9 @@ export interface Topic {
   date_filter_end?: string | null;
   paper_count?: number;
   last_run_at?: string | null;
+  last_run_status?: "ok" | "no_new_papers" | "failed" | string | null;
   last_run_count?: number | null;
+  last_run_error?: string | null;
 }
 
 export interface TopicCreate {

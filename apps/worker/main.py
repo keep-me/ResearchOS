@@ -9,7 +9,7 @@ import logging
 import os
 import signal
 import time
-from datetime import datetime, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from threading import Event, current_thread, main_thread
 from typing import TextIO
@@ -144,6 +144,64 @@ def _should_run(freq: str, time_utc: int, hour: int, weekday: int) -> bool:
     return False
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _latest_due_slot(freq: str, time_utc: int, now: datetime) -> datetime | None:
+    """Return the latest scheduled slot that is due at or before now."""
+    normalized_freq = str(freq or "daily").strip().lower()
+    normalized_hour = max(0, min(23, int(time_utc)))
+    now_utc = _as_utc(now) or datetime.now(timezone.utc)
+    lookback_days = 14 if normalized_freq == "weekly" else 7
+    candidates: list[datetime] = []
+
+    for day_offset in range(lookback_days + 1):
+        current_day = (now_utc - timedelta(days=day_offset)).date()
+        weekday = current_day.weekday()
+        hours = [normalized_hour]
+        allowed = True
+
+        if normalized_freq == "twice_daily":
+            hours = sorted({normalized_hour, (normalized_hour + 12) % 24})
+        elif normalized_freq == "weekdays":
+            allowed = weekday < 5
+        elif normalized_freq == "weekly":
+            allowed = weekday == 0
+        elif normalized_freq != "daily":
+            allowed = False
+
+        if not allowed:
+            continue
+
+        for hour in hours:
+            slot = datetime.combine(current_day, datetime_time(hour), tzinfo=timezone.utc)
+            if slot <= now_utc:
+                candidates.append(slot)
+
+    return max(candidates) if candidates else None
+
+
+def _topic_due_for_dispatch(
+    *,
+    freq: str,
+    time_utc: int,
+    now: datetime,
+    last_run_at: datetime | None,
+) -> datetime | None:
+    due_at = _latest_due_slot(freq, time_utc, now)
+    if due_at is None:
+        return None
+    last_run_utc = _as_utc(last_run_at)
+    if last_run_utc is not None and last_run_utc >= due_at:
+        return None
+    return due_at
+
+
 def _cron_display(expr: str, *, user_timezone: str) -> str:
     parts = str(expr or "").split()
     if len(parts) != 5:
@@ -175,8 +233,14 @@ def topic_dispatch_job() -> None:
         for t in topics:
             freq = getattr(t, "schedule_frequency", "daily")
             time_utc = getattr(t, "schedule_time_utc", 21)
-            if _should_run(freq, time_utc, hour, weekday):
-                candidates.append({"id": t.id, "name": t.name})
+            due_at = _topic_due_for_dispatch(
+                freq=freq,
+                time_utc=time_utc,
+                now=now,
+                last_run_at=getattr(t, "last_run_at", None),
+            )
+            if due_at is not None:
+                candidates.append({"id": t.id, "name": t.name, "due_at": due_at})
 
     if not candidates:
         logger.info(
@@ -184,12 +248,13 @@ def topic_dispatch_job() -> None:
             hour,
             weekday,
         )
+        _write_heartbeat()
         return
 
     logger.info(
         "topic_dispatch: triggering %d topic(s): %s",
         len(candidates),
-        ", ".join(c["name"] for c in candidates),
+        ", ".join(f"{c['name']}@{c['due_at']:%Y-%m-%d %H:%MZ}" for c in candidates),
     )
     for c in candidates:
         try:

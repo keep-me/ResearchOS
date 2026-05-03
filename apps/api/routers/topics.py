@@ -168,7 +168,9 @@ def _topic_dict(t, session=None) -> dict:
         "date_filter_end": date_filter_end.isoformat() if date_filter_end else None,
         "paper_count": 0,
         "last_run_at": None,
+        "last_run_status": getattr(t, "last_run_status", None),
         "last_run_count": None,
+        "last_run_error": getattr(t, "last_run_error", None),
     }
     if session is not None:
         from sqlalchemy import func, select
@@ -179,18 +181,23 @@ def _topic_dict(t, session=None) -> dict:
             select(func.count()).select_from(PaperTopic).where(PaperTopic.topic_id == t.id)
         )
         d["paper_count"] = cnt or 0
-        # 鏈€杩戜竴娆¤鍔?
-        last_action = session.execute(
-            select(CollectionAction)
-            .where(CollectionAction.topic_id == t.id)
-            .order_by(CollectionAction.created_at.desc())
-            .limit(1)
-        ).scalar_one_or_none()
-        if last_action:
-            d["last_run_at"] = (
-                last_action.created_at.isoformat() if last_action.created_at else None
-            )
-            d["last_run_count"] = last_action.paper_count
+        last_run_at = getattr(t, "last_run_at", None)
+        if last_run_at:
+            d["last_run_at"] = last_run_at.isoformat()
+            d["last_run_count"] = getattr(t, "last_run_count", None)
+        else:
+            last_action = session.execute(
+                select(CollectionAction)
+                .where(CollectionAction.topic_id == t.id)
+                .order_by(CollectionAction.created_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if last_action:
+                d["last_run_at"] = (
+                    last_action.created_at.isoformat() if last_action.created_at else None
+                )
+                d["last_run_status"] = "ok"
+                d["last_run_count"] = last_action.paper_count
     return d
 
 
