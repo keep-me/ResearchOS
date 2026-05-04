@@ -21,7 +21,6 @@ from packages.ai.paper.content_source import (
     paper_content_source_label,
     resolve_effective_paper_content_source,
 )
-from packages.ai.research.cost_guard import CostGuardService
 from packages.ai.paper.paper_evidence import (
     load_prepared_paper_evidence,
     normalize_paper_evidence_mode,
@@ -32,13 +31,14 @@ from packages.ai.paper.prompts import (
     build_deep_prompt,
     build_skim_prompt,
 )
+from packages.ai.paper.reference_importer import ReferenceImporter
 from packages.ai.paper.vision_reader import VisionPdfReader
+from packages.ai.research.cost_guard import CostGuardService
 from packages.config import get_settings
 from packages.domain.enums import ActionType, ReadStatus
 from packages.domain.schemas import DeepDiveReport, PaperCreate, SkimReport
 from packages.integrations.arxiv_client import ArxivClient
 from packages.integrations.llm_client import LLMClient
-from packages.ai.paper.reference_importer import ReferenceImporter
 from packages.storage.db import session_scope
 from packages.storage.repositories import (
     ActionRepository,
@@ -118,7 +118,7 @@ class PaperPipelines:
             "http://arxiv.org/pdf/",
         ):
             if value.startswith(prefix):
-                value = value[len(prefix):]
+                value = value[len(prefix) :]
                 break
         if value.endswith(".pdf"):
             value = value[:-4]
@@ -157,7 +157,6 @@ class PaperPipelines:
         days_back: int | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
-
     ) -> tuple[int, list[str], int]:
         """鎼滅储 arXiv 骞跺叆搴擄紝upsert 鍘婚噸銆傝繑鍥?(total_count, inserted_ids, new_papers_count)
 
@@ -278,7 +277,6 @@ class PaperPipelines:
                 run_repo.fail(run.id, str(exc))
                 raise
 
-
         # Start auto-link after transaction commit to avoid concurrent write conflicts.
         if auto_link_ids:
             threading.Thread(
@@ -339,9 +337,13 @@ class PaperPipelines:
                     (paper.arxiv_id.split("v")[0] if "v" in paper.arxiv_id else paper.arxiv_id)
                     for paper in papers
                 }
-                missing_ids = [paper_id for paper_id in normalized_ids if paper_id not in found_base_ids]
+                missing_ids = [
+                    paper_id for paper_id in normalized_ids if paper_id not in found_base_ids
+                ]
 
-                existing_arxiv_ids = repo.list_existing_arxiv_ids([paper.arxiv_id for paper in papers])
+                existing_arxiv_ids = repo.list_existing_arxiv_ids(
+                    [paper.arxiv_id for paper in papers]
+                )
                 for paper in papers:
                     if paper.arxiv_id in existing_arxiv_ids:
                         duplicates += 1
@@ -478,7 +480,9 @@ class PaperPipelines:
         title = str(entry.get("title") or "Unknown").strip() or "Unknown"
         resolved_arxiv_id = PaperPipelines._resolve_external_entry_arxiv_id(entry)
         authors = [str(item).strip() for item in (entry.get("authors") or []) if str(item).strip()]
-        categories = [str(item).strip() for item in (entry.get("categories") or []) if str(item).strip()]
+        categories = [
+            str(item).strip() for item in (entry.get("categories") or []) if str(item).strip()
+        ]
         metadata = {
             "source": "external_collect",
             "import_source": str(entry.get("source") or "openalex").strip() or "openalex",
@@ -508,17 +512,28 @@ class PaperPipelines:
     def _merge_external_entry_metadata(base_metadata: dict, entry: dict) -> dict:
         merged = dict(base_metadata or {})
         authors = [str(item).strip() for item in (entry.get("authors") or []) if str(item).strip()]
-        categories = [str(item).strip() for item in (entry.get("categories") or []) if str(item).strip()]
+        categories = [
+            str(item).strip() for item in (entry.get("categories") or []) if str(item).strip()
+        ]
         overlays = {
             "source": "external_collect",
-            "import_source": str(entry.get("source") or merged.get("import_source") or "openalex").strip() or "openalex",
-            "openalex_id": str(entry.get("openalex_id") or merged.get("openalex_id") or "").strip() or None,
-            "source_url": str(entry.get("source_url") or merged.get("source_url") or "").strip() or None,
+            "import_source": str(
+                entry.get("source") or merged.get("import_source") or "openalex"
+            ).strip()
+            or "openalex",
+            "openalex_id": str(entry.get("openalex_id") or merged.get("openalex_id") or "").strip()
+            or None,
+            "source_url": str(entry.get("source_url") or merged.get("source_url") or "").strip()
+            or None,
             "pdf_url": str(entry.get("pdf_url") or merged.get("pdf_url") or "").strip() or None,
             "venue": str(entry.get("venue") or merged.get("venue") or "").strip() or None,
-            "venue_type": str(entry.get("venue_type") or merged.get("venue_type") or "").strip() or None,
-            "venue_tier": str(entry.get("venue_tier") or merged.get("venue_tier") or "").strip() or None,
-            "citation_count": entry.get("citation_count") if entry.get("citation_count") is not None else merged.get("citation_count"),
+            "venue_type": str(entry.get("venue_type") or merged.get("venue_type") or "").strip()
+            or None,
+            "venue_tier": str(entry.get("venue_tier") or merged.get("venue_tier") or "").strip()
+            or None,
+            "citation_count": entry.get("citation_count")
+            if entry.get("citation_count") is not None
+            else merged.get("citation_count"),
         }
         if authors:
             overlays["authors"] = authors
@@ -537,7 +552,9 @@ class PaperPipelines:
         action_type: ActionType = ActionType.manual_collect,
         query: str | None = None,
     ) -> dict:
-        normalized_entries = [dict(entry) for entry in entries if str((entry or {}).get("title") or "").strip()]
+        normalized_entries = [
+            dict(entry) for entry in entries if str((entry or {}).get("title") or "").strip()
+        ]
         if not normalized_entries:
             return {
                 "requested": 0,
@@ -549,7 +566,9 @@ class PaperPipelines:
             }
 
         requested = len(normalized_entries)
-        candidate_ids = [self._resolve_external_entry_arxiv_id(entry) for entry in normalized_entries]
+        candidate_ids = [
+            self._resolve_external_entry_arxiv_id(entry) for entry in normalized_entries
+        ]
         normalized_real_arxiv_ids = [
             normalized_id
             for normalized_id in (
@@ -562,7 +581,9 @@ class PaperPipelines:
         arxiv_papers_map: dict[str, PaperCreate] = {}
         if normalized_real_arxiv_ids:
             try:
-                arxiv_papers = self.arxiv.fetch_by_ids(list(dict.fromkeys(normalized_real_arxiv_ids)))
+                arxiv_papers = self.arxiv.fetch_by_ids(
+                    list(dict.fromkeys(normalized_real_arxiv_ids))
+                )
             except Exception as exc:
                 logger.warning("External ingest arXiv metadata fetch failed: %s", exc)
                 arxiv_papers = []
@@ -597,12 +618,17 @@ class PaperPipelines:
                         continue
 
                     paper_data: PaperCreate
-                    normalized_real_arxiv_id = ReferenceImporter._normalize_arxiv_id(entry.get("arxiv_id"))
+                    normalized_real_arxiv_id = ReferenceImporter._normalize_arxiv_id(
+                        entry.get("arxiv_id")
+                    )
                     if ReferenceImporter._is_real_arxiv_id(normalized_real_arxiv_id):
                         arxiv_paper = arxiv_papers_map.get(str(normalized_real_arxiv_id))
                         if arxiv_paper is not None:
                             paper_data = arxiv_paper
-                            if str(entry.get("abstract") or "").strip() and not str(paper_data.abstract or "").strip():
+                            if (
+                                str(entry.get("abstract") or "").strip()
+                                and not str(paper_data.abstract or "").strip()
+                            ):
                                 paper_data.abstract = str(entry.get("abstract") or "").strip()
                             if paper_data.publication_date is None:
                                 paper_data.publication_date = self._parse_external_publication_date(
@@ -768,7 +794,9 @@ class PaperPipelines:
 
             if not pdf_path or not Path(pdf_path).exists():
                 if not paper_arxiv_id:
-                    raise ValueError("Paper PDF is missing and no arXiv id is available for download")
+                    raise ValueError(
+                        "Paper PDF is missing and no arXiv id is available for download"
+                    )
                 self._report_progress(progress_callback, "正在下载 PDF...", 20)
                 pdf_path = self.arxiv.download_pdf(paper_arxiv_id)
                 with session_scope() as session:
@@ -905,7 +933,9 @@ class PaperPipelines:
                 )
 
             if normalized_evidence_mode == "full" and not evidence.uses_linear_pdf_evidence():
-                self._report_progress(progress_callback, "正在并发进行方法 / 实验 / 风险聚焦分析...", 54)
+                self._report_progress(
+                    progress_callback, "正在并发进行方法 / 实验 / 风险聚焦分析...", 54
+                )
                 focus_specs = {
                     "method": {
                         "paper_title": paper_title,
@@ -944,7 +974,9 @@ class PaperPipelines:
                         try:
                             focus_results[focus_name] = str(future.result() or "").strip()
                         except Exception:
-                            fallback_source = str(focus_specs[focus_name]["evidence_text"] or "").strip()
+                            fallback_source = str(
+                                focus_specs[focus_name]["evidence_text"] or ""
+                            ).strip()
                             focus_results[focus_name] = fallback_source[:2200]
                         completed_focuses += 1
                         progress = min(74, 54 + completed_focuses * 6)
@@ -1097,8 +1129,7 @@ class PaperPipelines:
                         "source": "provider",
                         "provider": existing_embedding_status.get("provider")
                         or embedding_result.provider,
-                        "model": existing_embedding_status.get("model")
-                        or embedding_result.model,
+                        "model": existing_embedding_status.get("model") or embedding_result.model,
                         "base_url": existing_embedding_status.get("base_url")
                         or embedding_result.base_url,
                         "fallback_reason": None,
@@ -1164,14 +1195,16 @@ class PaperPipelines:
             if not isinstance(innovations, list):
                 innovations = [str(innovations)]
             innovations = [
-                str(x).strip() for x in innovations
+                str(x).strip()
+                for x in innovations
                 if str(x).strip() and not self._is_placeholder_value(str(x))
             ]
             keywords = parsed_json.get("keywords") or []
             if not isinstance(keywords, list):
                 keywords = [str(keywords)]
             keywords = [
-                str(k).strip() for k in keywords
+                str(k).strip()
+                for k in keywords
                 if str(k).strip() and not self._is_placeholder_value(str(k))
             ]
             title_zh = str(parsed_json.get("title_zh", "")).strip()
@@ -1230,7 +1263,8 @@ class PaperPipelines:
             if not isinstance(risks, list):
                 risks = [str(risks)]
             risks = [
-                str(x).strip() for x in risks
+                str(x).strip()
+                for x in risks
                 if str(x).strip() and not PaperPipelines._is_placeholder_value(str(x))
             ]
             method_summary = str(parsed_json.get("method_summary", "")).strip()
@@ -1244,7 +1278,9 @@ class PaperPipelines:
                 ablation_summary = ""
             return DeepDiveReport(
                 method_summary=(method_summary[:2400] or llm_text[:240]),
-                experiments_summary=(experiments_summary[:2400] or "Experiments section not extracted."),
+                experiments_summary=(
+                    experiments_summary[:2400] or "Experiments section not extracted."
+                ),
                 ablation_summary=(ablation_summary[:2400] or "Ablation section not extracted."),
                 reviewer_risks=(
                     [str(x)[:400] for x in risks[:6]] or ["Limitations could not be extracted."]
@@ -1319,13 +1355,20 @@ class PaperPipelines:
 
     def _ensure_valid_skim_report(self, skim: SkimReport) -> None:
         one_liner = str(skim.one_liner or "").strip()
-        innovations = [str(item or "").strip() for item in (skim.innovations or []) if str(item or "").strip()]
-        if not one_liner or self._is_placeholder_value(one_liner) or self._is_error_like_text(one_liner):
+        innovations = [
+            str(item or "").strip() for item in (skim.innovations or []) if str(item or "").strip()
+        ]
+        if (
+            not one_liner
+            or self._is_placeholder_value(one_liner)
+            or self._is_error_like_text(one_liner)
+        ):
             raise RuntimeError("粗读失败：模型未产出有效的一句话总结")
         if not innovations:
             raise RuntimeError("粗读失败：模型未产出有效创新点")
         meaningful_innovations = [
-            item for item in innovations
+            item
+            for item in innovations
             if not self._is_placeholder_value(item) and not self._is_error_like_text(item)
         ]
         if not meaningful_innovations:
@@ -1335,7 +1378,11 @@ class PaperPipelines:
         method_summary = str(deep.method_summary or "").strip()
         experiments_summary = str(deep.experiments_summary or "").strip()
         ablation_summary = str(deep.ablation_summary or "").strip()
-        risks = [str(item or "").strip() for item in (deep.reviewer_risks or []) if str(item or "").strip()]
+        risks = [
+            str(item or "").strip()
+            for item in (deep.reviewer_risks or [])
+            if str(item or "").strip()
+        ]
         if not method_summary or method_summary.lower() == "method extraction:":
             raise RuntimeError("精读失败：方法总结为空")
         if self._is_error_like_text(method_summary):

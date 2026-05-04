@@ -1,4 +1,4 @@
-﻿"""定时任务与动作记录路由。"""
+"""定时任务与动作记录路由。"""
 
 import logging
 import uuid as _uuid
@@ -6,8 +6,8 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
-from packages.ai.project.aris_smoke_service import build_aris_smoke_report_path, run_aris_smoke
 from packages.ai.ops.daily_runner import run_daily_brief, run_daily_ingest
+from packages.ai.project.aris_smoke_service import build_aris_smoke_report_path, run_aris_smoke
 from packages.domain.enums import ActionType, ReadStatus
 from packages.domain.task_tracker import global_tracker
 from packages.storage.db import session_scope
@@ -137,14 +137,22 @@ def _submit_aris_like_job(
             run_aris_smoke(
                 mode=mode,
                 progress_callback=progress_callback,
-                log_callback=lambda message: global_tracker.append_log(task_id, message, level="info"),
+                log_callback=lambda message: global_tracker.append_log(
+                    task_id, message, level="info"
+                ),
                 report_path=report_path,
             )
         finally:
             if report_path.exists():
                 global_tracker.set_metadata(
                     task_id,
-                    artifact_refs=[{"path": str(report_path), "relative_path": report_path.name, "kind": "json"}],
+                    artifact_refs=[
+                        {
+                            "path": str(report_path),
+                            "relative_path": report_path.name,
+                            "kind": "json",
+                        }
+                    ],
                     metadata={
                         "mode": mode,
                         "report_path": str(report_path),
@@ -166,7 +174,11 @@ def _submit_aris_like_job(
                             },
                         )
                 except Exception:
-                    logger.debug("failed to load workflow regression report for task %s", task_id, exc_info=True)
+                    logger.debug(
+                        "failed to load workflow regression report for task %s",
+                        task_id,
+                        exc_info=True,
+                    )
         return global_tracker.get_result(task_id) or {}
 
     submitted_task_id = global_tracker.submit(
@@ -274,10 +286,14 @@ def batch_process_unread(
         processed = 0
         failed = 0
         try:
-            global_tracker.start(task_id, "batch_process", f"批量处理未读论文（{total} 篇）", total=total)
+            global_tracker.start(
+                task_id, "batch_process", f"批量处理未读论文（{total} 篇）", total=total
+            )
 
             with ThreadPoolExecutor(max_workers=PAPER_CONCURRENCY) as pool:
-                futures = {pool.submit(_process_paper, paper_id): paper_id for paper_id in target_ids}
+                futures = {
+                    pool.submit(_process_paper, paper_id): paper_id for paper_id in target_ids
+                }
                 for future in as_completed(futures):
                     try:
                         future.result()

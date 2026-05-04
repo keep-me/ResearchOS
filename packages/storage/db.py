@@ -21,7 +21,9 @@ class Base(DeclarativeBase):
 
 settings = get_settings()
 _is_sqlite = settings.database_url.startswith("sqlite")
-_is_sqlite_memory = ":memory:" in settings.database_url or settings.database_url.rstrip("/") == "sqlite:"
+_is_sqlite_memory = (
+    ":memory:" in settings.database_url or settings.database_url.rstrip("/") == "sqlite:"
+)
 
 connect_args: dict = {}
 if _is_sqlite:

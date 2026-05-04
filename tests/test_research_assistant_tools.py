@@ -8,17 +8,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from packages.agent import research_tool_runtime, researchos_mcp
+from packages.agent.tools.tool_runtime import AgentToolContext, ToolResult
 from packages.ai.paper import pipelines as pipelines_module
 from packages.ai.research import keyword_service
-from packages.agent import research_tool_runtime
-from packages.agent import researchos_mcp
-from packages.agent.tools.tool_runtime import AgentToolContext
-from packages.agent.tools.tool_runtime import ToolResult
+from packages.domain.schemas import PaperCreate
 from packages.storage import db
 from packages.storage.db import Base, session_scope
 from packages.storage.models import ImageAnalysis
-from packages.storage.repositories import PaperRepository, ProjectRepository, ProjectResearchWikiRepository
-from packages.domain.schemas import PaperCreate
+from packages.storage.repositories import (
+    PaperRepository,
+    ProjectRepository,
+    ProjectResearchWikiRepository,
+)
 
 
 def _configure_test_db(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,8 +118,12 @@ def test_get_paper_detail_and_analysis_expose_saved_research_metadata(
     assert detail.data["figure_count"] == 1
     assert "figures" not in detail.data
     assert detail.data["figure_refs"][0]["caption"] == "Figure 1: Memory pipeline"
-    assert detail.internal_data["display_data"]["figures"][0]["caption"] == "Figure 1: Memory pipeline"
-    assert detail.internal_data["display_data"]["figures"][0]["image_url"].endswith(f"/papers/{paper_id}/figures/fig-1/image")
+    assert (
+        detail.internal_data["display_data"]["figures"][0]["caption"] == "Figure 1: Memory pipeline"
+    )
+    assert detail.internal_data["display_data"]["figures"][0]["image_url"].endswith(
+        f"/papers/{paper_id}/figures/fig-1/image"
+    )
 
     assert analysis.success is True
     assert analysis.data["paper_id"] == paper_id
@@ -289,7 +295,9 @@ def test_research_wiki_tools_seed_query_and_update_by_workspace_context(
         assert any(node.node_key == "gap:memory-routing-eval" for node in nodes)
 
 
-def test_ingest_external_literature_tool_imports_openalex_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ingest_external_literature_tool_imports_openalex_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
     monkeypatch.setattr(pipelines_module, "_bg_auto_link", lambda paper_ids: None)
     monkeypatch.setattr(pipelines_module, "LLMClient", lambda: object())
@@ -321,7 +329,9 @@ def test_ingest_external_literature_tool_imports_openalex_entries(monkeypatch: p
     assert result.data["ingested"] == 1
 
 
-def test_preview_external_paper_tools_return_head_and_section(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_preview_external_paper_tools_return_head_and_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         research_tool_runtime.ExternalPaperPreviewService,
         "fetch_head",
@@ -371,8 +381,12 @@ def test_keyword_service_filters_zero_hit_suggestions(monkeypatch: pytest.Monkey
             ]
         }
 
-    monkeypatch.setattr(keyword_service.LLMClient, "complete_json", lambda self, *args, **kwargs: _FakeResult())
-    monkeypatch.setattr(keyword_service.LLMClient, "trace_result", lambda self, *args, **kwargs: None)
+    monkeypatch.setattr(
+        keyword_service.LLMClient, "complete_json", lambda self, *args, **kwargs: _FakeResult()
+    )
+    monkeypatch.setattr(
+        keyword_service.LLMClient, "trace_result", lambda self, *args, **kwargs: None
+    )
 
     def _fake_search(query: str, **_kwargs) -> ToolResult:
         hit_count = 3 if query == "good query" else 0
@@ -430,10 +444,16 @@ def test_analyze_paper_rounds_streams_completed_bundle(
 
     monkeypatch.setattr(research_tool_runtime.PaperAnalysisService, "analyze", fake_analyze)
 
-    stream = list(research_tool_runtime._analyze_paper_rounds(paper_id, detail_level="high", reasoning_level="medium"))
+    stream = list(
+        research_tool_runtime._analyze_paper_rounds(
+            paper_id, detail_level="high", reasoning_level="medium"
+        )
+    )
 
     assert any(getattr(item, "message", "") == "round-1" for item in stream)
-    final_result = next(item for item in stream if getattr(item, "summary", "").startswith("论文三轮分析完成"))
+    final_result = next(
+        item for item in stream if getattr(item, "summary", "").startswith("论文三轮分析完成")
+    )
     assert final_result.data["analysis_rounds"]["detail_level"] == "high"
     assert final_result.data["figure_count"] == 1
     assert "figures" not in final_result.data
@@ -506,7 +526,9 @@ def test_analyze_figures_returns_normalized_items_with_image_refs(
     assert final_result.data["count"] == 1
     assert final_result.data["analyzed_count"] == 1
     assert final_result.data["items"][0]["id"] == "fig-1"
-    assert final_result.data["items"][0]["image_url"].endswith(f"/papers/{paper_id}/figures/fig-1/image")
+    assert final_result.data["items"][0]["image_url"].endswith(
+        f"/papers/{paper_id}/figures/fig-1/image"
+    )
     assert final_result.data["figure_refs"][0]["id"] == "fig-1"
 
 

@@ -7,13 +7,20 @@ import json
 import logging
 import re
 import sys
-from datetime import UTC, datetime
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from packages.agent import (
+    session_bus,
+    session_pending,
+    session_question,
+    session_retry,
+    session_snapshot,
+)
 from packages.agent.runtime.acp_service import get_acp_registry_service
 from packages.agent.runtime.agent_backends import (
     CLAW_AGENT_BACKEND_ID,
@@ -22,38 +29,74 @@ from packages.agent.runtime.agent_backends import (
     is_native_agent_backend,
     normalize_agent_backend_id,
 )
+from packages.agent.runtime.agent_runtime_manager import get_agent_runtime_manager
 from packages.agent.runtime.agent_runtime_policy import (
     STEP_LIMIT_SUMMARY_PROMPT,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     build_reasoning_profile_prompt as _shared_build_reasoning_profile_prompt,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     build_step_limit_reached_notice as _shared_build_step_limit_reached_notice,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     get_max_tool_steps as _shared_get_max_tool_steps,
-    is_tool_progress_placeholder_text as _shared_is_tool_progress_placeholder_text,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     is_auto_compaction_enabled as _shared_is_auto_compaction_enabled,
+)
+from packages.agent.runtime.agent_runtime_policy import (
+    is_tool_progress_placeholder_text as _shared_is_tool_progress_placeholder_text,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     should_inject_max_steps_prompt as _shared_should_inject_max_steps_prompt,
+)
+from packages.agent.runtime.agent_runtime_state import (  # noqa: F401 - compatibility surface for tests and callers that monkeypatch agent_service.
+    ensure_session,
+    get_todos,
+    normalize_mode,
 )
 from packages.agent.runtime.agent_transcript import (
     build_cli_chat_prompt_text as _build_shared_cli_chat_prompt_text,
+)
+from packages.agent.runtime.agent_transcript import (
     build_cli_transcript as _build_shared_cli_transcript,
+)
+from packages.agent.runtime.agent_transcript import (
     format_orphan_tool_message_context as _shared_format_orphan_tool_message_context,
+)
+from packages.agent.runtime.agent_transcript import (
     format_tool_result_turn_summary as _shared_format_tool_result_turn_summary,
+)
+from packages.agent.runtime.agent_transcript import (
     json_loads_maybe as _shared_json_loads_maybe,
+)
+from packages.agent.runtime.agent_transcript import (
     resolve_tool_result_followup_text as _shared_resolve_tool_result_followup_text,
+)
+from packages.agent.runtime.agent_transcript import (
     serialize_tool_context_data as _shared_serialize_tool_context_data,
+)
+from packages.agent.runtime.agent_transcript import (
     summarize_tool_text as _shared_summarize_tool_text,
 )
 from packages.agent.runtime.cli_agent_service import get_cli_agent_service
-from packages.agent.runtime.agent_runtime_manager import get_agent_runtime_manager
 from packages.agent.runtime.permission_next import (
     authorize_tool_call,
-    create_request as create_permission_request,
-    disabled as disabled_tools_from_rules,
     effective_ruleset,
+)
+from packages.agent.runtime.permission_next import (
+    create_request as create_permission_request,
+)
+from packages.agent.runtime.permission_next import (
+    disabled as disabled_tools_from_rules,
+)
+from packages.agent.runtime.permission_next import (
     manages_tool as permission_manages_tool,
+)
+from packages.agent.runtime.permission_next import (
     reply as reply_permission,
 )
-from packages.agent import session_retry
-from packages.agent import session_snapshot
-from packages.agent import session_bus
 from packages.agent.session import sse_events
 from packages.agent.session.session_bus import SessionBusEvent
 from packages.agent.session.session_compaction import (
@@ -62,6 +105,20 @@ from packages.agent.session.session_compaction import (
     latest_auto_compaction_target,
     summarize_session,
 )
+from packages.agent.session.session_lifecycle import (
+    acquire_prompt_instance,
+    claim_prompt_callback,
+    clear_session_abort,
+    drain_prompt_callbacks,
+    finish_prompt_instance,
+    get_prompt_instance,
+    is_session_aborted,
+    mark_prompt_instance_running,
+    pause_prompt_instance,
+    queue_prompt_callback,
+    reject_prompt_callbacks,
+)
+from packages.agent.session.session_plan import build_plan_mode_reminder
 from packages.agent.session.session_processor import (
     ModelTurnResult,  # noqa: F401 - compatibility surface for tests and callers that monkeypatch agent_service.
     ModelTurnRuntimeCallbacks,
@@ -81,16 +138,36 @@ from packages.agent.session.session_processor import (
     ToolExecutionCallbacks,
     ToolExecutionConfig,
     ToolPendingActionConfig,
+)
+from packages.agent.session.session_processor import (
     iter_callback_stream as _processor_iter_callback_stream,
+)
+from packages.agent.session.session_processor import (
     prompt_event as _processor_prompt_event,
+)
+from packages.agent.session.session_processor import (
     prompt_terminal_error as _processor_prompt_terminal_error,
+)
+from packages.agent.session.session_processor import (
     serialize_prompt_event_stream as _processor_serialize_prompt_event_stream,
+)
+from packages.agent.session.session_processor import (
     stream_model_turn_events as _processor_stream_model_turn_events,
+)
+from packages.agent.session.session_processor import (
     stream_permission_response_runtime as _processor_stream_permission_response_runtime,
-    stream_prompt_loop as _processor_stream_prompt_loop,
-    stream_tool_call_processing as _processor_stream_tool_call_processing,
-    stream_tool_execution_events as _processor_stream_tool_execution_events,
+)
+from packages.agent.session.session_processor import (
     stream_prompt_lifecycle as _processor_stream_prompt_lifecycle,
+)
+from packages.agent.session.session_processor import (
+    stream_prompt_loop as _processor_stream_prompt_loop,
+)
+from packages.agent.session.session_processor import (
+    stream_tool_call_processing as _processor_stream_tool_call_processing,
+)
+from packages.agent.session.session_processor import (
+    stream_tool_execution_events as _processor_stream_tool_execution_events,
 )
 from packages.agent.session.session_runtime import (
     get_latest_user_message_id,
@@ -101,40 +178,30 @@ from packages.agent.session.session_runtime import (
     load_agent_messages,
     set_session_status,
 )
-from packages.agent import session_pending
-from packages.agent.session.session_lifecycle import (
-    acquire_prompt_instance,
-    claim_prompt_callback,
-    clear_session_abort,
-    drain_prompt_callbacks,
-    finish_prompt_instance,
-    get_prompt_instance,
-    is_session_aborted,
-    pause_prompt_instance,
-    queue_prompt_callback,
-    reject_prompt_callbacks,
-    mark_prompt_instance_running,
+from packages.agent.tools.mounted_paper_context import (
+    build_mounted_papers_prompt,
+    resolve_research_skill_ids,
 )
-from packages.agent.runtime.agent_runtime_state import ensure_session, get_todos, normalize_mode  # noqa: F401 - compatibility surface for tests and callers that monkeypatch agent_service.
-from packages.agent.session.session_plan import build_plan_mode_reminder
-from packages.agent import session_question
+from packages.agent.tools.skill_registry import (  # noqa: F401 - compatibility surface for tests and callers that monkeypatch agent_service.
+    get_local_skill_detail,
+    list_local_skills,
+)
+from packages.agent.tools.tool_registry import (
+    build_turn_tools,
+    get_tool_definition,
+    tool_registry_names,
+)
 from packages.agent.tools.tool_runtime import (
     AgentToolContext,
     ToolProgress,
     ToolResult,
     execute_tool_stream,
 )
-from packages.agent.tools.tool_registry import build_turn_tools, get_tool_definition, tool_registry_names
 from packages.agent.workspace.workspace_executor import (
     get_assistant_exec_policy,
-    local_shell_command_to_string,
     list_workspace_roots,  # noqa: F401 - compatibility surface for tests and callers that monkeypatch agent_service.
+    local_shell_command_to_string,
     should_confirm_workspace_action,
-)
-from packages.agent.tools.skill_registry import get_local_skill_detail, list_local_skills  # noqa: F401 - compatibility surface for tests and callers that monkeypatch agent_service.
-from packages.agent.tools.mounted_paper_context import (
-    build_mounted_papers_prompt,
-    resolve_research_skill_ids,
 )
 from packages.config import get_settings
 from packages.integrations.llm_client import LLMClient
@@ -144,6 +211,8 @@ logger = logging.getLogger(__name__)
 
 def get_claw_runtime_manager():  # noqa: ANN201
     return get_agent_runtime_manager()
+
+
 _DEFAULT_GET_ASSISTANT_EXEC_POLICY = get_assistant_exec_policy
 _REFERENCE_PROMPT_DIR = (
     Path(__file__).resolve().parents[2]
@@ -167,9 +236,7 @@ _REFERENCE_PROMPT_FALLBACKS: dict[str, str] = {
     "gemini.txt": (
         "You are OpenCode, a coding agent optimized for large-context analysis and implementation."
     ),
-    "anthropic.txt": (
-        "You are OpenCode, a coding agent focused on reliable multi-step execution."
-    ),
+    "anthropic.txt": ("You are OpenCode, a coding agent focused on reliable multi-step execution."),
     "trinity.txt": (
         "You are OpenCode, a coding agent that should stay grounded in the local workspace."
     ),
@@ -180,10 +247,7 @@ _REFERENCE_PROMPT_FALLBACKS: dict[str, str] = {
         "The operational mode has changed from plan to build.\n"
         "Stop planning and start executing the requested implementation steps."
     ),
-    "max-steps.txt": (
-        "CRITICAL - MAXIMUM STEPS REACHED\n"
-        "已达到最大步数，停止继续调用工具。"
-    ),
+    "max-steps.txt": ("CRITICAL - MAXIMUM STEPS REACHED\n已达到最大步数，停止继续调用工具。"),
 }
 
 _DEFAULT_AGENT_EXTENSION_TOOLS = {
@@ -193,6 +257,7 @@ _DEFAULT_AGENT_EXTENSION_TOOLS = {
 
 def _now_ms() -> int:
     return int(datetime.now(UTC).timestamp() * 1000)
+
 
 MAX_AUTO_COMPACTION_ATTEMPTS = 4
 
@@ -241,18 +306,12 @@ class AgentRuntimeOptions:
             "reasoning_level": str(self.reasoning_level or "default").strip().lower() or "default",
             "model_override": str(self.model_override or "").strip() or None,
             "active_skill_ids": [
-                str(item).strip()
-                for item in (self.active_skill_ids or [])
-                if str(item).strip()
+                str(item).strip() for item in (self.active_skill_ids or []) if str(item).strip()
             ],
             "mounted_paper_ids": [
-                str(item).strip()
-                for item in (self.mounted_paper_ids or [])
-                if str(item).strip()
+                str(item).strip() for item in (self.mounted_paper_ids or []) if str(item).strip()
             ],
-            "mounted_primary_paper_id": (
-                str(self.mounted_primary_paper_id or "").strip() or None
-            ),
+            "mounted_primary_paper_id": (str(self.mounted_primary_paper_id or "").strip() or None),
         }
 
     @classmethod
@@ -267,7 +326,8 @@ class AgentRuntimeOptions:
             mode=normalize_mode(str(payload.get("mode") or "build")),
             workspace_path=str(payload.get("workspace_path") or "").strip() or None,
             workspace_server_id=str(payload.get("workspace_server_id") or "").strip() or None,
-            reasoning_level=str(payload.get("reasoning_level") or "default").strip().lower() or "default",
+            reasoning_level=str(payload.get("reasoning_level") or "default").strip().lower()
+            or "default",
             model_override=str(payload.get("model_override") or "").strip() or None,
             active_skill_ids=[
                 str(item).strip()
@@ -328,13 +388,17 @@ class StreamPersistenceConfig:
         return cls(
             session_id=session_id,
             parent_id=str(payload.get("parent_id") or "").strip() or None,
-            assistant_meta=copy.deepcopy(assistant_meta) if isinstance(assistant_meta, dict) else None,
+            assistant_meta=copy.deepcopy(assistant_meta)
+            if isinstance(assistant_meta, dict)
+            else None,
             assistant_message_id=str(payload.get("assistant_message_id") or "").strip() or None,
         )
 
 
 class PersistedSSEStream:
-    def __init__(self, iterator: Iterator[str], *, prompt_control: PromptStreamControl | None = None) -> None:
+    def __init__(
+        self, iterator: Iterator[str], *, prompt_control: PromptStreamControl | None = None
+    ) -> None:
         self._iterator = iter(iterator)
         self._researchos_persisted = True
         if prompt_control is not None:
@@ -350,6 +414,7 @@ class PersistedSSEStream:
         close_method = getattr(self._iterator, "close", None)
         if callable(close_method):
             close_method()
+
 
 _prompt_event = _processor_prompt_event
 _serialize_prompt_event_stream = _processor_serialize_prompt_event_stream
@@ -375,6 +440,7 @@ def _pending_action_from_state(payload: dict[str, Any]) -> PendingAction | None:
         options_cls=AgentRuntimeOptions,
     )
 
+
 def _mark_persisted_stream_if_needed(
     raw_stream: Iterator[str],
     persistence: StreamPersistenceConfig | None,
@@ -386,6 +452,7 @@ def _mark_persisted_stream_if_needed(
         prompt_control=getattr(raw_stream, "_researchos_prompt_control", None),
     )
 
+
 def _persist_inline_stream_if_needed(
     raw_stream: Iterator[str],
     persistence: StreamPersistenceConfig | None,
@@ -395,7 +462,11 @@ def _persist_inline_stream_if_needed(
     if persistence is None:
         return raw_stream
     upstream_control = getattr(raw_stream, "_researchos_prompt_control", None)
-    prompt_control = upstream_control if isinstance(upstream_control, PromptStreamControl) else PromptStreamControl()
+    prompt_control = (
+        upstream_control
+        if isinstance(upstream_control, PromptStreamControl)
+        else PromptStreamControl()
+    )
     if str(persistence.assistant_message_id or "").strip():
         prompt_control.assistant_message_id = str(persistence.assistant_message_id or "").strip()
     session_processor = SessionProcessor(
@@ -406,7 +477,9 @@ def _persist_inline_stream_if_needed(
         else None,
         assistant_message_id=persistence.assistant_message_id,
     )
-    processor_manages_lifecycle = manage_lifecycle and not isinstance(upstream_control, PromptStreamControl)
+    processor_manages_lifecycle = manage_lifecycle and not isinstance(
+        upstream_control, PromptStreamControl
+    )
     return PersistedSSEStream(
         session_processor.stream(
             raw_stream,
@@ -482,18 +555,12 @@ def _session_options(
         reasoning_level=str(reasoning_level or "default").strip().lower() or "default",
         model_override=str(model_override or "").strip() or None,
         active_skill_ids=[
-            str(item).strip()
-            for item in (active_skill_ids or [])
-            if str(item).strip()
+            str(item).strip() for item in (active_skill_ids or []) if str(item).strip()
         ],
         mounted_paper_ids=[
-            str(item).strip()
-            for item in (mounted_paper_ids or [])
-            if str(item).strip()
+            str(item).strip() for item in (mounted_paper_ids or []) if str(item).strip()
         ],
-        mounted_primary_paper_id=(
-            str(mounted_primary_paper_id or "").strip() or None
-        ),
+        mounted_primary_paper_id=(str(mounted_primary_paper_id or "").strip() or None),
     )
 
 
@@ -509,7 +576,9 @@ def _session_prompt_runtime(
     request_info: dict[str, Any] = {}
     if normalized_request_message_id:
         request_message = get_session_message_by_id(session_id, normalized_request_message_id) or {}
-        request_info = request_message.get("info") if isinstance(request_message.get("info"), dict) else {}
+        request_info = (
+            request_message.get("info") if isinstance(request_message.get("info"), dict) else {}
+        )
         explicit_role = str(request_info.get("role") or "").strip()
         explicit_message_id = str(request_info.get("id") or "").strip()
         explicit_assistant_matches = False
@@ -520,15 +589,13 @@ def _session_prompt_runtime(
                 else get_session_message_by_id(session_id, turn_assistant_message_id) or {}
             )
             turn_assistant_info = (
-                turn_assistant.get("info")
-                if isinstance(turn_assistant.get("info"), dict)
-                else {}
+                turn_assistant.get("info") if isinstance(turn_assistant.get("info"), dict) else {}
             )
-            explicit_assistant_matches = (
-                str(turn_assistant_info.get("parentID") or turn_assistant_info.get("parentId") or "").strip()
-                == explicit_message_id
-                and str(turn_assistant_info.get("finish") or "").strip() in {"", "tool-calls", "unknown"}
-            )
+            explicit_assistant_matches = str(
+                turn_assistant_info.get("parentID") or turn_assistant_info.get("parentId") or ""
+            ).strip() == explicit_message_id and str(
+                turn_assistant_info.get("finish") or ""
+            ).strip() in {"", "tool-calls", "unknown"}
         if (
             explicit_role not in {"user"}
             or not explicit_message_id
@@ -549,7 +616,9 @@ def _session_prompt_runtime(
             if isinstance(turn_state.get("request_message"), dict)
             else get_session_message_by_id(session_id, normalized_request_message_id) or {}
         )
-        request_info = request_message.get("info") if isinstance(request_message.get("info"), dict) else {}
+        request_info = (
+            request_message.get("info") if isinstance(request_message.get("info"), dict) else {}
+        )
 
     if not normalized_request_message_id:
         raise RuntimeError("queued prompt callback is missing request cursor")
@@ -574,33 +643,21 @@ def _session_prompt_runtime(
     )
     active_skill_ids = [
         str(item).strip()
-        for item in (
-            request_active_skill_ids
-            if isinstance(request_active_skill_ids, list)
-            else []
-        )
+        for item in (request_active_skill_ids if isinstance(request_active_skill_ids, list) else [])
         if str(item).strip()
     ]
     mounted_paper_ids = [
         str(item).strip()
         for item in (
-            request_mounted_paper_ids
-            if isinstance(request_mounted_paper_ids, list)
-            else []
+            request_mounted_paper_ids if isinstance(request_mounted_paper_ids, list) else []
         )
         if str(item).strip()
     ]
     options = _session_options(
         session_id=session_id,
         mode=str(session_record.get("mode") or "build"),
-        workspace_path=(
-            str(session_record.get("workspace_path") or "").strip()
-            or None
-        ),
-        workspace_server_id=(
-            str(session_record.get("workspace_server_id") or "").strip()
-            or None
-        ),
+        workspace_path=(str(session_record.get("workspace_path") or "").strip() or None),
+        workspace_server_id=(str(session_record.get("workspace_server_id") or "").strip() or None),
         reasoning_level=reasoning_level,
         active_skill_ids=active_skill_ids,
         mounted_paper_ids=mounted_paper_ids,
@@ -618,7 +675,9 @@ def _session_prompt_runtime(
 
 def _hydrate_pending_options(session_id: str) -> AgentRuntimeOptions:
     try:
-        options, _session_record, _request_message, _request_message_id = _session_prompt_runtime(session_id)
+        options, _session_record, _request_message, _request_message_id = _session_prompt_runtime(
+            session_id
+        )
         return options
     except Exception:
         session_record = get_session_record(session_id) or {}
@@ -631,8 +690,7 @@ def _hydrate_pending_options(session_id: str) -> AgentRuntimeOptions:
                 or None
             ),
             workspace_server_id=(
-                str(session_record.get("workspace_server_id") or "").strip()
-                or None
+                str(session_record.get("workspace_server_id") or "").strip() or None
             ),
             reasoning_level="default",
             active_skill_ids=[],
@@ -710,11 +768,7 @@ def _active_skill_items(options: AgentRuntimeOptions) -> list[dict[str, Any]]:
         for item in list_local_skills()
         if str(item.get("id") or "").strip()
     }
-    return [
-        skill_by_id[skill_id]
-        for skill_id in active_ids
-        if skill_id in skill_by_id
-    ]
+    return [skill_by_id[skill_id] for skill_id in active_ids if skill_id in skill_by_id]
 
 
 def _opencode_skills_prompt(options: AgentRuntimeOptions) -> str:
@@ -722,7 +776,9 @@ def _opencode_skills_prompt(options: AgentRuntimeOptions) -> str:
     policy = _runtime_exec_policy_override()
     disabled = disabled_tools_from_rules(
         ["skill"],
-        effective_ruleset(session_record, policy) if policy is not None else effective_ruleset(session_record),
+        effective_ruleset(session_record, policy)
+        if policy is not None
+        else effective_ruleset(session_record),
     )
     if "skill" in disabled:
         return ""
@@ -759,7 +815,9 @@ def _disabled_tools_for_turn(session_record: dict[str, Any]) -> set[str]:
     return set(
         disabled_tools_from_rules(
             sorted(tool_registry_names()),
-            effective_ruleset(session_record, policy) if policy is not None else effective_ruleset(session_record),
+            effective_ruleset(session_record, policy)
+            if policy is not None
+            else effective_ruleset(session_record),
         )
     )
 
@@ -932,7 +990,9 @@ def _looks_like_figure_grounded_paper_request(user_request: str) -> bool:
         "table",
         "pipeline",
     )
-    return any(marker in lowered for marker in markers) or bool(re.search(r"表\s*\d+", normalized, re.IGNORECASE))
+    return any(marker in lowered for marker in markers) or bool(
+        re.search(r"表\s*\d+", normalized, re.IGNORECASE)
+    )
 
 
 def _looks_like_explicit_figure_or_table_request(user_request: str) -> bool:
@@ -953,7 +1013,9 @@ def _looks_like_explicit_figure_or_table_request(user_request: str) -> bool:
         "figure",
         "table",
     )
-    return any(marker in lowered for marker in explicit_markers) or bool(re.search(r"表\s*\d+", normalized, re.IGNORECASE))
+    return any(marker in lowered for marker in explicit_markers) or bool(
+        re.search(r"表\s*\d+", normalized, re.IGNORECASE)
+    )
 
 
 def _looks_like_mounted_paper_request(user_request: str) -> bool:
@@ -1031,7 +1093,9 @@ def _looks_like_precise_paper_evidence_request(user_request: str) -> bool:
         "epoch",
         "参数量",
     )
-    return any(marker in lowered for marker in markers) or bool(re.search(r"表\s*\d+", normalized, re.IGNORECASE))
+    return any(marker in lowered for marker in markers) or bool(
+        re.search(r"表\s*\d+", normalized, re.IGNORECASE)
+    )
 
 
 def _classify_mounted_paper_request(user_request: str) -> str:
@@ -1044,13 +1108,45 @@ def _classify_mounted_paper_request(user_request: str) -> str:
         return "formula"
     if _looks_like_explicit_figure_or_table_request(user_request):
         return "figure"
-    if any(marker in lowered for marker in ("对比", "比较", "区别", "共同点", "差异", "vs", "versus", "compare")):
+    if any(
+        marker in lowered
+        for marker in ("对比", "比较", "区别", "共同点", "差异", "vs", "versus", "compare")
+    ):
         return "comparison"
-    if any(marker in lowered for marker in ("实验", "消融", "基线", "结果", "指标", "数据集", "超参", "benchmark", "ablation")):
+    if any(
+        marker in lowered
+        for marker in (
+            "实验",
+            "消融",
+            "基线",
+            "结果",
+            "指标",
+            "数据集",
+            "超参",
+            "benchmark",
+            "ablation",
+        )
+    ):
         return "experiment"
-    if any(marker in lowered for marker in ("方法", "模块", "结构", "训练", "流程", "实现", "架构", "原理", "algorithm")):
+    if any(
+        marker in lowered
+        for marker in ("方法", "模块", "结构", "训练", "流程", "实现", "架构", "原理", "algorithm")
+    ):
         return "method"
-    if any(marker in lowered for marker in ("讲什么", "概览", "速览", "值得读", "贡献", "创新点", "summary", "overview", "skim")):
+    if any(
+        marker in lowered
+        for marker in (
+            "讲什么",
+            "概览",
+            "速览",
+            "值得读",
+            "贡献",
+            "创新点",
+            "summary",
+            "overview",
+            "skim",
+        )
+    ):
         return "overview"
     return "general"
 
@@ -1087,52 +1183,95 @@ def _opencode_mounted_paper_turn_prompt(
         "- Do not fan out across every imported paper. Inspect only the 1-3 papers needed for this turn.",
     ]
     if "get_paper_detail" in tool_names:
-        lines.append("- Inspect get_paper_detail first so you can see which assets already exist for the imported paper before deciding on heavier tools.")
+        lines.append(
+            "- Inspect get_paper_detail first so you can see which assets already exist for the imported paper before deciding on heavier tools."
+        )
     if wants_precise_evidence:
-        lines.append("- This turn needs precise evidence. Prefer original Markdown/PDF/figure/table evidence over summary-only answers.")
+        lines.append(
+            "- This turn needs precise evidence. Prefer original Markdown/PDF/figure/table evidence over summary-only answers."
+        )
 
     if intent == "overview":
         if "skim_paper" in tool_names:
-            lines.append("- For overview, contributions, novelty, and triage questions, prefer skim_paper first.")
+            lines.append(
+                "- For overview, contributions, novelty, and triage questions, prefer skim_paper first."
+            )
         if "deep_read_paper" in tool_names:
-            lines.append("- Only escalate to deep_read_paper if skim_paper or saved analysis is insufficient for the user's requested depth.")
+            lines.append(
+                "- Only escalate to deep_read_paper if skim_paper or saved analysis is insufficient for the user's requested depth."
+            )
     elif intent == "method":
         if "deep_read_paper" in tool_names:
-            lines.append("- For method, module, training flow, or implementation questions, prefer deep_read_paper first.")
+            lines.append(
+                "- For method, module, training flow, or implementation questions, prefer deep_read_paper first."
+            )
         if "get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names:
-            lines.append("- Use three-round analysis as a supplement for strengths, weaknesses, and high-level judgment after method details are clear.")
+            lines.append(
+                "- Use three-round analysis as a supplement for strengths, weaknesses, and high-level judgment after method details are clear."
+            )
     elif intent == "experiment":
         if "get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names:
-            lines.append("- For experiment interpretation, ablation meaning, evidence sufficiency, strengths, and weaknesses, prefer get_paper_analysis / analyze_paper_rounds first.")
+            lines.append(
+                "- For experiment interpretation, ablation meaning, evidence sufficiency, strengths, and weaknesses, prefer get_paper_analysis / analyze_paper_rounds first."
+            )
         if "deep_read_paper" in tool_names:
-            lines.append("- Use deep_read_paper for experiment setup, training protocol, and implementation details that the three-round analysis does not fully cover.")
+            lines.append(
+                "- Use deep_read_paper for experiment setup, training protocol, and implementation details that the three-round analysis does not fully cover."
+            )
         if "analyze_figures" in tool_names:
-            lines.append("- If the user asks for exact table values, ablation rows, plotted trends, or metric numbers, verify them with analyze_figures or the original paper content instead of relying only on summaries.")
+            lines.append(
+                "- If the user asks for exact table values, ablation rows, plotted trends, or metric numbers, verify them with analyze_figures or the original paper content instead of relying only on summaries."
+            )
     elif intent == "figure":
         lines.append("- This turn is figure-grounded on an already mounted local paper.")
         if "paper_figures" in tool_names:
-            lines.append("- If the user only wants to view already extracted pictures/figures/tables, call paper_figures; do not call analyze_paper_rounds.")
+            lines.append(
+                "- If the user only wants to view already extracted pictures/figures/tables, call paper_figures; do not call analyze_paper_rounds."
+            )
         if "analyze_figures" in tool_names:
-            lines.append("- Use analyze_figures only when existing figure cards are missing or the user asks to extract/analyze figure content.")
-            lines.append("- Use analyze_figures as the primary evidence source for diagram and table interpretation, and stop once the needed figure is found.")
+            lines.append(
+                "- If the user asks you to explain a diagram or original figure interaction, call analyze_figures before answering unless get_paper_detail already shows enough original figure evidence."
+            )
+            lines.append(
+                "- Use analyze_figures only when existing figure cards are missing or the user asks to extract/analyze figure content."
+            )
+            lines.append(
+                "- Use analyze_figures as the primary evidence source for diagram and table interpretation, and stop once the needed figure is found."
+            )
         if "get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names:
-            lines.append("- Do not call get_paper_analysis / analyze_paper_rounds just to recover figure refs or restate cached notes when the user only wants a figure-grounded explanation.")
+            lines.append(
+                "- Do not call get_paper_analysis / analyze_paper_rounds just to recover figure refs or restate cached notes when the user only wants a figure-grounded explanation."
+            )
     elif intent == "formula":
-        lines.append("- For formulas, variables, symbols, and equation explanations, verify against original Markdown/PDF snippets before answering.")
+        lines.append(
+            "- For formulas, variables, symbols, and equation explanations, verify against original Markdown/PDF snippets before answering."
+        )
         if "deep_read_paper" in tool_names:
-            lines.append("- Use deep_read_paper only as supplemental explanation after the formula symbols and definitions are grounded in the source text.")
+            lines.append(
+                "- Use deep_read_paper only as supplemental explanation after the formula symbols and definitions are grounded in the source text."
+            )
     elif intent == "comparison":
-        lines.append("- For multi-paper comparison, start with lightweight inspection of each imported paper and only deepen the one or two papers that matter most to the comparison.")
+        lines.append(
+            "- For multi-paper comparison, start with lightweight inspection of each imported paper and only deepen the one or two papers that matter most to the comparison."
+        )
         if "get_paper_analysis" in tool_names:
-            lines.append("- Reuse existing three-round analysis before launching new heavy analysis jobs for every imported paper.")
+            lines.append(
+                "- Reuse existing three-round analysis before launching new heavy analysis jobs for every imported paper."
+            )
     else:
         if "get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names:
-            lines.append("- Use existing three-round analysis for interpretive questions before launching heavier re-analysis.")
+            lines.append(
+                "- Use existing three-round analysis for interpretive questions before launching heavier re-analysis."
+            )
         if "deep_read_paper" in tool_names:
-            lines.append("- Use deep_read_paper when the answer depends on concrete method or implementation details.")
+            lines.append(
+                "- Use deep_read_paper when the answer depends on concrete method or implementation details."
+            )
 
     if "paper_figures" in tool_names or "analyze_figures" in tool_names:
-        lines.append("- When a dedicated figure tool output includes figure_refs with image_url, embed the most relevant original paper figure once and then explain it.")
+        lines.append(
+            "- When a dedicated figure tool output includes figure_refs with image_url, embed the most relevant original paper figure once and then explain it."
+        )
         lines.append("- Do not output raw figure_ref IDs alone when image_url is available.")
     return "\n".join(lines)
 
@@ -1151,73 +1290,159 @@ def _opencode_research_lookup_prompt(
         "- Prefer built-in research tools over generic web search when the user is asking about papers, literature, citations, or research trends.",
     ]
     if options.mounted_paper_ids:
-        lines.append("- This session already has imported papers. If the user's question can be answered from them, inspect those papers before using search_papers or external literature search.")
+        lines.append(
+            "- This session already has imported papers. If the user's question can be answered from them, inspect those papers before using search_papers or external literature search."
+        )
     if "graph_rag_query" in tool_names:
-        lines.append("- Mandatory routing: for multi-paper comparison questions, method relationship questions, and questions mentioning two or more paper/model names, call graph_rag_query first. Do not start with search_papers/search_literature/websearch for these cases.")
-        lines.append("- For any request that says local library / 本地论文库 / 当前论文库 / 库内, call graph_rag_query before external search tools.")
-        lines.append("- For trend overviews, multi-paper comparisons, method lineage, dataset/metric/limitation summaries, citation/method context, and research-gap questions, call graph_rag_query first with the full user question as query.")
-        lines.append("- If graph_rag_query returns useful entities, relations, or papers, answer from that evidence pack and avoid search_literature/websearch unless the user explicitly asks for external sources.")
+        lines.append(
+            "- Mandatory routing: for multi-paper comparison questions, method relationship questions, and questions mentioning two or more paper/model names, call graph_rag_query first. Do not start with search_papers/search_literature/websearch for these cases."
+        )
+        lines.append(
+            "- For any request that says local library / 本地论文库 / 当前论文库 / 库内, call graph_rag_query before external search tools."
+        )
+        lines.append(
+            "- For trend overviews, multi-paper comparisons, method lineage, dataset/metric/limitation summaries, citation/method context, and research-gap questions, call graph_rag_query first with the full user question as query."
+        )
+        lines.append(
+            "- If graph_rag_query returns useful entities, relations, or papers, answer from that evidence pack and avoid search_literature/websearch unless the user explicitly asks for external sources."
+        )
     if "search_papers" in tool_names:
-        lines.append("- Use search_papers first for papers already in the local library. It returns a compact candidate list; call get_paper_detail only for the few papers you will cite or compare.")
-        lines.append("- If search_papers returns 0 for a broad topic, Chinese query, or translated domain phrase, do not conclude the local library has no relevant papers. Continue with graph_rag_query when available, or use search_literature/search_arxiv for external discovery.")
+        lines.append(
+            "- Use search_papers first for papers already in the local library. It returns a compact candidate list; call get_paper_detail only for the few papers you will cite or compare."
+        )
+        lines.append(
+            "- If search_papers returns 0 for a broad topic, Chinese query, or translated domain phrase, do not conclude the local library has no relevant papers. Continue with graph_rag_query when available, or use search_literature/search_arxiv for external discovery."
+        )
     if "graph_rag_query" in tool_names:
-        lines.append("- Use graph_rag_query for research trends, method relationships, dataset/metric/limitation questions, citation/method lineage, research gaps, and any question that needs a structured evidence pack across local papers.")
-        lines.append("- If graph_rag_query reports an empty or stale Research KG and build_research_kg is available, build or refresh a small batch before answering instead of falling back directly to broad web search.")
+        lines.append(
+            "- Use graph_rag_query for research trends, method relationships, dataset/metric/limitation questions, citation/method lineage, research gaps, and any question that needs a structured evidence pack across local papers."
+        )
+        lines.append(
+            "- If graph_rag_query reports an empty or stale Research KG and build_research_kg is available, build or refresh a small batch before answering instead of falling back directly to broad web search."
+        )
     if "research_kg_status" in tool_names:
-        lines.append("- Use research_kg_status when you need to check whether the local GraphRAG knowledge graph has enough coverage.")
+        lines.append(
+            "- Use research_kg_status when you need to check whether the local GraphRAG knowledge graph has enough coverage."
+        )
     if "get_paper_detail" in tool_names:
-        lines.append("- Use get_paper_detail after local search to inspect title, abstract, venue, saved analysis metadata, and any already extracted figures for a paper.")
+        lines.append(
+            "- Use get_paper_detail after local search to inspect title, abstract, venue, saved analysis metadata, and any already extracted figures for a paper."
+        )
     if "get_paper_analysis" in tool_names:
-        lines.append("- Use get_paper_analysis when the user asks for the existing three-round analysis or structured notes of a paper.")
+        lines.append(
+            "- Use get_paper_analysis when the user asks for the existing three-round analysis or structured notes of a paper."
+        )
     if "get_similar_papers" in tool_names:
-        lines.append("- Use get_similar_papers to expand from a known local paper into nearby related work already embedded in the library.")
+        lines.append(
+            "- Use get_similar_papers to expand from a known local paper into nearby related work already embedded in the library."
+        )
     if "get_citation_tree" in tool_names:
-        lines.append("- Use get_citation_tree when the user asks for upstream/downstream references or a citation structure around one paper.")
+        lines.append(
+            "- Use get_citation_tree when the user asks for upstream/downstream references or a citation structure around one paper."
+        )
     if "get_timeline" in tool_names:
-        lines.append("- Use get_timeline for milestone evolution, historical overview, and trend-by-year questions.")
+        lines.append(
+            "- Use get_timeline for milestone evolution, historical overview, and trend-by-year questions."
+        )
     if "search_literature" in tool_names:
-        lines.append("- Use search_literature for external paper discovery across arXiv, conferences, and journals, especially for venue-filtered or CCF-A requests.")
-        lines.append("- For broad discovery or comparison, prefer one focused local search and one focused external search before answering; avoid repeated near-duplicate searches unless results are clearly off-target.")
+        lines.append(
+            "- Use search_literature for external paper discovery across arXiv, conferences, and journals, especially for venue-filtered or CCF-A requests."
+        )
+        lines.append(
+            "- For broad discovery or comparison, prefer one focused local search and one focused external search before answering; avoid repeated near-duplicate searches unless results are clearly off-target."
+        )
         if "graph_rag_query" in tool_names:
-            lines.append("- Do not use search_literature before graph_rag_query when the user asks about the local library, already imported papers, or named papers likely present in the library.")
+            lines.append(
+                "- Do not use search_literature before graph_rag_query when the user asks about the local library, already imported papers, or named papers likely present in the library."
+            )
     if "preview_external_paper_head" in tool_names:
-        lines.append("- If an external arXiv paper is not imported yet and the user wants a quick triage pass, use preview_external_paper_head to inspect abstract metadata and section headings before ingesting it.")
+        lines.append(
+            "- If an external arXiv paper is not imported yet and the user wants a quick triage pass, use preview_external_paper_head to inspect abstract metadata and section headings before ingesting it."
+        )
     if "preview_external_paper_section" in tool_names:
-        lines.append("- Use preview_external_paper_section for lightweight external section reading such as Introduction, Method, or Experiments when the user does not need a full local ingest yet.")
+        lines.append(
+            "- Use preview_external_paper_section for lightweight external section reading such as Introduction, Method, or Experiments when the user does not need a full local ingest yet."
+        )
     if "ingest_external_literature" in tool_names:
-        lines.append("- After search_literature finds useful papers, use ingest_external_literature to import selected results into the local paper library when the user wants them saved.")
+        lines.append(
+            "- After search_literature finds useful papers, use ingest_external_literature to import selected results into the local paper library when the user wants them saved."
+        )
     if "analyze_paper_rounds" in tool_names:
-        lines.append("- Use analyze_paper_rounds when the user wants the local paper library to generate the coarse-to-fine three-round analysis for a paper; it is not a figure viewing tool.")
+        lines.append(
+            "- Use analyze_paper_rounds when the user wants the local paper library to generate the coarse-to-fine three-round analysis for a paper; it is not a figure viewing tool."
+        )
     if "paper_figures" in tool_names:
-        lines.append("- Use paper_figures when the user asks to view already extracted pictures, figures, tables, or original image cards from a local paper.")
+        lines.append(
+            "- Use paper_figures when the user asks to view already extracted pictures, figures, tables, or original image cards from a local paper."
+        )
     if "skim_paper" in tool_names or "deep_read_paper" in tool_names:
-        lines.append("- Use skim_paper / deep_read_paper for lightweight or deeper single-paper reading passes when the user wants staged analysis instead of a full three-round run.")
+        lines.append(
+            "- Use skim_paper / deep_read_paper for lightweight or deeper single-paper reading passes when the user wants staged analysis instead of a full three-round run."
+        )
     if "generate_wiki" in tool_names:
-        lines.append("- Use generate_wiki for topic surveys or single-paper structured overviews when the user asks for a longer synthesized write-up.")
+        lines.append(
+            "- Use generate_wiki for topic surveys or single-paper structured overviews when the user asks for a longer synthesized write-up."
+        )
     if "identify_research_gaps" in tool_names:
-        lines.append("- Use identify_research_gaps when the user explicitly wants open problems, research gaps, or future directions. If the user instead wants a full idea-discovery run or concrete research ideas, do not stop at a gap list.")
+        lines.append(
+            "- Use identify_research_gaps when the user explicitly wants open problems, research gaps, or future directions. If the user instead wants a full idea-discovery run or concrete research ideas, do not stop at a gap list."
+        )
     if "research_wiki_init" in tool_names:
-        lines.append("- Use research_wiki_init when the user wants to initialize or refresh the project-level research wiki from the current project papers and ideas.")
+        lines.append(
+            "- Use research_wiki_init when the user wants to initialize or refresh the project-level research wiki from the current project papers and ideas."
+        )
     if "research_wiki_query" in tool_names:
-        lines.append("- Use research_wiki_query when you need a compact project memory pack before proposing ideas, planning experiments, or continuing an existing project thread.")
+        lines.append(
+            "- Use research_wiki_query when you need a compact project memory pack before proposing ideas, planning experiments, or continuing an existing project thread."
+        )
     if "research_wiki_stats" in tool_names:
-        lines.append("- Use research_wiki_stats to inspect the current project memory coverage before deciding whether more structure or curation is needed.")
+        lines.append(
+            "- Use research_wiki_stats to inspect the current project memory coverage before deciding whether more structure or curation is needed."
+        )
     if "research_wiki_update_node" in tool_names:
-        lines.append("- Use research_wiki_update_node to persist important project facts as structured wiki nodes instead of leaving them only in transient chat text.")
+        lines.append(
+            "- Use research_wiki_update_node to persist important project facts as structured wiki nodes instead of leaving them only in transient chat text."
+        )
     if "analyze_figures" in tool_names:
-        lines.append("- Use analyze_figures when the user wants figure/table extraction or chart-centric interpretation from a local paper; prefer paper_figures for view-only requests.")
-    if "get_paper_detail" in tool_names and ("get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names):
-        lines.append("- When the user asks to analyze an already imported local paper, inspect get_paper_detail first so the UI can surface the mounted paper metadata and available figures alongside the answer.")
-    if "paper_figures" in tool_names and ("get_paper_detail" in tool_names or "get_paper_analysis" in tool_names):
-        lines.append("- If already extracted figure cards are enough for the request, call paper_figures instead of a three-round analysis tool.")
-    if "analyze_figures" in tool_names and ("get_paper_detail" in tool_names or "get_paper_analysis" in tool_names):
-        lines.append("- If a mounted paper has PDF support but no figure cards are available yet and figures matter for the request, run analyze_figures before giving the final paper analysis.")
-    if "graph_rag_query" in tool_names and ("analyze_figures" in tool_names or "deep_read_paper" in tool_names):
-        lines.append("- For ordinary method summaries and evidence overviews across local papers, graph_rag_query plus saved analysis is enough; do not start analyze_figures or deep_read_paper unless the user explicitly asks for figures, tables, exact visual evidence, or a new deep read.")
+        lines.append(
+            "- Use analyze_figures when the user wants figure/table extraction or chart-centric interpretation from a local paper; prefer paper_figures for view-only requests."
+        )
+    if "get_paper_detail" in tool_names and (
+        "get_paper_analysis" in tool_names or "analyze_paper_rounds" in tool_names
+    ):
+        lines.append(
+            "- When the user asks to analyze an already imported local paper, inspect get_paper_detail first so the UI can surface the mounted paper metadata and available figures alongside the answer."
+        )
+    if "paper_figures" in tool_names and (
+        "get_paper_detail" in tool_names or "get_paper_analysis" in tool_names
+    ):
+        lines.append(
+            "- If already extracted figure cards are enough for the request, call paper_figures instead of a three-round analysis tool."
+        )
+    if "analyze_figures" in tool_names and (
+        "get_paper_detail" in tool_names or "get_paper_analysis" in tool_names
+    ):
+        lines.append(
+            "- If a mounted paper has PDF support but no figure cards are available yet and figures matter for the request, run analyze_figures before giving the final paper analysis."
+        )
+    if "graph_rag_query" in tool_names and (
+        "analyze_figures" in tool_names or "deep_read_paper" in tool_names
+    ):
+        lines.append(
+            "- For ordinary method summaries and evidence overviews across local papers, graph_rag_query plus saved analysis is enough; do not start analyze_figures or deep_read_paper unless the user explicitly asks for figures, tables, exact visual evidence, or a new deep read."
+        )
     if "list_topics" in tool_names or "manage_subscription" in tool_names:
-        lines.append("- Use list_topics / manage_subscription for the user's local folders, subscriptions, and recurring literature tracking workflows.")
-    if _active_skill_items(options) and ("list_local_skills" in tool_names or "read_local_skill" in tool_names or "skill" in tool_names):
-        lines.append("- If the user asks for a project-specific workflow and there is no dedicated research tool, inspect local skills before falling back to generic web search.")
+        lines.append(
+            "- Use list_topics / manage_subscription for the user's local folders, subscriptions, and recurring literature tracking workflows."
+        )
+    if _active_skill_items(options) and (
+        "list_local_skills" in tool_names
+        or "read_local_skill" in tool_names
+        or "skill" in tool_names
+    ):
+        lines.append(
+            "- If the user asks for a project-specific workflow and there is no dedicated research tool, inspect local skills before falling back to generic web search."
+        )
     if "search_arxiv" in tool_names:
         lines.append("- Use search_arxiv for external paper discovery and arXiv candidate lookup.")
     lines.extend(
@@ -1250,9 +1475,13 @@ def _opencode_tool_binding_prompt(
     if "apply_patch" in tool_names and "edit" not in tool_names and "write" not in tool_names:
         lines.append("For file edits, use apply_patch. Do not call edit or write in this turn.")
     else:
-        edit_tools = [name for name in ("apply_patch", "edit", "write", "multiedit") if name in tool_names]
+        edit_tools = [
+            name for name in ("apply_patch", "edit", "write", "multiedit") if name in tool_names
+        ]
         if edit_tools:
-            lines.append(f"For file changes, only use the exposed edit tools: {', '.join(edit_tools)}.")
+            lines.append(
+                f"For file changes, only use the exposed edit tools: {', '.join(edit_tools)}."
+            )
     if "bash" not in tool_names:
         lines.append("Bash is not exposed in this turn.")
     if options.mode == "plan":
@@ -1263,7 +1492,9 @@ def _opencode_tool_binding_prompt(
         if "bash" in tool_names:
             lines.append("In plan mode, bash may only be used for read-only inspection commands.")
         if "task" in tool_names:
-            lines.append("In plan mode, use task with subagent_type=explore for investigation and subagent_type=general for approach validation.")
+            lines.append(
+                "In plan mode, use task with subagent_type=explore for investigation and subagent_type=general for approach validation."
+            )
     return "\n".join(lines)
 
 
@@ -1417,10 +1648,14 @@ def _trim_to_output_constraint(content: str, constraint: OutputConstraint | None
         return " ".join(text.split()[: constraint.limit]).strip()
     if len(text) <= constraint.limit:
         return text
-    sentence_break = max(text.rfind(mark, 0, constraint.limit) for mark in ("。", "！", "？", "；", ";"))
+    sentence_break = max(
+        text.rfind(mark, 0, constraint.limit) for mark in ("。", "！", "？", "；", ";")
+    )
     if sentence_break >= max(constraint.limit // 2, constraint.limit - 24):
         return text[: sentence_break + 1].strip()
-    clause_break = max(text.rfind(mark, 0, constraint.limit) for mark in ("，", ",", "、", "：", ":", " "))
+    clause_break = max(
+        text.rfind(mark, 0, constraint.limit) for mark in ("，", ",", "、", "：", ":", " ")
+    )
     if clause_break >= max(constraint.limit // 2, constraint.limit - 24):
         return text[:clause_break].rstrip("，,、；;：: ")
     return text[: constraint.limit].rstrip("，,、；;：: ")
@@ -1454,7 +1689,9 @@ def _repair_output_constraint_text(
             repair_messages,
             tools=None,
             variant_override="low",
-            session_cache_key=f"{options.session_id}:constraint-repair" if options.session_id else None,
+            session_cache_key=f"{options.session_id}:constraint-repair"
+            if options.session_id
+            else None,
         ):
             if event.type == "text_delta" and event.content:
                 repaired_parts.append(event.content)
@@ -1471,7 +1708,9 @@ def _extract_latest_user_output_constraint(messages: list[dict]) -> str:
     for message in reversed(messages):
         if str(message.get("role") or "") != "user":
             continue
-        prompt = _build_output_constraint_system_prompt(_extract_user_text_content(message.get("content")))
+        prompt = _build_output_constraint_system_prompt(
+            _extract_user_text_content(message.get("content"))
+        )
         if prompt:
             return prompt
     return ""
@@ -1551,7 +1790,9 @@ def _collect_latest_user_prompt_shaping(
     *,
     fallback_request: str = "",
 ) -> LatestUserPromptShaping:
-    latest_user_request = _extract_latest_user_request(messages).strip() or str(fallback_request or "").strip()
+    latest_user_request = (
+        _extract_latest_user_request(messages).strip() or str(fallback_request or "").strip()
+    )
     return LatestUserPromptShaping(
         tools=_extract_latest_user_tools(messages),
         request=latest_user_request,
@@ -1617,7 +1858,11 @@ def _prepare_loop_messages(
                     "time": {},
                 }
             )
-        elif current_step == 0 and options.mode == "build" and _session_has_plan_assistant(options.session_id):
+        elif (
+            current_step == 0
+            and options.mode == "build"
+            and _session_has_plan_assistant(options.session_id)
+        ):
             reminder = _load_reference_prompt("build-switch.txt")
         if reminder:
             prepared[latest_user_index]["content"] = _append_message_text_content(
@@ -1664,7 +1909,11 @@ def _normalize_messages(messages: list[dict], options: AgentRuntimeOptions) -> l
                         seen_tool_call_ids.add(call_id)
 
         raw_content = message.get("content", "")
-        content = copy.deepcopy(raw_content) if isinstance(raw_content, (list, dict)) else str(raw_content or "")
+        content = (
+            copy.deepcopy(raw_content)
+            if isinstance(raw_content, (list, dict))
+            else str(raw_content or "")
+        )
         if role == "tool":
             tool_call_id = str(message.get("tool_call_id", "") or "")
             if not tool_call_id or tool_call_id not in seen_tool_call_ids:
@@ -1821,13 +2070,19 @@ def _coerce_cli_tool_result_event(
     default_call_id: str,
     default_name: str,
 ) -> dict[str, Any]:
-    call_id = str(item.get("tool_use_id") or item.get("id") or default_call_id).strip() or default_call_id
-    tool_name = str(item.get("tool_name") or item.get("name") or default_name).strip() or default_name
+    call_id = (
+        str(item.get("tool_use_id") or item.get("id") or default_call_id).strip() or default_call_id
+    )
+    tool_name = (
+        str(item.get("tool_name") or item.get("name") or default_name).strip() or default_name
+    )
 
     raw_output = item.get("output")
     parsed_output = _json_loads_maybe(raw_output)
     is_error_flag = bool(
-        (parsed_output or {}).get("isError") if isinstance(parsed_output, dict) else item.get("is_error")
+        (parsed_output or {}).get("isError")
+        if isinstance(parsed_output, dict)
+        else item.get("is_error")
     )
     success = not is_error_flag
     summary = ""
@@ -1861,7 +2116,9 @@ def _coerce_cli_tool_result_event(
             if isinstance(candidate_display, dict) and candidate_display:
                 display_data = copy.deepcopy(candidate_display)
     else:
-        text_payload = _extract_cli_tool_text(parsed_output if isinstance(parsed_output, dict) else raw_output)
+        text_payload = _extract_cli_tool_text(
+            parsed_output if isinstance(parsed_output, dict) else raw_output
+        )
         if text_payload:
             summary = _summarize_cli_tool_text(text_payload)
             data = {"output": text_payload}
@@ -1935,10 +2192,14 @@ def _stream_cli_trace_events(result: dict[str, Any]) -> Iterator[str]:
     raw_tool_uses = parsed.get("tool_uses")
     raw_tool_results = parsed.get("tool_results")
     tool_uses = [
-        item for item in (raw_tool_uses if isinstance(raw_tool_uses, list) else []) if isinstance(item, dict)
+        item
+        for item in (raw_tool_uses if isinstance(raw_tool_uses, list) else [])
+        if isinstance(item, dict)
     ]
     tool_results = [
-        item for item in (raw_tool_results if isinstance(raw_tool_results, list) else []) if isinstance(item, dict)
+        item
+        for item in (raw_tool_results if isinstance(raw_tool_results, list) else [])
+        if isinstance(item, dict)
     ]
     if not tool_uses and not tool_results:
         return
@@ -1979,7 +2240,10 @@ def _stream_cli_trace_events(result: dict[str, Any]) -> Iterator[str]:
             )
 
     for index, item in enumerate([*results_by_call_id.values(), *orphan_results], start=1):
-        call_id = str(item.get("tool_use_id") or item.get("id") or "").strip() or f"agent_orphan_call_{index}"
+        call_id = (
+            str(item.get("tool_use_id") or item.get("id") or "").strip()
+            or f"agent_orphan_call_{index}"
+        )
         tool_name = str(item.get("tool_name") or item.get("name") or "tool").strip() or "tool"
         if call_id not in started_call_ids:
             started_call_ids.add(call_id)
@@ -2029,7 +2293,9 @@ def _store_acp_pending_action(
     assistant_message_id: str,
     permission_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    tool_call_id = str(permission_payload.get("tool_call_id") or f"acp_permission_{action_id}").strip()
+    tool_call_id = str(
+        permission_payload.get("tool_call_id") or f"acp_permission_{action_id}"
+    ).strip()
     tool_name = str(permission_payload.get("tool_name") or "custom_acp").strip() or "custom_acp"
     raw_input = (
         dict(permission_payload.get("raw_input") or {})
@@ -2183,7 +2449,11 @@ def _stream_embedded_agent_chat(
     streamed_text = "".join(streamed_text_fragments).strip()
     final_tool_results = [
         item
-        for item in (done_payload.get("tool_results") if isinstance(done_payload.get("tool_results"), list) else [])
+        for item in (
+            done_payload.get("tool_results")
+            if isinstance(done_payload.get("tool_results"), list)
+            else []
+        )
         if isinstance(item, dict)
     ]
     combined_tool_results = [copy.deepcopy(item) for item in tool_results if isinstance(item, dict)]
@@ -2499,7 +2769,9 @@ def _fill_workspace_defaults(call: ToolCall, options: AgentRuntimeOptions) -> To
             id=call.id,
             name=call.name,
             arguments=updated,
-            metadata=copy.deepcopy(call.metadata) if isinstance(call.metadata, dict) and call.metadata else None,
+            metadata=copy.deepcopy(call.metadata)
+            if isinstance(call.metadata, dict) and call.metadata
+            else None,
             provider_executed=call.provider_executed,
         )
     workspace_arg_tools = {
@@ -2516,7 +2788,9 @@ def _fill_workspace_defaults(call: ToolCall, options: AgentRuntimeOptions) -> To
             id=call.id,
             name=call.name,
             arguments=updated,
-            metadata=copy.deepcopy(call.metadata) if isinstance(call.metadata, dict) and call.metadata else None,
+            metadata=copy.deepcopy(call.metadata)
+            if isinstance(call.metadata, dict) and call.metadata
+            else None,
             provider_executed=call.provider_executed,
         )
     if not str(updated.get("workspace_path") or "").strip():
@@ -2525,7 +2799,9 @@ def _fill_workspace_defaults(call: ToolCall, options: AgentRuntimeOptions) -> To
         id=call.id,
         name=call.name,
         arguments=updated,
-        metadata=copy.deepcopy(call.metadata) if isinstance(call.metadata, dict) and call.metadata else None,
+        metadata=copy.deepcopy(call.metadata)
+        if isinstance(call.metadata, dict) and call.metadata
+        else None,
         provider_executed=call.provider_executed,
     )
 
@@ -2591,10 +2867,14 @@ def _emit_step_finish(
 
 def _summarize_action(call: ToolCall) -> str:
     if call.name in {"inspect_workspace", "ls"}:
-        workspace = str(call.arguments.get("workspace_path") or call.arguments.get("path") or "").strip()
+        workspace = str(
+            call.arguments.get("workspace_path") or call.arguments.get("path") or ""
+        ).strip()
         return f"将检查目录结构：{workspace or '[未提供路径]'}"
     if call.name in {"read_workspace_file", "read"}:
-        target = str(call.arguments.get("relative_path") or call.arguments.get("file_path") or "").strip()
+        target = str(
+            call.arguments.get("relative_path") or call.arguments.get("file_path") or ""
+        ).strip()
         return f"将读取文件：{target or '[未提供文件]'}"
     if call.name == "webfetch":
         url = str(call.arguments.get("url") or "").strip()
@@ -2611,11 +2891,15 @@ def _summarize_action(call: ToolCall) -> str:
             return f"需要你先回答一个问题：{str(questions[0].get('question') or '').strip() or '[未提供问题]'}"
         return f"需要你先回答 {len(questions)} 个问题，然后智能体再继续执行"
     if call.name in {"write_workspace_file", "write"}:
-        target = str(call.arguments.get("relative_path") or call.arguments.get("file_path") or "").strip()
+        target = str(
+            call.arguments.get("relative_path") or call.arguments.get("file_path") or ""
+        ).strip()
         content = str(call.arguments.get("content") or "")
         return f"将写入文件 {target or '[未提供文件]'}（约 {len(content)} 个字符）"
     if call.name in {"replace_workspace_text", "edit"}:
-        target = str(call.arguments.get("relative_path") or call.arguments.get("file_path") or "").strip()
+        target = str(
+            call.arguments.get("relative_path") or call.arguments.get("file_path") or ""
+        ).strip()
         return f"将修改文件：{target or '[未提供文件]'}"
     if call.name == "multiedit":
         edits = call.arguments.get("edits") or []
@@ -2627,7 +2911,9 @@ def _summarize_action(call: ToolCall) -> str:
         suffix = "（后台任务）" if background else ""
         return f"将执行命令{suffix}：{command or '[空命令]'}"
     if call.name == "local_shell":
-        action = call.arguments.get("action") if isinstance(call.arguments.get("action"), dict) else {}
+        action = (
+            call.arguments.get("action") if isinstance(call.arguments.get("action"), dict) else {}
+        )
         command = local_shell_command_to_string(action.get("command"))
         return f"将执行 local shell 命令：{command or '[空命令]'}"
     if call.name == "ingest_arxiv":
@@ -2915,7 +3201,9 @@ def _run_model_turn_events(
     policy = _runtime_exec_policy_override()
     disabled_tools = disabled_tools_from_rules(
         sorted(tool_registry_names()),
-        effective_ruleset(session_record, policy) if policy is not None else effective_ruleset(session_record),
+        effective_ruleset(session_record, policy)
+        if policy is not None
+        else effective_ruleset(session_record),
     )
     max_attempts = max(int(getattr(get_settings(), "agent_retry_max_attempts", 2) or 0), 0)
     result = yield from _processor_stream_model_turn_events(
@@ -3028,7 +3316,9 @@ def _fallback_step_limit_summary(messages: list[dict], max_steps: int) -> str:
         [
             "",
             "2. 当前已获得的关键信息或中间结果",
-            f"- {last_assistant_text[:240]}" if last_assistant_text else "- 当前主要保留了部分中间过程，但缺少最终结论。",
+            f"- {last_assistant_text[:240]}"
+            if last_assistant_text
+            else "- 当前主要保留了部分中间过程，但缺少最终结论。",
             "",
             "3. 尚未完成内容",
             "- 还没有在本轮内完成最终收敛，需要缩小问题范围或继续下一轮。",
@@ -3150,12 +3440,14 @@ def _process_tool_calls(
         ToolCallProcessingCallbacks(
             get_tool_definition=get_tool_definition,
             authorize_tool_call=(
-                (lambda call, session, *, create_pending_request=True: authorize_tool_call(
-                    call,
-                    session,
-                    policy,
-                    create_pending_request=create_pending_request,
-                ))
+                (
+                    lambda call, session, *, create_pending_request=True: authorize_tool_call(
+                        call,
+                        session,
+                        policy,
+                        create_pending_request=create_pending_request,
+                    )
+                )
                 if policy is not None
                 else authorize_tool_call
             ),
@@ -3251,14 +3543,7 @@ class SessionPromptProcessor:
             "session_id": str(self.options.session_id or "").strip(),
         }
         request_message_id = (
-            str(
-                (
-                    self.persistence.parent_id
-                    if self.persistence is not None
-                    else ""
-                )
-                or ""
-            ).strip()
+            str((self.persistence.parent_id if self.persistence is not None else "") or "").strip()
             or None
         )
         if request_message_id is not None:
@@ -3270,9 +3555,7 @@ class SessionPromptProcessor:
         return PromptLifecycleConfig(
             session_id=session_id,
             processor_session_id=(
-                self.persistence.session_id
-                if self.persistence is not None
-                else session_id
+                self.persistence.session_id if self.persistence is not None else session_id
             ),
             parent_id=(
                 self.persistence.parent_id
@@ -3281,7 +3564,8 @@ class SessionPromptProcessor:
             ),
             assistant_meta=(
                 copy.deepcopy(self.persistence.assistant_meta)
-                if self.persistence is not None and isinstance(self.persistence.assistant_meta, dict)
+                if self.persistence is not None
+                and isinstance(self.persistence.assistant_meta, dict)
                 else _assistant_persistence_meta(self.options)
             ),
             assistant_message_id=(
@@ -3304,12 +3588,7 @@ class SessionPromptProcessor:
         return PromptLifecycleConfig(
             session_id=session_id,
             processor_session_id=str(
-                (
-                    persistence.session_id
-                    if persistence is not None
-                    else session_id
-                )
-                or ""
+                (persistence.session_id if persistence is not None else session_id) or ""
             ).strip(),
             parent_id=(
                 persistence.parent_id
@@ -3351,7 +3630,9 @@ class SessionPromptProcessor:
             str(raw.get("request_message_id") or "").strip() or None,
         )
         turn_state = _session_loop_turn_state(session_id) or {}
-        request_info = request_message.get("info") if isinstance(request_message.get("info"), dict) else {}
+        request_info = (
+            request_message.get("info") if isinstance(request_message.get("info"), dict) else {}
+        )
         reasoning_level = str(request_info.get("variant") or "").strip().lower() or "default"
 
         assistant_message_id = _next_assistant_message_id()
@@ -3368,7 +3649,9 @@ class SessionPromptProcessor:
                 else {}
             )
             existing_role = str(existing_info.get("role") or "").strip()
-            existing_parent_id = str(existing_info.get("parentID") or existing_info.get("parentId") or "").strip()
+            existing_parent_id = str(
+                existing_info.get("parentID") or existing_info.get("parentId") or ""
+            ).strip()
             if existing_role == "assistant" and existing_parent_id == request_message_id:
                 assistant_message_id = existing_assistant_id
         persistence = StreamPersistenceConfig(
@@ -3531,7 +3814,9 @@ class SessionPromptProcessor:
         *,
         resume_existing: bool = False,
     ) -> None:
-        def _run_single_callback(current_callback, callback_kind: str, current_resume_existing: bool) -> QueuedCallbackRunResult:  # noqa: ANN001
+        def _run_single_callback(
+            current_callback, callback_kind: str, current_resume_existing: bool
+        ) -> QueuedCallbackRunResult:  # noqa: ANN001
             del callback_kind
             current_runner = cls._processor_from_callback(
                 current_callback,
@@ -3579,7 +3864,9 @@ class SessionPromptProcessor:
             while current_callback is not None:
                 if is_session_aborted(session_id):
                     cls._clear_aborted_permission_callback(current_callback)
-                    final_message_id = cls._terminal_message_id_for_callback(session_id, current_callback)
+                    final_message_id = cls._terminal_message_id_for_callback(
+                        session_id, current_callback
+                    )
                     final_result = _prompt_result_payload(session_id, final_message_id)
                     final_control = PromptStreamControl(
                         saw_done=True,
@@ -3603,7 +3890,9 @@ class SessionPromptProcessor:
                     break
 
                 callback_kind = cls._callback_kind(
-                    current_callback.payload if isinstance(getattr(current_callback, "payload", None), dict) else None
+                    current_callback.payload
+                    if isinstance(getattr(current_callback, "payload", None), dict)
+                    else None
                 )
                 try:
                     run_result = _run_single_callback(
@@ -3671,7 +3960,10 @@ class SessionPromptProcessor:
             action_id = str(payload.get("action_id") or "").strip()
             pending = get_pending_action(action_id) if action_id else None
             if pending is not None:
-                return str(_native_pending_resume_state(pending).assistant_message_id or "").strip() or None
+                return (
+                    str(_native_pending_resume_state(pending).assistant_message_id or "").strip()
+                    or None
+                )
         turn_state = _session_loop_turn_state(session_id) or {}
         return (
             str(turn_state.get("assistant_message_id") or "").strip()
@@ -3690,7 +3982,9 @@ class SessionPromptProcessor:
         try:
             reply_permission(action_id, "reject", "会话已中止")
         except Exception:
-            logger.exception("Failed to reject pending permission callback during abort: %s", action_id)
+            logger.exception(
+                "Failed to reject pending permission callback during abort: %s", action_id
+            )
         _delete_pending_action(action_id)
 
     def _require_lifecycle_session(self) -> PromptLifecycleSession:
@@ -3732,8 +4026,8 @@ class SessionPromptProcessor:
     ) -> Iterator[str]:
         return (
             yield from self._require_lifecycle_session().emit_stream(
-            raw_stream,
-            publish_bus=publish_bus,
+                raw_stream,
+                publish_bus=publish_bus,
             )
         )
 
@@ -3769,8 +4063,7 @@ class SessionPromptProcessor:
             },
         )
         current.control.assistant_message_id = (
-            current.control.assistant_message_id
-            or self.assistant_message_id
+            current.control.assistant_message_id or self.assistant_message_id
         )
 
     def _on_lifecycle_exception(self, current: PromptLifecycleSession, exc: Exception) -> None:
@@ -3806,7 +4099,9 @@ class SessionPromptProcessor:
                             resume_existing=True,
                         )
                     except Exception:  # pragma: no cover - defensive path
-                        logger.exception("Failed to resume queued prompt callback for %s", session_id)
+                        logger.exception(
+                            "Failed to resume queued prompt callback for %s", session_id
+                        )
                         rejected = [callback, *drain_prompt_callbacks(session_id)]
                         finish_prompt_instance(session_id, result=final_result)
                         type(self)._reject_callback_list(
@@ -3877,40 +4172,48 @@ class SessionPromptProcessor:
                     emit_stream=self._emit_stream,
                     emit_done=self._emit_done,
                     publish_step_start=(
-                        (lambda step: session_bus.publish(
-                            SessionBusEvent.STEP_STARTED,
-                            {
-                                "sessionID": str(self.options.session_id or "").strip(),
-                                "step": int(step),
-                                "snapshot": None,
-                            },
-                        ))
+                        (
+                            lambda step: session_bus.publish(
+                                SessionBusEvent.STEP_STARTED,
+                                {
+                                    "sessionID": str(self.options.session_id or "").strip(),
+                                    "step": int(step),
+                                    "snapshot": None,
+                                },
+                            )
+                        )
                         if str(self.options.session_id or "").strip()
                         else None
                     ),
-                    prepare_loop_messages=lambda current_messages, current_step, max_steps: _prepare_loop_messages(
-                        current_messages,
-                        self.options,
-                        current_step=current_step,
-                        max_steps=max_steps,
+                    prepare_loop_messages=lambda current_messages, current_step, max_steps: (
+                        _prepare_loop_messages(
+                            current_messages,
+                            self.options,
+                            current_step=current_step,
+                            max_steps=max_steps,
+                        )
                     ),
                     run_model_turn=lambda prepared_messages: _run_model_turn_events(
                         prepared_messages,
                         self.options,
                     ),
-                    process_tool_calls=lambda current_messages, turn_calls, current_step, step_snapshot, step_usage, assistant_message_id: _process_tool_calls(
-                        current_messages,
-                        turn_calls,
-                        current_step,
-                        self.options,
-                        step_snapshot=step_snapshot,
-                        step_usage=step_usage,
-                        assistant_message_id=assistant_message_id,
+                    process_tool_calls=lambda current_messages, turn_calls, current_step, step_snapshot, step_usage, assistant_message_id: (
+                        _process_tool_calls(
+                            current_messages,
+                            turn_calls,
+                            current_step,
+                            self.options,
+                            step_snapshot=step_snapshot,
+                            step_usage=step_usage,
+                            assistant_message_id=assistant_message_id,
+                        )
                     ),
-                    step_limit_summary=lambda current_messages, max_steps: _stream_step_limit_summary(
-                        current_messages,
-                        self.options,
-                        max_steps=max_steps,
+                    step_limit_summary=lambda current_messages, max_steps: (
+                        _stream_step_limit_summary(
+                            current_messages,
+                            self.options,
+                            max_steps=max_steps,
+                        )
                     ),
                     emit_step_finish=lambda step, reason, usage, start_snapshot: _emit_step_finish(
                         self.options,
@@ -3929,7 +4232,9 @@ class SessionPromptProcessor:
                     resolve_model_identity=lambda: _resolve_current_model_identity(self.options),
                     usage_to_tokens=_usage_to_tokens,
                     is_overflow_tokens=is_overflow_tokens,
-                    normalize_messages=lambda loaded_messages: _normalize_messages(loaded_messages, self.options),
+                    normalize_messages=lambda loaded_messages: _normalize_messages(
+                        loaded_messages, self.options
+                    ),
                     next_assistant_message_id=_next_assistant_message_id,
                     make_tool_result=lambda success, summary, data: ToolResult(
                         success=bool(success),
@@ -3987,7 +4292,9 @@ class SessionPromptProcessor:
             self.persistence,
         )
 
-    def _resolve_pending_resume_state(self, pending: PendingAction) -> session_pending.PendingResumeState:
+    def _resolve_pending_resume_state(
+        self, pending: PendingAction
+    ) -> session_pending.PendingResumeState:
         return _native_pending_resume_state(pending)
 
     def _refresh_pending_permission_resume(
@@ -4011,7 +4318,9 @@ class SessionPromptProcessor:
             try:
                 reply_permission(str(action_id), "reject", "会话已中止")
             except Exception:
-                logger.exception("Failed to reject pending permission during cancelled resume: %s", action_id)
+                logger.exception(
+                    "Failed to reject pending permission during cancelled resume: %s", action_id
+                )
             _delete_pending_action(str(action_id))
         yield from lifecycle.emit_event(
             "error",
@@ -4164,16 +4473,18 @@ class SessionPromptProcessor:
                     finish=finish,
                     usage=usage,
                 ),
-                process_tool_calls_stream=lambda current_messages, pending_tool_calls, current_step, step_snapshot, step_usage, next_assistant_message_id: _process_tool_calls(
-                    current_messages,
-                    pending_tool_calls,
-                    current_step,
-                    pending.options,
-                    skip_first_confirmation=True,
-                    step_snapshot=step_snapshot,
-                    step_usage=step_usage,
-                    assistant_message_id=next_assistant_message_id,
-                    rotate_message_on_pause_after_progress=True,
+                process_tool_calls_stream=lambda current_messages, pending_tool_calls, current_step, step_snapshot, step_usage, next_assistant_message_id: (
+                    _process_tool_calls(
+                        current_messages,
+                        pending_tool_calls,
+                        current_step,
+                        pending.options,
+                        skip_first_confirmation=True,
+                        step_snapshot=step_snapshot,
+                        step_usage=step_usage,
+                        assistant_message_id=next_assistant_message_id,
+                        rotate_message_on_pause_after_progress=True,
+                    )
                 ),
                 resume_stream=_resume_stream,
                 next_assistant_message_id=_next_assistant_message_id,
@@ -4376,7 +4687,7 @@ def _respond_action_impl(
                     action_id=action_id,
                     options=pending.options,
                     assistant_message_id=(
-                        str((_pending_permission_tool(pending).get("messageID") or "")).strip()
+                        str(_pending_permission_tool(pending).get("messageID") or "").strip()
                         or _next_assistant_message_id()
                     ),
                     permission_payload=permission_payload,
@@ -4431,11 +4742,7 @@ def _queue_native_action_callback(
             "action_id": action_id,
             "response": response,
             "message": str(message or "").strip() or None,
-            **(
-                {"answers": copy.deepcopy(answers)}
-                if isinstance(answers, list)
-                else {}
-            ),
+            **({"answers": copy.deepcopy(answers)} if isinstance(answers, list) else {}),
         },
         front=True,
     )
@@ -4470,8 +4777,12 @@ def respond_action(
             persistence=persistence,
         )
     if persistence is not None and session_pending.is_acp_pending_action(pending):
-        return _persist_inline_stream_if_needed(_respond_action_impl(action_id, response, message, answers), persistence)
-    return _persist_inline_stream_if_needed(_respond_action_impl(action_id, response, message, answers), persistence)
+        return _persist_inline_stream_if_needed(
+            _respond_action_impl(action_id, response, message, answers), persistence
+        )
+    return _persist_inline_stream_if_needed(
+        _respond_action_impl(action_id, response, message, answers), persistence
+    )
 
 
 def confirm_action(

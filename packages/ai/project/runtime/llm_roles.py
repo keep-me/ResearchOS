@@ -21,4 +21,3 @@ __all__ = [
     "resolve_role_profile",
     "resolve_stage_model_target",
 ]
-

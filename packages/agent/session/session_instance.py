@@ -47,7 +47,7 @@ def _contains(root: str, candidate: str) -> bool:
 
 
 def _project_id_for(directory: str) -> str:
-    digest = hashlib.sha1(f"local::{directory}".encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(f"local::{directory}".encode()).hexdigest()[:16]
     return f"project_{digest}"
 
 
@@ -146,7 +146,9 @@ def _emit_disposed(directory: str, session_ids: list[str]) -> None:
 _LOCK = threading.RLock()
 _CACHE: dict[str, InstanceContext] = {}
 _STATE_CACHE: dict[str, dict[object, _StateEntry]] = {}
-_CURRENT_CONTEXT: ContextVar[InstanceContext | None] = ContextVar("researchos_instance_context", default=None)
+_CURRENT_CONTEXT: ContextVar[InstanceContext | None] = ContextVar(
+    "researchos_instance_context", default=None
+)
 _DISPOSE_ALL_CONDITION = threading.Condition(_LOCK)
 _DISPOSE_ALL_ACTIVE = False
 _DISPOSE_ALL_RESULT: list[str] = []
@@ -333,7 +335,9 @@ class Instance:
 
         for session_id in list_prompt_session_ids():
             session_record = get_session_record(session_id) or {}
-            directory = str(session_record.get("directory") or session_record.get("workspace_path") or "").strip()
+            directory = str(
+                session_record.get("directory") or session_record.get("workspace_path") or ""
+            ).strip()
             if directory:
                 directories.add(_normalize_directory(directory))
 

@@ -6,17 +6,16 @@ Create Date: 2026-04-12
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20260412_0011_add_project_research_wiki"
-down_revision: Union[str, None] = "20260411_0010_add_llm_image_generation_config"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "20260411_0010_add_llm_image_generation_config"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -134,13 +133,27 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_project_research_wiki_edges_type", table_name="project_research_wiki_edges")
-    op.drop_index("ix_project_research_wiki_edges_target_node_id", table_name="project_research_wiki_edges")
-    op.drop_index("ix_project_research_wiki_edges_source_node_id", table_name="project_research_wiki_edges")
-    op.drop_index("ix_project_research_wiki_edges_project_id", table_name="project_research_wiki_edges")
+    op.drop_index(
+        "ix_project_research_wiki_edges_target_node_id", table_name="project_research_wiki_edges"
+    )
+    op.drop_index(
+        "ix_project_research_wiki_edges_source_node_id", table_name="project_research_wiki_edges"
+    )
+    op.drop_index(
+        "ix_project_research_wiki_edges_project_id", table_name="project_research_wiki_edges"
+    )
     op.drop_table("project_research_wiki_edges")
 
-    op.drop_index("ix_project_research_wiki_nodes_type_status", table_name="project_research_wiki_nodes")
-    op.drop_index("ix_project_research_wiki_nodes_source_run_id", table_name="project_research_wiki_nodes")
-    op.drop_index("ix_project_research_wiki_nodes_source_paper_id", table_name="project_research_wiki_nodes")
-    op.drop_index("ix_project_research_wiki_nodes_project_id", table_name="project_research_wiki_nodes")
+    op.drop_index(
+        "ix_project_research_wiki_nodes_type_status", table_name="project_research_wiki_nodes"
+    )
+    op.drop_index(
+        "ix_project_research_wiki_nodes_source_run_id", table_name="project_research_wiki_nodes"
+    )
+    op.drop_index(
+        "ix_project_research_wiki_nodes_source_paper_id", table_name="project_research_wiki_nodes"
+    )
+    op.drop_index(
+        "ix_project_research_wiki_nodes_project_id", table_name="project_research_wiki_nodes"
+    )
     op.drop_table("project_research_wiki_nodes")

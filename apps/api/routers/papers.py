@@ -1,18 +1,18 @@
 """Paper management routes."""
 
-
-
 import asyncio
 import base64
 import json
 import logging
 import re
 import threading
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
+
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -28,43 +28,66 @@ from packages.ai.paper.paper_ops_service import (
     PaperPdfUnavailableError,
     PaperUploadNotFoundError,
     PaperUploadValidationError,
+)
+from packages.ai.paper.paper_ops_service import (
     apply_external_resolution as _apply_external_resolution,
+)
+from packages.ai.paper.paper_ops_service import (
     clear_pdf_derived_metadata as _clear_pdf_derived_metadata,
+)
+from packages.ai.paper.paper_ops_service import (
     ensure_paper_pdf as _ensure_paper_pdf_impl,
+)
+from packages.ai.paper.paper_ops_service import (
     extract_paper_figures_payload as _extract_paper_figures_payload_impl,
+)
+from packages.ai.paper.paper_ops_service import (
     has_real_arxiv_id as _has_real_arxiv_id,
+)
+from packages.ai.paper.paper_ops_service import (
     normalize_manual_paper_id as _normalize_manual_paper_id,
+)
+from packages.ai.paper.paper_ops_service import (
     replace_paper_pdf as _replace_paper_pdf_impl,
+)
+from packages.ai.paper.paper_ops_service import (
     resolve_external_pdf_source as _resolve_external_pdf_source,
+)
+from packages.ai.paper.paper_ops_service import (
     upload_paper_pdf as _upload_paper_pdf_impl,
 )
 from packages.ai.paper.paper_serializer import (
     attach_figure_image_urls as _attach_figure_image_urls,
+)
+from packages.ai.paper.paper_serializer import (
     paper_ocr_status_payload as _paper_ocr_status_payload,
+)
+from packages.ai.paper.paper_serializer import (
     utc_iso as _utc_iso,
 )
 from packages.config import get_settings
-from packages.domain.task_tracker import global_tracker
 from packages.domain.schemas import (
     AIExplainReq,
     PaperAutoClassifyReq,
     PaperBatchDeleteReq,
-    PaperReaderDocumentResp,
     PaperFigureAnalyzeReq,
     PaperFigureDeleteReq,
     PaperMetadataUpdateReq,
+    PaperReaderDocumentResp,
     PaperReaderNoteDraftReq,
     PaperReaderNoteReq,
     PaperReaderQueryReq,
 )
+from packages.domain.task_tracker import global_tracker
 from packages.integrations.llm_client import LLMClient
 from packages.storage.db import session_scope
 from packages.storage.models import ImageAnalysis
-from packages.storage.repository_facades import PaperDataFacade
 from packages.storage.repositories import PaperRepository
+from packages.storage.repository_facades import PaperDataFacade
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
 
 def _paper_data(session):
     return PaperDataFacade.from_session(session)
@@ -235,7 +258,9 @@ def _normalize_reader_note_dict(raw: dict) -> dict | None:
         "page_number": page_number,
         "figure_id": str(raw.get("figure_id") or "").strip() or None,
         "color": _sanitize_reader_note_color(raw.get("color")),
-        "tags": _normalize_reader_tags(raw.get("tags") if isinstance(raw.get("tags"), list) else []),
+        "tags": _normalize_reader_tags(
+            raw.get("tags") if isinstance(raw.get("tags"), list) else []
+        ),
         "pinned": bool(raw.get("pinned")),
         "status": _sanitize_reader_note_status(raw.get("status")),
         "source": _sanitize_reader_note_source(raw.get("source")),
@@ -389,7 +414,9 @@ def _reader_default_section(section_order: int, page_number: int | None) -> dict
 def _build_reader_structured_document(bundle) -> dict[str, Any] | None:  # noqa: ANN001
     from packages.ai.paper.figure_service import FigureService
 
-    content_paths = FigureService._collect_mineru_structured_json_files(bundle.output_root, "_content_list.json")
+    content_paths = FigureService._collect_mineru_structured_json_files(
+        bundle.output_root, "_content_list.json"
+    )
     if not content_paths:
         return None
 
@@ -410,14 +437,24 @@ def _build_reader_structured_document(bundle) -> dict[str, Any] | None:  # noqa:
             if not isinstance(item, dict):
                 continue
             raw_type = str(item.get("type") or "").strip().lower()
-            if raw_type not in {"text", "aside_text", "list", "equation", "image", "table", "chart"}:
+            if raw_type not in {
+                "text",
+                "aside_text",
+                "list",
+                "equation",
+                "image",
+                "table",
+                "chart",
+            }:
                 continue
             if raw_type in {"text", "aside_text", "list"}:
                 text = _resolve_reader_structured_text(item)
                 block_type = "list" if raw_type == "list" else raw_type
                 markdown = text
             else:
-                block_type, text, markdown = _resolve_reader_structured_visual_block(item, bundle.paper_id)
+                block_type, text, markdown = _resolve_reader_structured_visual_block(
+                    item, bundle.paper_id
+                )
             if not text:
                 continue
             try:
@@ -497,7 +534,9 @@ def _reader_markdown_heading_level(title: str) -> int:
 
 
 def _split_reader_markdown_paragraphs(text: str) -> list[str]:
-    blocks = [part.strip() for part in re.split(r"\n\s*\n+", str(text or "").strip()) if part.strip()]
+    blocks = [
+        part.strip() for part in re.split(r"\n\s*\n+", str(text or "").strip()) if part.strip()
+    ]
     return blocks[:240]
 
 
@@ -542,7 +581,9 @@ def _build_reader_markdown_document(bundle) -> dict[str, Any] | None:  # noqa: A
             }
         )
         block_order += 1
-        for paragraph in _split_reader_markdown_paragraphs(_strip_reader_markdown_heading(raw_title, raw_body)):
+        for paragraph in _split_reader_markdown_paragraphs(
+            _strip_reader_markdown_heading(raw_title, raw_body)
+        ):
             blocks.append(
                 {
                     "id": f"block_{block_order}",
@@ -646,13 +687,17 @@ def _rewrite_reader_markdown_assets(markdown: str, paper_id: UUID) -> str:
     return rewritten
 
 
-def _build_reader_document_payload(paper_id: UUID, bundle) -> dict[str, Any] | PaperReaderDocumentResp:  # noqa: ANN001
+def _build_reader_document_payload(
+    paper_id: UUID, bundle
+) -> dict[str, Any] | PaperReaderDocumentResp:  # noqa: ANN001
     if bundle is None:
         return PaperReaderDocumentResp(paper_id=str(paper_id))
     payload = _build_reader_structured_document(bundle) or _build_reader_markdown_document(bundle)
     if not payload:
         return PaperReaderDocumentResp(paper_id=str(paper_id))
-    payload["markdown"] = _rewrite_reader_markdown_assets(str(payload.get("markdown") or ""), paper_id)
+    payload["markdown"] = _rewrite_reader_markdown_assets(
+        str(payload.get("markdown") or ""), paper_id
+    )
     payload["paper_id"] = str(paper_id)
     return payload
 
@@ -809,9 +854,7 @@ def _normalize_reader_note_markdown(value: str | None) -> str:
 
     if not lines:
         chunks = [
-            chunk.strip()
-            for chunk in re.split(r"(?<=[。！？!?；;])\s+|\n+", raw)
-            if chunk.strip()
+            chunk.strip() for chunk in re.split(r"(?<=[。！？!?；;])\s+|\n+", raw) if chunk.strip()
         ]
         lines.extend(chunks)
 
@@ -834,9 +877,15 @@ def _parse_reader_note_text_payload(raw_text: str | None) -> dict[str, Any]:
     if not raw:
         return {}
 
-    title_match = re.search(r"^\s*(?:标题|title)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.MULTILINE)
-    tags_match = re.search(r"^\s*(?:标签|tags)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.MULTILINE)
-    color_match = re.search(r"^\s*(?:颜色|color)\s*[:：]\s*([a-zA-Z_]+)\s*$", raw, flags=re.IGNORECASE | re.MULTILINE)
+    title_match = re.search(
+        r"^\s*(?:标题|title)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.MULTILINE
+    )
+    tags_match = re.search(
+        r"^\s*(?:标签|tags)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.MULTILINE
+    )
+    color_match = re.search(
+        r"^\s*(?:颜色|color)\s*[:：]\s*([a-zA-Z_]+)\s*$", raw, flags=re.IGNORECASE | re.MULTILINE
+    )
     body_match = re.search(r"(?:正文|内容)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE | re.DOTALL)
 
     body = body_match.group(1).strip() if body_match else raw
@@ -844,7 +893,9 @@ def _parse_reader_note_text_payload(raw_text: str | None) -> dict[str, Any]:
         body_lines = [
             line
             for line in raw.splitlines()
-            if not re.match(r"^\s*(?:标题|title|标签|tags|颜色|color)\s*[:：]", line, flags=re.IGNORECASE)
+            if not re.match(
+                r"^\s*(?:标题|title|标签|tags|颜色|color)\s*[:：]", line, flags=re.IGNORECASE
+            )
         ]
         body = "\n".join(body_lines).strip()
 
@@ -872,12 +923,15 @@ def _derive_reader_note_title(
         return _clean_reader_text(section_title, max_len=36) or "研究笔记"
 
     parts = [
-        part.strip(" -:：")
-        for part in re.split(r"[。！？!?；;:\n]", source)
-        if part.strip(" -:：")
+        part.strip(" -:：") for part in re.split(r"[。！？!?；;:\n]", source) if part.strip(" -:：")
     ]
     candidate = parts[0] if parts else source
-    candidate = re.sub(r"^(?:we|this paper|the authors?|本文|作者|该段|这一段)\s+", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(
+        r"^(?:we|this paper|the authors?|本文|作者|该段|这一段)\s+",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
     if section_title and len(candidate) < 8:
         candidate = f"{section_title} · {candidate}"
     return candidate[:60]
@@ -892,9 +946,18 @@ def _derive_reader_note_tags(
 ) -> list[str]:
     corpus = " ".join(part for part in [title, content, quote, section_title or ""] if part).lower()
     rules = [
-        ("方法", r"(method|framework|architecture|module|approach|fusion|training|objective|loss|算法|方法|模块|训练|目标函数)"),
-        ("结果", r"(result|improv|outperform|better|gain|benchmark|accuracy|retrieval|vqa|结果|提升|优于|性能|指标)"),
-        ("实验", r"(experiment|ablation|compare|comparison|baseline|table|figure|fig\.|实验|对比|表\s*\d|图\s*\d)"),
+        (
+            "方法",
+            r"(method|framework|architecture|module|approach|fusion|training|objective|loss|算法|方法|模块|训练|目标函数)",
+        ),
+        (
+            "结果",
+            r"(result|improv|outperform|better|gain|benchmark|accuracy|retrieval|vqa|结果|提升|优于|性能|指标)",
+        ),
+        (
+            "实验",
+            r"(experiment|ablation|compare|comparison|baseline|table|figure|fig\.|实验|对比|表\s*\d|图\s*\d)",
+        ),
         ("公式", r"(equation|formula|loss|theorem|proof|公式|定理|证明)"),
         ("数据", r"(dataset|corpus|data|benchmark|数据集|语料|样本)"),
         ("局限", r"(limit|weakness|future|todo|unclear|need verify|待核实|局限|不足|进一步)"),
@@ -911,13 +974,23 @@ def _derive_reader_note_tags(
 
 def _derive_reader_note_color(*, content: str, tags: list[str]) -> str:
     corpus = " ".join([content, *tags]).lower()
-    if re.search(r"(局限|不足|待核实|future|todo|unclear|weakness|limit)", corpus, flags=re.IGNORECASE):
+    if re.search(
+        r"(局限|不足|待核实|future|todo|unclear|weakness|limit)", corpus, flags=re.IGNORECASE
+    ):
         return "rose"
-    if re.search(r"(结果|实验|benchmark|result|improv|outperform|comparison|ablation)", corpus, flags=re.IGNORECASE):
+    if re.search(
+        r"(结果|实验|benchmark|result|improv|outperform|comparison|ablation)",
+        corpus,
+        flags=re.IGNORECASE,
+    ):
         return "emerald"
     if re.search(r"(公式|theorem|proof|equation|formula)", corpus, flags=re.IGNORECASE):
         return "violet"
-    if re.search(r"(方法|训练|module|method|framework|architecture|objective|loss)", corpus, flags=re.IGNORECASE):
+    if re.search(
+        r"(方法|训练|module|method|framework|architecture|objective|loss)",
+        corpus,
+        flags=re.IGNORECASE,
+    ):
         return "blue"
     if re.search(r"(数据|dataset|corpus|data)", corpus, flags=re.IGNORECASE):
         return "slate"
@@ -949,7 +1022,11 @@ def _build_reader_note_deterministic_fallback(
         if page_number:
             location = f"{location} · 第 {page_number} 页"
         bullets.append(f"位置：{location}")
-    if re.search(r"(table|figure|fig\.|表\s*\d|图\s*\d|comparison|ablation|benchmark)", quote or text, flags=re.IGNORECASE):
+    if re.search(
+        r"(table|figure|fig\.|表\s*\d|图\s*\d|comparison|ablation|benchmark)",
+        quote or text,
+        flags=re.IGNORECASE,
+    ):
         bullets.append("阅读提示：该段更像图表或实验结果线索，建议结合对应表格/图像继续核对。")
     else:
         bullets.append("阅读提示：建议结合前后文继续核对证据范围、方法条件和适用边界。")
@@ -968,7 +1045,9 @@ def _build_reader_paper_context(session, repo: PaperRepository, paper, paper_id:
     abstract_zh = str(metadata.get("abstract_zh") or "").strip()
     keywords = [str(item).strip() for item in (metadata.get("keywords") or []) if str(item).strip()]
 
-    analysis_rounds = metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
+    analysis_rounds = (
+        metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
+    )
     round_chunks: list[str] = []
     for key in ("round_1", "round_2", "round_3", "final_notes"):
         round_payload = analysis_rounds.get(key) if isinstance(analysis_rounds, dict) else None
@@ -1143,7 +1222,11 @@ def _should_fallback_reader_figure_to_text(result_text: str | None) -> bool:
         "当前未配置可用的图像分析模型",
         "未配置图像分析模型",
     )
-    return any(marker in text for marker in markers) or "blocked" in lowered or "bad gateway" in lowered
+    return (
+        any(marker in text for marker in markers)
+        or "blocked" in lowered
+        or "bad gateway" in lowered
+    )
 
 
 def _get_reader_figure_row(session, paper_id: UUID, figure_id: str) -> ImageAnalysis | None:  # noqa: ANN001
@@ -1559,7 +1642,9 @@ def latest(
             date_to=date_to,
             search=search.strip() if search else None,
             keywords=keywords,
-            sort_by=sort_by if sort_by in ("created_at", "publication_date", "title", "impact") else "created_at",
+            sort_by=sort_by
+            if sort_by in ("created_at", "publication_date", "title", "impact")
+            else "created_at",
             sort_order=sort_order if sort_order in ("asc", "desc") else "desc",
         )
         resp = paper_list_response(papers, repo)
@@ -1626,7 +1711,6 @@ def recommended_papers(top_k: int = Query(default=10, ge=1, le=50)) -> dict:
 async def proxy_arxiv_pdf(arxiv_id: str):
     """Proxy arXiv PDF requests to avoid browser CORS issues."""
     import httpx
-
     from fastapi.responses import Response
 
     clean_id = re.sub(r"v\d+$", "", arxiv_id.strip())
@@ -1674,8 +1758,9 @@ def paper_detail(paper_id: UUID) -> dict:
         assigned_topics = repo.get_topics_for_paper(str(p.id), kind="folder")
         topic_map = repo.get_topic_names_for_papers([str(p.id)], kind="folder")
         # 鏌ヨ宸叉湁鍒嗘瀽鎶ュ憡
-        from packages.storage.models import AnalysisReport as AR
         from sqlalchemy import select as _sel
+
+        from packages.storage.models import AnalysisReport as AR
 
         ar = session.execute(_sel(AR).where(AR.paper_id == str(p.id))).scalar_one_or_none()
         skim_data = None
@@ -1794,8 +1879,9 @@ def update_paper_metadata(paper_id: UUID, body: PaperMetadataUpdateReq) -> dict:
         paper.metadata_json = metadata
 
         if updated_analysis:
-            from packages.storage.models import AnalysisReport
             from sqlalchemy import select as _select
+
+            from packages.storage.models import AnalysisReport
 
             report = session.execute(
                 _select(AnalysisReport).where(AnalysisReport.paper_id == str(paper.id))
@@ -1858,7 +1944,9 @@ def assign_paper_topic(paper_id: UUID, body: PaperTopicAssignReq) -> dict:
         if topic is None:
             raise HTTPException(status_code=404, detail=f"topic {body.topic_id} not found")
         if getattr(topic, "kind", "subscription") != "folder":
-            raise HTTPException(status_code=400, detail="Only folder topics can be linked to papers")
+            raise HTTPException(
+                status_code=400, detail="Only folder topics can be linked to papers"
+            )
 
         repo.link_to_topic(str(paper_id), body.topic_id)
 
@@ -1937,7 +2025,11 @@ def download_paper_pdf_async(paper_id: UUID) -> dict:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         title = str(getattr(paper, "title", "") or "").strip()
 
-    task_title = f"下载 PDF: {(title[:36] + '...') if len(title) > 36 else title}" if title else f"下载 PDF: {str(paper_id)[:8]}"
+    task_title = (
+        f"下载 PDF: {(title[:36] + '...') if len(title) > 36 else title}"
+        if title
+        else f"下载 PDF: {str(paper_id)[:8]}"
+    )
 
     def _run_task(progress_callback: Callable[[str, int, int], None] | None = None) -> dict:
         def _progress(message: str, current: int, total: int = 100) -> None:
@@ -2107,7 +2199,9 @@ def paper_reader_query(paper_id: UUID, body: PaperReaderQueryReq) -> dict:
         )
     else:
         if not figure_id:
-            raise HTTPException(status_code=400, detail="figure_id or image_base64 is required for figure query")
+            raise HTTPException(
+                status_code=400, detail="figure_id or image_base64 is required for figure query"
+            )
 
         with session_scope() as session:
             row = _get_reader_figure_row(session, paper_id, figure_id)
@@ -2142,7 +2236,11 @@ def paper_reader_query(paper_id: UUID, body: PaperReaderQueryReq) -> dict:
         prompt_digest=f"{action}:{figure_id or 'region'}:{str(body.question or '')[:120]}",
         paper_id=str(paper_id),
     )
-    if figure_id and (caption or description) and _should_fallback_reader_figure_to_text(result.content):
+    if (
+        figure_id
+        and (caption or description)
+        and _should_fallback_reader_figure_to_text(result.content)
+    ):
         fallback_prompt = _build_figure_reader_text_fallback_prompt(
             action,
             caption=str(caption or ""),
@@ -2237,15 +2335,19 @@ def save_paper_reader_note(paper_id: UUID, body: PaperReaderNoteReq) -> dict:
                 "tags": body.tags,
                 "pinned": body.pinned,
                 "status": "saved",
-                "source": (
-                    body.source
-                    or (existing or {}).get("source")
-                    or "manual"
-                ),
-                "anchor_source": body.anchor_source if body.anchor_source is not None else (existing or {}).get("anchor_source"),
-                "anchor_id": body.anchor_id if body.anchor_id is not None else (existing or {}).get("anchor_id"),
-                "section_id": body.section_id if body.section_id is not None else (existing or {}).get("section_id"),
-                "section_title": body.section_title if body.section_title is not None else (existing or {}).get("section_title"),
+                "source": (body.source or (existing or {}).get("source") or "manual"),
+                "anchor_source": body.anchor_source
+                if body.anchor_source is not None
+                else (existing or {}).get("anchor_source"),
+                "anchor_id": body.anchor_id
+                if body.anchor_id is not None
+                else (existing or {}).get("anchor_id"),
+                "section_id": body.section_id
+                if body.section_id is not None
+                else (existing or {}).get("section_id"),
+                "section_title": body.section_title
+                if body.section_title is not None
+                else (existing or {}).get("section_title"),
                 "created_at": created_at,
                 "updated_at": _utc_iso(),
             }
@@ -2332,10 +2434,17 @@ def generate_paper_reader_note_draft(paper_id: UUID, body: PaperReaderNoteDraftR
     else:
         content = _normalize_reader_note_markdown(str(content_value or ""))
 
-    title_value = _clean_reader_text(parsed.get("title"), max_len=120) or str(structured_text.get("title") or "").strip()
-    tags_value = parsed.get("tags") if isinstance(parsed.get("tags"), list) else structured_text.get("tags")
+    title_value = (
+        _clean_reader_text(parsed.get("title"), max_len=120)
+        or str(structured_text.get("title") or "").strip()
+    )
+    tags_value = (
+        parsed.get("tags") if isinstance(parsed.get("tags"), list) else structured_text.get("tags")
+    )
     color_value = parsed.get("color") or structured_text.get("color")
-    provider_error_message = result.content if LLMClient._is_provider_error_text(result.content) else ""
+    provider_error_message = (
+        result.content if LLMClient._is_provider_error_text(result.content) else ""
+    )
 
     needs_fallback = not content or _looks_like_reader_note_placeholder(content, quote or text)
     if needs_fallback:
@@ -2367,7 +2476,9 @@ def generate_paper_reader_note_draft(paper_id: UUID, body: PaperReaderNoteDraftR
         if not color_value:
             color_value = fallback_text.get("color")
 
-    if (not content or _looks_like_reader_note_placeholder(content, quote or text)) and provider_error_message:
+    if (
+        not content or _looks_like_reader_note_placeholder(content, quote or text)
+    ) and provider_error_message:
         raise HTTPException(status_code=503, detail=provider_error_message)
 
     final_title = _derive_reader_note_title(
@@ -2477,14 +2588,20 @@ def process_paper_ocr_async(
     previous_status = str(_paper_ocr_status_payload(metadata).get("status") or "").strip().lower()
     effective_force = force or previous_status == "failed"
 
-    task_title = f"OCR 处理: {(title[:36] + '...') if len(title) > 36 else title}" if title else f"OCR 处理: {str(paper_id)[:8]}"
+    task_title = (
+        f"OCR 处理: {(title[:36] + '...') if len(title) > 36 else title}"
+        if title
+        else f"OCR 处理: {str(paper_id)[:8]}"
+    )
 
     def _run_task(progress_callback: Callable[[str, int, int], None] | None = None) -> dict:
         def _progress(message: str, current: int, total: int = 100) -> None:
             if progress_callback:
                 progress_callback(message, current, total)
 
-        def _start_pulse(message: str, *, start: int = 20, end: int = 88, step: int = 2, interval: float = 1.8):
+        def _start_pulse(
+            message: str, *, start: int = 20, end: int = 88, step: int = 2, interval: float = 1.8
+        ):
             if not progress_callback:
                 return None, None
             stop_event = threading.Event()
@@ -2496,7 +2613,9 @@ def process_paper_ocr_async(
                     if current < end:
                         current = min(end, current + step)
 
-            thread = threading.Thread(target=_runner, daemon=True, name=f"ocr-progress-{str(paper_id)[:8]}")
+            thread = threading.Thread(
+                target=_runner, daemon=True, name=f"ocr-progress-{str(paper_id)[:8]}"
+            )
             thread.start()
             return stop_event, thread
 
@@ -2508,7 +2627,9 @@ def process_paper_ocr_async(
 
         _progress("检查 MinerU API 配置...", 12, 100)
         _progress("启动 MinerU API OCR 处理...", 42, 100)
-        stop_event, pulse_thread = _start_pulse("正在调用 MinerU API，生成 Markdown / 图表结构...", start=48, end=86)
+        stop_event, pulse_thread = _start_pulse(
+            "正在调用 MinerU API，生成 Markdown / 图表结构...", start=48, end=86
+        )
         try:
             bundle = MinerUOcrRuntime.ensure_bundle(paper_id, pdf_path, force=effective_force)
         finally:
@@ -2607,7 +2728,9 @@ def extract_paper_figures(
         raise
     except RuntimeError as exc:
         detail = str(exc)
-        status_code = 503 if detail.startswith("Figure extraction dependencies unavailable") else 502
+        status_code = (
+            503 if detail.startswith("Figure extraction dependencies unavailable") else 502
+        )
         raise HTTPException(status_code=status_code, detail=detail) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Figure extraction failed: {exc}") from exc
@@ -2632,7 +2755,11 @@ def extract_paper_figures_async(
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         title = str(getattr(paper, "title", "") or "").strip()
-    task_title = f"图表提取: {(title[:36] + '...') if len(title) > 36 else title}" if title else f"图表提取: {str(paper_id)[:8]}"
+    task_title = (
+        f"图表提取: {(title[:36] + '...') if len(title) > 36 else title}"
+        if title
+        else f"图表提取: {str(paper_id)[:8]}"
+    )
 
     def _run_task(
         progress_callback: Callable[[str, int, int], None] | None = None,
@@ -2667,10 +2794,11 @@ def get_figure_image(paper_id: UUID, figure_id: str):
     """Return a stored figure image file."""
     import mimetypes
 
+    from sqlalchemy import select
+
     from packages.ai.paper.figure_service import FigureService
     from packages.storage.db import session_scope
     from packages.storage.models import ImageAnalysis
-    from sqlalchemy import select
 
     with session_scope() as session:
         row = session.execute(
@@ -2729,11 +2857,11 @@ def analyze_paper_figures(
                 except HTTPException:
                     raise
                 except Exception as exc:
-                    raise HTTPException(status_code=502, detail=f"Failed to prepare PDF: {exc}") from exc
+                    raise HTTPException(
+                        status_code=502, detail=f"Failed to prepare PDF: {exc}"
+                    ) from exc
                 source_arxiv_id = (
-                    paper.arxiv_id
-                    if _has_real_arxiv_id(getattr(paper, "arxiv_id", None))
-                    else None
+                    paper.arxiv_id if _has_real_arxiv_id(getattr(paper, "arxiv_id", None)) else None
                 )
 
             svc.analyze_paper_figures(
@@ -2780,7 +2908,8 @@ def analyze_paper_figures_async(
     ]
     task_title = (
         f"图表分析: {(title[:28] + '...') if len(title) > 28 else title}"
-        if title else f"图表分析: {str(paper_id)[:8]}"
+        if title
+        else f"图表分析: {str(paper_id)[:8]}"
     )
 
     def _run_task(progress_callback: Callable[[str, int, int], None] | None = None) -> dict:
@@ -2811,7 +2940,11 @@ def analyze_paper_figures_async(
                         raise RuntimeError(str(exc.detail or exc)) from exc
                     except Exception as exc:
                         raise RuntimeError(f"Failed to prepare PDF: {exc}") from exc
-                    source_arxiv_id = paper.arxiv_id if _has_real_arxiv_id(getattr(paper, "arxiv_id", None)) else None
+                    source_arxiv_id = (
+                        paper.arxiv_id
+                        if _has_real_arxiv_id(getattr(paper, "arxiv_id", None))
+                        else None
+                    )
 
                 _progress("分析图表内容...", 58, 100)
                 svc.analyze_paper_figures(
@@ -3001,8 +3134,12 @@ def paper_reasoning_async(
             "evidence_mode": normalized_evidence_mode,
         },
     )
-    global_tracker.append_log(task_id, f"请求来源: {paper_content_source_label(requested_content_source)}")
-    global_tracker.append_log(task_id, f"证据模式: {'完整' if normalized_evidence_mode == 'full' else '粗略'}")
+    global_tracker.append_log(
+        task_id, f"请求来源: {paper_content_source_label(requested_content_source)}"
+    )
+    global_tracker.append_log(
+        task_id, f"证据模式: {'完整' if normalized_evidence_mode == 'full' else '粗略'}"
+    )
     return {"task_id": task_id, "status": "running", "message": "推理链分析任务已启动"}
 
 
@@ -3064,8 +3201,12 @@ def analyze_paper_rounds(
             "evidence_mode": normalized_evidence_mode,
         },
     )
-    global_tracker.append_log(task_id, f"请求来源: {paper_content_source_label(requested_content_source)}")
-    global_tracker.append_log(task_id, f"证据模式: {'完整' if normalized_evidence_mode == 'full' else '粗略'}")
+    global_tracker.append_log(
+        task_id, f"请求来源: {paper_content_source_label(requested_content_source)}"
+    )
+    global_tracker.append_log(
+        task_id, f"证据模式: {'完整' if normalized_evidence_mode == 'full' else '粗略'}"
+    )
     global_tracker.register_retry(
         task_id,
         lambda: global_tracker.submit(

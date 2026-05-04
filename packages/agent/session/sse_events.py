@@ -38,4 +38,3 @@ def format_sse_event(event_name: str, data: dict[str, Any] | None = None) -> str
 
 
 __all__ = ["coerce_runtime_event", "format_sse_event", "parse_sse_event"]
-

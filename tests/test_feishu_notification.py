@@ -50,11 +50,15 @@ def test_feishu_config_repository_roundtrip(monkeypatch: pytest.MonkeyPatch) -> 
             "timeout_action": updated.timeout_action,
         }
         current = repo.get_active()
-        current_snapshot = None if current is None else {
-            "mode": current.mode,
-            "timeout_seconds": current.timeout_seconds,
-            "timeout_action": current.timeout_action,
-        }
+        current_snapshot = (
+            None
+            if current is None
+            else {
+                "mode": current.mode,
+                "timeout_seconds": current.timeout_seconds,
+                "timeout_action": current.timeout_action,
+            }
+        )
 
     assert updated_snapshot == {
         "mode": "push",
@@ -136,7 +140,9 @@ def test_notify_project_run_status_sends_feishu_checkpoint(monkeypatch: pytest.M
             captured["event"] = kwargs
             return {"sent": True, "channel": "feishu"}
 
-    monkeypatch.setattr(project_notification_service, "FeishuNotificationService", FakeFeishuNotificationService)
+    monkeypatch.setattr(
+        project_notification_service, "FeishuNotificationService", FakeFeishuNotificationService
+    )
 
     result = project_notification_service.notify_project_run_status(run_id, "paused")
     assert result["sent"] is True
@@ -148,7 +154,9 @@ def test_notify_project_run_status_sends_feishu_checkpoint(monkeypatch: pytest.M
     assert "实现与实验" in captured["event"]["body"]
 
 
-def test_notify_project_run_status_interactive_starts_waiter(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_notify_project_run_status_interactive_starts_waiter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
 
     with db.session_scope() as session:
@@ -210,8 +218,12 @@ def test_notify_project_run_status_interactive_starts_waiter(monkeypatch: pytest
         }
         return True
 
-    monkeypatch.setattr(project_notification_service, "FeishuNotificationService", FakeFeishuNotificationService)
-    monkeypatch.setattr(project_notification_service, "_start_interactive_checkpoint_waiter", _fake_start_waiter)
+    monkeypatch.setattr(
+        project_notification_service, "FeishuNotificationService", FakeFeishuNotificationService
+    )
+    monkeypatch.setattr(
+        project_notification_service, "_start_interactive_checkpoint_waiter", _fake_start_waiter
+    )
 
     result = project_notification_service.notify_project_run_status(run_id, "paused")
     assert result["sent"] is True
@@ -221,7 +233,9 @@ def test_notify_project_run_status_interactive_starts_waiter(monkeypatch: pytest
     assert captured["waiter"]["timeout_seconds"] == 120
 
 
-def test_await_interactive_checkpoint_reply_processes_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_await_interactive_checkpoint_reply_processes_approve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
 
     with db.session_scope() as session:
@@ -273,14 +287,19 @@ def test_await_interactive_checkpoint_reply_processes_approve(monkeypatch: pytes
         lambda run_id, message, level="info": messages.append((level, message)),
     )
 
-    def _fake_process_checkpoint_response(run_id: str, *, action: str, comment: str | None = None, response_source: str | None = None):
+    def _fake_process_checkpoint_response(
+        run_id: str, *, action: str, comment: str | None = None, response_source: str | None = None
+    ):
         handled["run_id"] = run_id
         handled["action"] = action
         handled["comment"] = comment
         handled["response_source"] = response_source
         return {"action": action}
 
-    monkeypatch.setattr("packages.ai.project.checkpoint_service.process_checkpoint_response", _fake_process_checkpoint_response)
+    monkeypatch.setattr(
+        "packages.ai.project.checkpoint_service.process_checkpoint_response",
+        _fake_process_checkpoint_response,
+    )
 
     project_notification_service._await_interactive_checkpoint_reply(
         run_id,
@@ -330,14 +349,19 @@ def test_interactive_timeout_auto_approve(monkeypatch: pytest.MonkeyPatch) -> No
         lambda run_id, message, level="info": messages.append((level, message)),
     )
 
-    def _fake_process_checkpoint_response(run_id: str, *, action: str, comment: str | None = None, response_source: str | None = None):
+    def _fake_process_checkpoint_response(
+        run_id: str, *, action: str, comment: str | None = None, response_source: str | None = None
+    ):
         calls["run_id"] = run_id
         calls["action"] = action
         calls["comment"] = comment
         calls["response_source"] = response_source
         return {"action": action}
 
-    monkeypatch.setattr("packages.ai.project.checkpoint_service.process_checkpoint_response", _fake_process_checkpoint_response)
+    monkeypatch.setattr(
+        "packages.ai.project.checkpoint_service.process_checkpoint_response",
+        _fake_process_checkpoint_response,
+    )
 
     service = feishu_service.FeishuNotificationService(
         mode="interactive",
@@ -365,7 +389,9 @@ def test_interactive_timeout_wait_keeps_paused(monkeypatch: pytest.MonkeyPatch) 
     def _raise_if_called(*args, **kwargs):
         raise AssertionError("process_checkpoint_response should not be called in wait mode")
 
-    monkeypatch.setattr("packages.ai.project.checkpoint_service.process_checkpoint_response", _raise_if_called)
+    monkeypatch.setattr(
+        "packages.ai.project.checkpoint_service.process_checkpoint_response", _raise_if_called
+    )
 
     service = feishu_service.FeishuNotificationService(
         mode="interactive",

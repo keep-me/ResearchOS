@@ -86,9 +86,13 @@ def test_mineru_runtime_returns_cached_bundle_without_rerun(monkeypatch, tmp_pat
     monkeypatch.setattr(
         MinerUOcrRuntime,
         "_run_remote_api_mineru",
-        classmethod(lambda cls, **kwargs: (_ for _ in ()).throw(AssertionError("should not rerun"))),
+        classmethod(
+            lambda cls, **kwargs: (_ for _ in ()).throw(AssertionError("should not rerun"))
+        ),
     )
-    monkeypatch.setattr(MinerUOcrRuntime, "_sync_paper_metadata", classmethod(lambda cls, pid, manifest: None))
+    monkeypatch.setattr(
+        MinerUOcrRuntime, "_sync_paper_metadata", classmethod(lambda cls, pid, manifest: None)
+    )
 
     bundle = MinerUOcrRuntime.ensure_bundle(paper_id, str(pdf_path))
 
@@ -130,7 +134,9 @@ def test_mineru_runtime_force_bypasses_cached_success_bundle(monkeypatch, tmp_pa
         }
 
     monkeypatch.setattr(MinerUOcrRuntime, "_run_remote_api_mineru", classmethod(_fake_remote_run))
-    monkeypatch.setattr(MinerUOcrRuntime, "_sync_paper_metadata", classmethod(lambda cls, pid, manifest: None))
+    monkeypatch.setattr(
+        MinerUOcrRuntime, "_sync_paper_metadata", classmethod(lambda cls, pid, manifest: None)
+    )
     monkeypatch.setenv("MINERU_API_TOKEN", "token-123")
 
     bundle = MinerUOcrRuntime.ensure_bundle(paper_id, str(pdf_path), force=True)
@@ -151,7 +157,9 @@ def test_mineru_runtime_runs_remote_api_and_persists_manifest(monkeypatch, tmp_p
     def _fake_remote_run(cls, *, paper_id, pdf_path, output_root):
         del cls, paper_id, pdf_path
         (output_root / "bundle").mkdir(parents=True, exist_ok=True)
-        (output_root / "bundle" / "paper.md").write_text("# OCR\n\nfresh markdown", encoding="utf-8")
+        (output_root / "bundle" / "paper.md").write_text(
+            "# OCR\n\nfresh markdown", encoding="utf-8"
+        )
         (output_root / "bundle" / "paper_content_list.json").write_text("[]", encoding="utf-8")
         return {
             "backend": "api",
@@ -164,7 +172,9 @@ def test_mineru_runtime_runs_remote_api_and_persists_manifest(monkeypatch, tmp_p
     monkeypatch.setattr(
         MinerUOcrRuntime,
         "_sync_paper_metadata",
-        classmethod(lambda cls, pid, manifest: synced.update({"paper_id": pid, "manifest": dict(manifest)})),
+        classmethod(
+            lambda cls, pid, manifest: synced.update({"paper_id": pid, "manifest": dict(manifest)})
+        ),
     )
     monkeypatch.setenv("MINERU_API_TOKEN", "token-123")
 

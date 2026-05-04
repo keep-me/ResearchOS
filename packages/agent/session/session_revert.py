@@ -127,12 +127,18 @@ def resolved_diff_path(diff: dict[str, Any]) -> str:
 def diff_identity(diff: dict[str, Any]) -> str:
     resolved_path = resolved_diff_path(diff)
     if resolved_path:
-        prefix = "remote" if is_remote_workspace(clean_text(diff.get("workspace_server_id"))) else "local"
+        prefix = (
+            "remote"
+            if is_remote_workspace(clean_text(diff.get("workspace_server_id")))
+            else "local"
+        )
         return f"{prefix}::{resolved_path}"
     file_value = clean_text(diff.get("file"))
     if not file_value:
         return ""
-    prefix = "remote" if is_remote_workspace(clean_text(diff.get("workspace_server_id"))) else "local"
+    prefix = (
+        "remote" if is_remote_workspace(clean_text(diff.get("workspace_server_id"))) else "local"
+    )
     return f"{prefix}::{file_value}"
 
 
@@ -148,7 +154,11 @@ def merge_diff_records(existing: dict[str, Any], incoming: dict[str, Any]) -> di
     if not existing_file:
         if incoming_file:
             result["file"] = copy.deepcopy(incoming.get("file"))
-    elif incoming_file and path_is_absolute(existing_file, remote=False) and not path_is_absolute(incoming_file, remote=False):
+    elif (
+        incoming_file
+        and path_is_absolute(existing_file, remote=False)
+        and not path_is_absolute(incoming_file, remote=False)
+    ):
         result["file"] = copy.deepcopy(incoming.get("file"))
 
     if "before" not in result and "before" in incoming:
@@ -377,4 +387,3 @@ def unrevert_session(session_id_value: str | None) -> dict[str, Any]:
             summary_diffs=None,
         )
     return session_store.get_session_record(sid) or record
-

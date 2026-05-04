@@ -90,8 +90,7 @@ CLAW_MANUAL_MCP_TOOL_NAMES: tuple[str, ...] = (
 
 def normalize_mcp_name(value: str) -> str:
     return "".join(
-        char if char.isalnum() or char in {"_", "-"} else "_"
-        for char in str(value or "")
+        char if char.isalnum() or char in {"_", "-"} else "_" for char in str(value or "")
     )
 
 
@@ -125,7 +124,9 @@ def bridge_tool_names(
 ) -> list[str]:
     existing = {str(item).strip() for item in (existing_names or set()) if str(item).strip()}
     names = [item for item in CLAW_MANUAL_MCP_TOOL_NAMES if item and item not in existing]
-    names.extend(tool.name for tool in iter_dynamic_bridge_tool_defs(existing_names=existing | set(names)))
+    names.extend(
+        tool.name for tool in iter_dynamic_bridge_tool_defs(existing_names=existing | set(names))
+    )
     return names
 
 
@@ -143,4 +144,3 @@ def bridge_qualified_tool_names(
 def filter_public_tool_names(tool_names: list[str] | tuple[str, ...] | set[str]) -> list[str]:
     allowed = set(bridge_tool_names())
     return [name for name in tool_names if str(name or "").strip() in allowed]
-

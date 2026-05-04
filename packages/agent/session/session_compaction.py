@@ -60,7 +60,9 @@ def _message_tokens(message: dict[str, Any]) -> int:
 
 
 def _message_text(parts: list[dict[str, Any]]) -> str:
-    return "".join(str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text")
+    return "".join(
+        str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text"
+    )
 
 
 def _clone_parts(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -128,7 +130,9 @@ def _generate_summary(
     model_id: str,
     auto: bool,
 ) -> tuple[str, dict[str, Any], list[dict[str, Any]] | None, str | None]:
-    messages, latest_message, replay_parts, replay_text = _build_summary_messages(session_id, auto=auto)
+    messages, latest_message, replay_parts, replay_text = _build_summary_messages(
+        session_id, auto=auto
+    )
     del latest_message
 
     llm = LLMClient()
@@ -251,9 +255,13 @@ def summarize_session(
         content="",
         meta=build_user_message_meta(
             agent=str(latest_user_info.get("agent") or "").strip() or None,
-            model=latest_user_info.get("model") if isinstance(latest_user_info.get("model"), dict) else None,
+            model=latest_user_info.get("model")
+            if isinstance(latest_user_info.get("model"), dict)
+            else None,
             format=latest_user_info.get("format"),
-            tools=latest_user_info.get("tools") if isinstance(latest_user_info.get("tools"), dict) else None,
+            tools=latest_user_info.get("tools")
+            if isinstance(latest_user_info.get("tools"), dict)
+            else None,
             system=str(latest_user_info.get("system") or "").strip() or None,
             variant=str(latest_user_info.get("variant") or "").strip() or None,
             fallback_agent=str(session_record.get("mode") or "build"),
@@ -296,9 +304,13 @@ def summarize_session(
             content=replay_text,
             meta=build_user_message_meta(
                 agent=str(latest_user_info.get("agent") or "").strip() or None,
-                model=latest_user_info.get("model") if isinstance(latest_user_info.get("model"), dict) else None,
+                model=latest_user_info.get("model")
+                if isinstance(latest_user_info.get("model"), dict)
+                else None,
                 format=latest_user_info.get("format"),
-                tools=latest_user_info.get("tools") if isinstance(latest_user_info.get("tools"), dict) else None,
+                tools=latest_user_info.get("tools")
+                if isinstance(latest_user_info.get("tools"), dict)
+                else None,
                 system=str(latest_user_info.get("system") or "").strip() or None,
                 variant=str(latest_user_info.get("variant") or "").strip() or None,
                 fallback_agent=str(session_record.get("mode") or "build"),
@@ -312,4 +324,3 @@ def summarize_session(
         "summary": summary_message,
         "replay": replay_message,
     }
-

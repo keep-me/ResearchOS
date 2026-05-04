@@ -32,9 +32,10 @@ def paper_ocr_status_payload(metadata: dict[str, Any] | None) -> dict[str, Any]:
 
 def attach_figure_image_urls(paper_id: UUID, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for item in items:
-        item["image_url"] = f"/papers/{paper_id}/figures/{item['id']}/image" if item.get("has_image") else None
+        item["image_url"] = (
+            f"/papers/{paper_id}/figures/{item['id']}/image" if item.get("has_image") else None
+        )
     return items
 
 
 __all__ = ["attach_figure_image_urls", "paper_ocr_status_payload", "utc_iso"]
-

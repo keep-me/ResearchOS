@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useState, type CSSProperties, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { AgentPermissionPreset } from "@/contexts/AgentWorkbenchContext";
 import type { WorkspaceTerminalState } from "@/components/WorkspaceTerminal";
@@ -777,7 +777,7 @@ export function formatSessionReviewTimestamp(value: number | null | undefined): 
 export interface FloatingPopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
-  panelRef?: RefObject<HTMLDivElement | null>;
+  panelRef?: MutableRefObject<HTMLDivElement | null>;
   align?: "left" | "right";
   className: string;
   children: ReactNode;
@@ -839,7 +839,7 @@ export function FloatingPopover({
   if (!open || !floatingStyle || typeof document === "undefined") return null;
 
   return createPortal(
-    <div ref={panelRef} className={className} style={floatingStyle}>
+    <div ref={(node) => { if (panelRef) panelRef.current = node; }} className={className} style={floatingStyle}>
       {children}
     </div>,
     document.body,

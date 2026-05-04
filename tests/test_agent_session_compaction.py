@@ -75,8 +75,13 @@ class FakeCompactionLLM:
             "",
         )
         if "Provide a detailed prompt for continuing our conversation above." in last_user:
-            yield StreamEvent(type="text_delta", content="## Goal\n继续当前任务\n\n## Accomplished\n已完成压缩摘要。")
-            yield StreamEvent(type="usage", model="fake-summary-model", input_tokens=44, output_tokens=12)
+            yield StreamEvent(
+                type="text_delta",
+                content="## Goal\n继续当前任务\n\n## Accomplished\n已完成压缩摘要。",
+            )
+            yield StreamEvent(
+                type="usage", model="fake-summary-model", input_tokens=44, output_tokens=12
+            )
             return
 
         if FakeCompactionLLM.overflow_on_first_chat and FakeCompactionLLM.normal_chat_calls == 0:
@@ -118,12 +123,19 @@ class FakeToolStepCompactionLLM:
             "",
         )
         if "Provide a detailed prompt for continuing our conversation above." in last_user:
-            yield StreamEvent(type="text_delta", content="## Goal\n继续执行\n\n## Accomplished\n已完成工具步骤并压缩。")
-            yield StreamEvent(type="usage", model="fake-summary-model", input_tokens=48, output_tokens=16)
+            yield StreamEvent(
+                type="text_delta",
+                content="## Goal\n继续执行\n\n## Accomplished\n已完成工具步骤并压缩。",
+            )
+            yield StreamEvent(
+                type="usage", model="fake-summary-model", input_tokens=48, output_tokens=16
+            )
             return
         if "Continue if you have next steps" in last_user:
             yield StreamEvent(type="text_delta", content="压缩后继续完成任务。")
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=12, output_tokens=8)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=12, output_tokens=8
+            )
             return
 
         yield StreamEvent(
@@ -132,7 +144,9 @@ class FakeToolStepCompactionLLM:
             tool_name="bash",
             tool_arguments='{"command":"echo ok"}',
         )
-        yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=140000, output_tokens=30000)
+        yield StreamEvent(
+            type="usage", model="fake-chat-model", input_tokens=140000, output_tokens=30000
+        )
 
 
 def _patch_compaction_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,7 +161,9 @@ def _patch_step_compaction_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     FakeToolStepCompactionLLM.calls = []
     monkeypatch.setattr(agent_service, "LLMClient", FakeToolStepCompactionLLM)
     monkeypatch.setattr(session_compaction, "LLMClient", FakeToolStepCompactionLLM)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
 
     def _fake_execute_tool_stream(_name, _arguments, context=None):  # noqa: ANN001, ANN202
         del context
@@ -217,7 +233,8 @@ def test_session_summarize_route_persists_summary_and_reuses_compacted_history(
 
     followup_messages = FakeCompactionLLM.calls[-1]
     assert any(
-        str(item.get("role") or "") == "user" and "What did we do so far?" in str(item.get("content") or "")
+        str(item.get("role") or "") == "user"
+        and "What did we do so far?" in str(item.get("content") or "")
         for item in followup_messages
     )
     assert any(
@@ -280,7 +297,9 @@ def test_auto_overflow_compaction_creates_replay_message_and_excludes_latest_pro
     assert history[5]["parts"][0]["text"] == "请继续完成最后一步"
 
     summary_messages = FakeCompactionLLM.calls[0]
-    assert not any("请继续完成最后一步" in str(item.get("content") or "") for item in summary_messages)
+    assert not any(
+        "请继续完成最后一步" in str(item.get("content") or "") for item in summary_messages
+    )
 
 
 def test_auto_overflow_compaction_replay_preserves_user_message_meta(
@@ -426,9 +445,14 @@ def test_preflight_auto_compaction_runs_before_answering_new_prompt(
     assert history[6]["info"]["parentID"] == history[5]["info"]["id"]
 
     final_prompt_messages = FakeCompactionLLM.calls[-1]
-    assert any("What did we do so far?" in str(item.get("content") or "") for item in final_prompt_messages)
+    assert any(
+        "What did we do so far?" in str(item.get("content") or "") for item in final_prompt_messages
+    )
     assert any("## Goal" in str(item.get("content") or "") for item in final_prompt_messages)
-    assert not any("前序上下文：这里积累了很多长历史。" in str(item.get("content") or "") for item in final_prompt_messages)
+    assert not any(
+        "前序上下文：这里积累了很多长历史。" in str(item.get("content") or "")
+        for item in final_prompt_messages
+    )
 
 
 def test_context_overflow_error_triggers_auto_compaction_and_resume(
@@ -568,7 +592,9 @@ def test_post_step_auto_compaction_persists_completed_assistant_and_rolls_over_m
     first_assistant = history[1]
     assert first_assistant["info"]["finish"] == "tool-calls"
     assert any(
-        part["type"] == "tool" and part["state"]["status"] == "completed" and part.get("summary") == "命令执行成功"
+        part["type"] == "tool"
+        and part["state"]["status"] == "completed"
+        and part.get("summary") == "命令执行成功"
         for part in first_assistant["parts"]
     )
 
@@ -586,7 +612,8 @@ def test_post_step_auto_compaction_persists_completed_assistant_and_rolls_over_m
         for messages in FakeToolStepCompactionLLM.calls
         if any(
             str(item.get("role") or "") == "user"
-            and "Provide a detailed prompt for continuing our conversation above." in str(item.get("content") or "")
+            and "Provide a detailed prompt for continuing our conversation above."
+            in str(item.get("content") or "")
             for item in messages
         )
     )
@@ -597,6 +624,10 @@ def test_post_step_auto_compaction_persists_completed_assistant_and_rolls_over_m
 
     continuation_messages = FakeToolStepCompactionLLM.calls[-1]
     assert any("## Goal" in str(item.get("content") or "") for item in continuation_messages)
-    assert any("Continue if you have next steps" in str(item.get("content") or "") for item in continuation_messages)
-    assert not any("先执行工具再继续" in str(item.get("content") or "") for item in continuation_messages)
-
+    assert any(
+        "Continue if you have next steps" in str(item.get("content") or "")
+        for item in continuation_messages
+    )
+    assert not any(
+        "先执行工具再继续" in str(item.get("content") or "") for item in continuation_messages
+    )

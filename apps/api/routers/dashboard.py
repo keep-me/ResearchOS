@@ -17,8 +17,8 @@ from packages.ai.research.arxiv_trend_service import ArxivTrendService
 from packages.ai.research.recommendation_service import TrendService
 from packages.domain.enums import ReadStatus
 from packages.domain.task_tracker import global_tracker
-from packages.storage.models import AnalysisReport, Citation, Paper, PaperTopic, TopicSubscription
 from packages.storage.db import session_scope
+from packages.storage.models import AnalysisReport, Citation, Paper, PaperTopic, TopicSubscription
 from packages.storage.repository_facades import PaperDataFacade, ProjectDataFacade, TopicDataFacade
 
 router = APIRouter()
@@ -84,8 +84,16 @@ def _build_topic_card(
     citation_edge_count: int,
 ) -> dict:
     paper_count = len(members)
-    deep_read = sum(1 for paper, _report, _score in members if _read_status_value(paper) == ReadStatus.deep_read.value)
-    skimmed = sum(1 for paper, _report, _score in members if _read_status_value(paper) == ReadStatus.skimmed.value)
+    deep_read = sum(
+        1
+        for paper, _report, _score in members
+        if _read_status_value(paper) == ReadStatus.deep_read.value
+    )
+    skimmed = sum(
+        1
+        for paper, _report, _score in members
+        if _read_status_value(paper) == ReadStatus.skimmed.value
+    )
     unread = max(0, paper_count - deep_read - skimmed)
     weighted_completion = round(((deep_read + skimmed * 0.5) / max(1, paper_count)) * 100)
 
@@ -113,11 +121,15 @@ def _build_topic_card(
 
 def _library_focus_snapshot(session, paper_repo) -> dict:
     topic_cards = []
-    topics = session.execute(
-        select(TopicSubscription)
-        .where(TopicSubscription.kind == "folder")
-        .order_by(TopicSubscription.created_at.desc())
-    ).scalars().all()
+    topics = (
+        session.execute(
+            select(TopicSubscription)
+            .where(TopicSubscription.kind == "folder")
+            .order_by(TopicSubscription.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
     topic_ids = [topic.id for topic in topics]
     topic_member_rows = []
     if topic_ids:
@@ -133,7 +145,9 @@ def _library_focus_snapshot(session, paper_repo) -> dict:
         members_by_topic.setdefault(str(topic_id), []).append((paper, report, score))
 
     for topic in topics:
-        members = sorted(members_by_topic.get(str(topic.id), []), key=lambda row: row[2], reverse=True)
+        members = sorted(
+            members_by_topic.get(str(topic.id), []), key=lambda row: row[2], reverse=True
+        )
         topic_paper_ids = {str(paper.id) for paper, _report, _score in members}
         topic_cards.append(
             _build_topic_card(
@@ -197,7 +211,9 @@ def dashboard_home(
             projects.append(
                 {
                     **_serialize_project_summary(project, project_repo),
-                    "latest_run": _serialize_run_summary(latest_run) if latest_run is not None else None,
+                    "latest_run": _serialize_run_summary(latest_run)
+                    if latest_run is not None
+                    else None,
                     "active_task_count": active_task_count,
                 }
             )

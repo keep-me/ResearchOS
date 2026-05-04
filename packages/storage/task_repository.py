@@ -109,7 +109,9 @@ class TaskRepository:
         if task_type:
             query = query.where(TaskRecord.task_type == task_type)
         query = query.order_by(
-            func.coalesce(TaskRecord.finished_at, TaskRecord.updated_at, TaskRecord.started_at).desc()
+            func.coalesce(
+                TaskRecord.finished_at, TaskRecord.updated_at, TaskRecord.started_at
+            ).desc()
         ).limit(max(1, limit))
         rows = self.session.execute(query).scalars().all()
         return list(rows)
@@ -123,7 +125,9 @@ class TaskRepository:
         return True
 
     def delete_tasks(self, task_ids: list[str]) -> int:
-        normalized = [str(task_id or "").strip() for task_id in task_ids if str(task_id or "").strip()]
+        normalized = [
+            str(task_id or "").strip() for task_id in task_ids if str(task_id or "").strip()
+        ]
         if not normalized:
             return 0
         statement = delete(TaskRecord).where(TaskRecord.task_id.in_(normalized))

@@ -16,20 +16,25 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm.exc import StaleDataError
 
 from apps.api.deps import iso_dt, paper_list_response, pipelines
-from packages.domain.enums import (
-    ActionType,
-    ProjectRunActionType,
-    ProjectRunStatus,
-    ProjectWorkflowType,
+from packages.agent.runtime.acp_service import get_acp_registry_service
+from packages.agent.session.session_runtime import (
+    list_session_messages,
+    list_sessions,
+)
+from packages.agent.workspace.workspace_executor import (
+    default_projects_root,
+    inspect_workspace,
+    run_workspace_command,
 )
 from packages.agent.workspace.workspace_remote import build_remote_overview, remote_terminal_result
 from packages.agent.workspace.workspace_server_registry import get_workspace_server_entry
+from packages.ai.paper.pipelines import PaperPipelines
 from packages.ai.project.amadeus_compat import (
     amadeus_action_label,
+    build_remote_session_name,
     build_run_directory,
     build_run_log_path,
     build_run_workspace_path,
-    build_remote_session_name,
     describe_sync_strategy,
     infer_sync_strategy,
 )
@@ -45,50 +50,59 @@ from packages.ai.project.execution_service import (
     submit_project_run,
     supports_project_run,
 )
-from packages.agent.runtime.acp_service import get_acp_registry_service
-from packages.agent.session.session_runtime import (
-    list_session_messages,
-    list_sessions,
-)
-from packages.domain.task_tracker import global_tracker
-from packages.ai.project.run_action_service import submit_project_run_action
 from packages.ai.project.followup_actions import list_followup_actions
+from packages.ai.project.output_sanitizer import sanitize_project_run_metadata
+from packages.ai.project.paper_context import (
+    clean_text as _clean_paper_context_text,
+)
+from packages.ai.project.paper_context import (
+    load_analysis_reports,
+    normalize_paper_ids,
+    paper_ref_from_model,
+)
+from packages.ai.project.paper_context import (
+    merge_refs as merge_paper_refs,
+)
+from packages.ai.project.project_serializer import (
+    serialize_idea as _serialize_idea,
+)
+from packages.ai.project.project_serializer import (
+    serialize_repo as _serialize_repo,
+)
+from packages.ai.project.project_serializer import (
+    serialize_report as _serialize_report,
+)
+from packages.ai.project.project_serializer import (
+    serialize_run_action as _serialize_run_action_payload,
+)
+from packages.ai.project.report_formatter import build_workflow_report_markdown, markdown_excerpt
+from packages.ai.project.run_action_service import submit_project_run_action
 from packages.ai.project.workflow_catalog import (
     build_run_orchestration,
     build_stage_trace,
     is_active_project_workflow,
     list_project_agent_templates,
-    list_public_project_workflow_presets,
     list_project_workflow_presets,
+    list_public_project_workflow_presets,
 )
-from packages.ai.project.output_sanitizer import sanitize_project_run_metadata
-from packages.ai.project.report_formatter import build_workflow_report_markdown, markdown_excerpt
-from packages.ai.project.paper_context import (
-    clean_text as _clean_paper_context_text,
-    load_analysis_reports,
-    merge_refs as merge_paper_refs,
-    normalize_paper_ids,
-    paper_ref_from_model,
+from packages.domain.enums import (
+    ActionType,
+    ProjectRunActionType,
+    ProjectRunStatus,
+    ProjectWorkflowType,
 )
-from packages.ai.project.project_serializer import (
-    serialize_idea as _serialize_idea,
-    serialize_repo as _serialize_repo,
-    serialize_report as _serialize_report,
-    serialize_run_action as _serialize_run_action_payload,
-)
-from packages.agent.workspace.workspace_executor import default_projects_root, inspect_workspace, run_workspace_command
+from packages.domain.task_tracker import global_tracker
+from packages.integrations.llm_client import LLMClient
 from packages.integrations.llm_engine_profiles import (
     list_llm_engine_profiles,
     public_engine_profile_payload,
     recommend_llm_engine_profiles,
     resolve_llm_engine_profile,
 )
-from packages.integrations.llm_client import LLMClient
-from packages.ai.paper.pipelines import PaperPipelines
 from packages.storage.db import session_scope
 from packages.storage.models import Paper
-from packages.storage.repository_facades import ProjectDataFacade
 from packages.storage.repositories import PaperRepository, ProjectRepository
+from packages.storage.repository_facades import ProjectDataFacade
 
 router = APIRouter()
 
@@ -168,7 +182,10 @@ def _build_run_paper_index(
     selected_ids = normalize_paper_ids(selected_paper_ids)
     project_rows = project_repo.list_project_papers(project_id)
     project_ids = [str(paper.id) for _link, paper in project_rows]
-    ordered_ids = [*selected_ids, *[paper_id for paper_id in project_ids if paper_id not in selected_ids]]
+    ordered_ids = [
+        *selected_ids,
+        *[paper_id for paper_id in project_ids if paper_id not in selected_ids],
+    ]
     if not ordered_ids:
         return []
 
@@ -218,12 +235,16 @@ def _candidate_to_external_entry(candidate: dict) -> dict:
         "venue_tier": _clean_paper_context_text(candidate.get("venue_tier")) or None,
         "authors": [
             _clean_paper_context_text(item)
-            for item in (candidate.get("authors") if isinstance(candidate.get("authors"), list) else [])
+            for item in (
+                candidate.get("authors") if isinstance(candidate.get("authors"), list) else []
+            )
             if _clean_paper_context_text(item)
         ],
         "categories": [
             _clean_paper_context_text(item)
-            for item in (candidate.get("categories") if isinstance(candidate.get("categories"), list) else [])
+            for item in (
+                candidate.get("categories") if isinstance(candidate.get("categories"), list) else []
+            )
             if _clean_paper_context_text(item)
         ],
         "arxiv_id": _clean_paper_context_text(candidate.get("arxiv_id")) or None,
@@ -353,7 +374,7 @@ def _tail_local_file(path: str | None, *, limit: int = 60) -> list[str]:
         lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
-    return lines[-max(1, limit):]
+    return lines[-max(1, limit) :]
 
 
 def _local_workspace_health(path: str | None) -> dict:
@@ -393,7 +414,7 @@ def _local_workspace_health(path: str | None) -> dict:
         "git": None,
         "tree": overview.get("tree"),
         "runtime": runtime,
-        "disk_free_gb": round(disk.free / (1024 ** 3), 2),
+        "disk_free_gb": round(disk.free / (1024**3), 2),
         "message": None,
     }
 
@@ -416,7 +437,9 @@ def _remote_workspace_health(server_id: str, path: str | None) -> dict:
         ("uv", "uv --version"),
     ):
         try:
-            result = remote_terminal_result(server_entry, path=workspace_path, command=command, timeout_sec=20)
+            result = remote_terminal_result(
+                server_entry, path=workspace_path, command=command, timeout_sec=20
+            )
             runtime[command_key] = {
                 "available": bool(result.get("success")),
                 "detail": str(result.get("stdout") or result.get("stderr") or "").strip()[:240],
@@ -484,7 +507,9 @@ def _collect_local_artifacts(path: str | None, *, limit: int = 40) -> list[dict]
     return items
 
 
-def _merge_artifact_refs(scanned: list[dict], persisted: list[dict], *, limit: int = 40) -> list[dict]:
+def _merge_artifact_refs(
+    scanned: list[dict], persisted: list[dict], *, limit: int = 40
+) -> list[dict]:
     merged: list[dict] = []
     index_by_path: dict[str, int] = {}
     for item in [*(scanned or []), *(persisted or [])]:
@@ -514,14 +539,18 @@ def _merge_artifact_refs(scanned: list[dict], persisted: list[dict], *, limit: i
 
 def _collect_run_artifacts(run, *, limit: int = 40) -> list[dict]:
     metadata = dict(run.metadata_json or {})
-    persisted_refs = [item for item in (metadata.get("artifact_refs") or []) if isinstance(item, dict)]
+    persisted_refs = [
+        item for item in (metadata.get("artifact_refs") or []) if isinstance(item, dict)
+    ]
     run_directory = _clean_text(run.run_directory)
     if not run_directory:
         return persisted_refs[:limit]
     if run.workspace_server_id:
         try:
             server_entry = get_workspace_server_entry(str(run.workspace_server_id))
-            overview = build_remote_overview(server_entry, run_directory, depth=3, max_entries=limit)
+            overview = build_remote_overview(
+                server_entry, run_directory, depth=3, max_entries=limit
+            )
         except Exception:
             return persisted_refs[:limit]
         scanned_refs = [
@@ -550,7 +579,7 @@ def _recent_run_logs(run, *, limit: int = 40) -> list[str]:
                 timeout_sec=20,
             )
             lines = str(result.get("stdout") or "").splitlines()
-            return lines[-max(1, limit):]
+            return lines[-max(1, limit) :]
         except Exception:
             return []
     return _tail_local_file(run.log_path, limit=limit)
@@ -578,7 +607,9 @@ def _serialize_target(target, *, workspace_health: dict | None = None) -> dict:
 
 def _serialize_run_action(action) -> dict:
     metadata = sanitize_project_run_metadata(action.metadata_json or {})
-    action_label = str(metadata.get("resolved_label") or "").strip() or _action_label(str(action.action_type))
+    action_label = str(metadata.get("resolved_label") or "").strip() or _action_label(
+        str(action.action_type)
+    )
     return _serialize_run_action_payload(action, action_label=action_label)
 
 
@@ -598,7 +629,9 @@ def _serialize_run_summary(run, target=None) -> dict:
     reviewer_engine = _engine_binding_payload(metadata, "reviewer")
     run_checkpoint_state = checkpoint_state(metadata)
     run_pending_checkpoint = pending_checkpoint(metadata)
-    notification_recipients = normalize_notification_recipients(metadata.get("notification_recipients"))
+    notification_recipients = normalize_notification_recipients(
+        metadata.get("notification_recipients")
+    )
     if run.workspace_server_id and run.workflow_type == ProjectWorkflowType.run_experiment:
         metadata.setdefault("remote_session_name", build_remote_session_name(run.id))
         if run.run_directory:
@@ -622,14 +655,24 @@ def _serialize_run_summary(run, target=None) -> dict:
     artifact_refs = _collect_run_artifacts(run)
     if artifact_refs:
         metadata["artifact_refs"] = artifact_refs
-    result_path = str(run.result_path or "").strip() or _infer_primary_result_path(artifact_refs or metadata.get("artifact_refs"))
-    paper_index = metadata.get("paper_index") if isinstance(metadata.get("paper_index"), list) else []
-    literature_candidates = metadata.get("literature_candidates") if isinstance(metadata.get("literature_candidates"), list) else []
+    result_path = str(run.result_path or "").strip() or _infer_primary_result_path(
+        artifact_refs or metadata.get("artifact_refs")
+    )
+    paper_index = (
+        metadata.get("paper_index") if isinstance(metadata.get("paper_index"), list) else []
+    )
+    literature_candidates = (
+        metadata.get("literature_candidates")
+        if isinstance(metadata.get("literature_candidates"), list)
+        else []
+    )
     return {
         "id": run.id,
         "project_id": run.project_id,
         "target_id": run.target_id,
-        "target_label": target.label if target is not None else ("远程工作区" if run.workspace_server_id else "本地工作区"),
+        "target_label": target.label
+        if target is not None
+        else ("远程工作区" if run.workspace_server_id else "本地工作区"),
         "workflow_type": str(run.workflow_type),
         "workflow_label": _workflow_label(str(run.workflow_type)),
         "title": run.title,
@@ -661,7 +704,9 @@ def _serialize_run_summary(run, target=None) -> dict:
         "checkpoint_state": run_checkpoint_state,
         "pending_checkpoint": run_pending_checkpoint,
         "notification_recipients": notification_recipients,
-        "paper_ids": normalize_paper_ids(metadata.get("paper_ids") if isinstance(metadata.get("paper_ids"), list) else []),
+        "paper_ids": normalize_paper_ids(
+            metadata.get("paper_ids") if isinstance(metadata.get("paper_ids"), list) else []
+        ),
         "paper_index": paper_index,
         "literature_candidates": literature_candidates,
         "metadata": metadata,
@@ -758,7 +803,9 @@ def _is_remote_subpath(candidate: str, workspace_root: str) -> bool:
     normalized_root = posixpath.normpath(str(workspace_root or "").replace("\\", "/"))
     if not normalized_candidate or not normalized_root:
         return False
-    return normalized_candidate == normalized_root or normalized_candidate.startswith(f"{normalized_root.rstrip('/')}/")
+    return normalized_candidate == normalized_root or normalized_candidate.startswith(
+        f"{normalized_root.rstrip('/')}/"
+    )
 
 
 def _collect_run_deletion_candidates(run, actions: list) -> list[str]:
@@ -864,7 +911,9 @@ def _serialize_project_summary(project, project_repo: ProjectRepository) -> dict
     }
 
 
-def _serialize_project_detail(project, project_repo: ProjectRepository, paper_repo: PaperRepository) -> dict:
+def _serialize_project_detail(
+    project, project_repo: ProjectRepository, paper_repo: PaperRepository
+) -> dict:
     detail = _serialize_project_summary(project, project_repo)
     project_paper_rows = project_repo.list_project_papers(project.id)
     papers = [paper for _link, paper in project_paper_rows]
@@ -873,7 +922,9 @@ def _serialize_project_detail(project, project_repo: ProjectRepository, paper_re
     }
     detail["papers"] = [
         {
-            **paper_items_by_id.get(paper.id, {"id": paper.id, "title": paper.title, "arxiv_id": paper.arxiv_id}),
+            **paper_items_by_id.get(
+                paper.id, {"id": paper.id, "title": paper.title, "arxiv_id": paper.arxiv_id}
+            ),
             "project_paper_id": link.id,
             "note": link.note,
             "added_at": iso_dt(link.added_at),
@@ -902,15 +953,27 @@ def _serialize_project_workspace_context(project, project_repo: ProjectRepositor
         target_items.append(
             _serialize_target(
                 target,
-                workspace_health=_workspace_health(target.workspace_server_id, _target_workspace_path(target)),
+                workspace_health=_workspace_health(
+                    target.workspace_server_id, _target_workspace_path(target)
+                ),
             )
         )
     runs = project_repo.list_runs(project.id, limit=80)
-    primary_target = next((target for target in targets if target.is_primary), targets[0] if targets else None)
+    primary_target = next(
+        (target for target in targets if target.is_primary), targets[0] if targets else None
+    )
     active_presets = _active_workflow_presets()
-    default_workflow = active_presets[0]["workflow_type"] if active_presets else ProjectWorkflowType.literature_review.value
+    default_workflow = (
+        active_presets[0]["workflow_type"]
+        if active_presets
+        else ProjectWorkflowType.literature_review.value
+    )
     latest_run = runs[0] if runs else None
-    workspace_path = _target_workspace_path(primary_target) if primary_target is not None else _project_workspace_path(project)
+    workspace_path = (
+        _target_workspace_path(primary_target)
+        if primary_target is not None
+        else _project_workspace_path(project)
+    )
 
     return {
         "project": {
@@ -928,7 +991,10 @@ def _serialize_project_workspace_context(project, project_repo: ProjectRepositor
         "agent_templates": PROJECT_AGENT_TEMPLATES,
         "role_templates": PROJECT_AGENT_TEMPLATES,
         "engine_profiles": engine_profiles,
-        "workspace_health": _workspace_health(primary_target.workspace_server_id if primary_target else project.workspace_server_id, workspace_path),
+        "workspace_health": _workspace_health(
+            primary_target.workspace_server_id if primary_target else project.workspace_server_id,
+            workspace_path,
+        ),
         "recent_logs": _recent_run_logs(latest_run),
         "artifacts": _collect_run_artifacts(latest_run) if latest_run is not None else [],
         "default_selections": {
@@ -952,7 +1018,9 @@ def _filter_project_tasks(project_id: str, *, run_ids: set[str], limit: int = 20
         run_id = str(item.get("run_id") or "").strip()
         if run_id and run_id in run_ids:
             matched.append(item)
-    matched.sort(key=lambda item: float(item.get("updated_at") or item.get("created_at") or 0), reverse=True)
+    matched.sort(
+        key=lambda item: float(item.get("updated_at") or item.get("created_at") or 0), reverse=True
+    )
     return matched[: max(1, limit)]
 
 
@@ -971,7 +1039,9 @@ def _message_preview(message: dict) -> dict | None:
     return {
         "id": info.get("id"),
         "role": info.get("role"),
-        "created_at": ((info.get("time") or {}) if isinstance(info.get("time"), dict) else {}).get("created"),
+        "created_at": ((info.get("time") or {}) if isinstance(info.get("time"), dict) else {}).get(
+            "created"
+        ),
         "text": _trim_preview_text(text),
     }
 
@@ -1059,7 +1129,7 @@ def _git_commits(path: Path, limit: int) -> list[dict]:
         [
             "git",
             "log",
-            f"--pretty=format:%H|%h|%s|%an|%ai",
+            "--pretty=format:%H|%h|%s|%an|%ai",
             "-n",
             str(limit),
         ],
@@ -1112,7 +1182,9 @@ def _resolve_project_idea_inputs(
 
     selected_ids = [paper_id for paper_id in body.paper_ids if _clean_text(paper_id)]
     if not selected_ids:
-        selected_ids = [paper.id for _link, paper in project_repo.list_project_papers(project_id)[:6]]
+        selected_ids = [
+            paper.id for _link, paper in project_repo.list_project_papers(project_id)[:6]
+        ]
 
     selected_papers = paper_repo.list_by_ids(selected_ids) if selected_ids else []
     selected_repos = [
@@ -1125,7 +1197,9 @@ def _resolve_project_idea_inputs(
     return project, selected_papers, selected_repos
 
 
-def _build_project_idea_prompt(project, body: ProjectIdeaGenerateRequest, selected_papers: list, selected_repos: list) -> str:
+def _build_project_idea_prompt(
+    project, body: ProjectIdeaGenerateRequest, selected_papers: list, selected_repos: list
+) -> str:
     paper_context = "\n".join(
         [
             (
@@ -1188,7 +1262,9 @@ def _generate_project_idea_payload(
             max_retries=1,
         )
         parsed = result.parsed_json or {}
-        title = str(parsed.get("title") or "").strip() or _generate_idea_title(project.name, body.focus)
+        title = str(parsed.get("title") or "").strip() or _generate_idea_title(
+            project.name, body.focus
+        )
         content = str(parsed.get("content") or result.content or "").strip()
         if not content:
             content = "暂未成功生成结构化内容，请稍后重试。"
@@ -1227,7 +1303,9 @@ def _resolve_workflow_type(value: str) -> ProjectWorkflowType:
         return ProjectWorkflowType(raw)
     except ValueError as exc:
         allowed = ", ".join(item.value for item in ProjectWorkflowType)
-        raise HTTPException(status_code=400, detail=f"不支持的 workflow_type，允许值: {allowed}") from exc
+        raise HTTPException(
+            status_code=400, detail=f"不支持的 workflow_type，允许值: {allowed}"
+        ) from exc
 
 
 def _resolve_action_type(value: str) -> ProjectRunActionType:
@@ -1238,10 +1316,14 @@ def _resolve_action_type(value: str) -> ProjectRunActionType:
         return ProjectRunActionType(raw)
     except ValueError as exc:
         allowed = ", ".join(item.value for item in ProjectRunActionType)
-        raise HTTPException(status_code=400, detail=f"不支持的 action_type，允许值: {allowed}") from exc
+        raise HTTPException(
+            status_code=400, detail=f"不支持的 action_type，允许值: {allowed}"
+        ) from exc
 
 
-def _build_run_title(project_name: str, workflow_type: ProjectWorkflowType, title: str | None = None) -> str:
+def _build_run_title(
+    project_name: str, workflow_type: ProjectWorkflowType, title: str | None = None
+) -> str:
     explicit_title = _clean_text(title)
     if explicit_title:
         return explicit_title[:512]
@@ -1398,7 +1480,9 @@ def get_projects_companion_overview(
             items.append(
                 {
                     **_serialize_project_summary(project, project_repo),
-                    "latest_run": _serialize_run_summary(latest_run) if latest_run is not None else None,
+                    "latest_run": _serialize_run_summary(latest_run)
+                    if latest_run is not None
+                    else None,
                     "active_task_count": active_task_count,
                 }
             )
@@ -1420,7 +1504,10 @@ def get_projects_companion_overview(
 def list_projects() -> dict:
     with session_scope() as session:
         project_repo = _project_data(session).projects
-        items = [_serialize_project_summary(project, project_repo) for project in project_repo.list_projects()]
+        items = [
+            _serialize_project_summary(project, project_repo)
+            for project in project_repo.list_projects()
+        ]
     return {"items": items}
 
 
@@ -1687,7 +1774,9 @@ def create_project_target(project_id: str, body: ProjectTargetCreateRequest) -> 
 
 
 @router.patch("/projects/{project_id}/targets/{target_id}")
-def update_project_target(project_id: str, target_id: str, body: ProjectTargetUpdateRequest) -> dict:
+def update_project_target(
+    project_id: str, target_id: str, body: ProjectTargetUpdateRequest
+) -> dict:
     with session_scope() as session:
         project_repo = _project_data(session).projects
         project = _load_project_or_404(project_repo, project_id)
@@ -1760,7 +1849,9 @@ def list_project_runs(project_id: str, limit: int = Query(default=50, ge=1, le=2
 def create_project_run(project_id: str, body: ProjectRunCreateRequest) -> dict:
     workflow_type = _resolve_workflow_type(body.workflow_type)
     if not is_active_project_workflow(workflow_type):
-        raise HTTPException(status_code=400, detail=f"当前 workflow 尚未开放真实执行: {workflow_type.value}")
+        raise HTTPException(
+            status_code=400, detail=f"当前 workflow 尚未开放真实执行: {workflow_type.value}"
+        )
     prompt = body.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="prompt 不能为空")
@@ -1774,22 +1865,30 @@ def create_project_run(project_id: str, body: ProjectRunCreateRequest) -> dict:
         if _clean_text(body.target_id):
             target = _load_target_or_404(project_repo, project_id, str(body.target_id))
         else:
-            target = project_repo.get_primary_target(project_id) or project_repo.ensure_default_target(project_id)
+            target = project_repo.get_primary_target(
+                project_id
+            ) or project_repo.ensure_default_target(project_id)
 
-        workspace_server_id = target.workspace_server_id if target is not None else project.workspace_server_id
+        workspace_server_id = (
+            target.workspace_server_id if target is not None else project.workspace_server_id
+        )
         workdir = target.workdir if target is not None else project.workdir
         remote_workdir = target.remote_workdir if target is not None else project.remote_workdir
         dataset_root = target.dataset_root if target is not None else None
         checkpoint_root = target.checkpoint_root if target is not None else None
         output_root = target.output_root if target is not None else None
         project_workspace_path = _project_workspace_path(project)
-        target_workspace_path = _target_workspace_path(target) if target is not None else project_workspace_path
+        target_workspace_path = (
+            _target_workspace_path(target) if target is not None else project_workspace_path
+        )
         sync_strategy = infer_sync_strategy(
             project_workspace=project_workspace_path,
             project_workspace_server_id=project.workspace_server_id,
             target_workspace=target_workspace_path,
             workspace_server_id=workspace_server_id,
-            target_workspace_server_id=target.workspace_server_id if target is not None else workspace_server_id,
+            target_workspace_server_id=target.workspace_server_id
+            if target is not None
+            else workspace_server_id,
         )
         metadata = build_checkpoint_settings(
             dict(body.metadata or {}),
@@ -1805,10 +1904,11 @@ def create_project_run(project_id: str, body: ProjectRunCreateRequest) -> dict:
             found_ids = {str(paper.id) for paper in found_papers}
             missing_ids = [paper_id for paper_id in selected_paper_ids if paper_id not in found_ids]
             if missing_ids:
-                raise HTTPException(status_code=400, detail=f"论文不存在: {', '.join(missing_ids[:5])}")
+                raise HTTPException(
+                    status_code=400, detail=f"论文不存在: {', '.join(missing_ids[:5])}"
+                )
             existing_project_paper_ids = {
-                str(paper.id)
-                for _link, paper in project_repo.list_project_papers(project_id)
+                str(paper.id) for _link, paper in project_repo.list_project_papers(project_id)
             }
             for paper_id in selected_paper_ids:
                 if paper_id not in existing_project_paper_ids:
@@ -1864,7 +1964,9 @@ def create_project_run(project_id: str, body: ProjectRunCreateRequest) -> dict:
         metadata["project_workspace_path"] = project_workspace_path
         metadata["project_workspace_server_id"] = project.workspace_server_id
         metadata["target_workspace_path"] = target_workspace_path
-        metadata["target_workspace_server_id"] = target.workspace_server_id if target is not None else workspace_server_id
+        metadata["target_workspace_server_id"] = (
+            target.workspace_server_id if target is not None else workspace_server_id
+        )
         metadata["orchestration"] = orchestration
         metadata["stage_trace"] = build_stage_trace(orchestration, reset=True)
 
@@ -1951,8 +2053,12 @@ def list_project_run_literature_candidates(run_id: str) -> dict:
         run = _load_run_or_404(project_repo, run_id)
         metadata = sanitize_project_run_metadata(dict(run.metadata_json or {}))
         return {
-            "paper_index": metadata.get("paper_index") if isinstance(metadata.get("paper_index"), list) else [],
-            "items": metadata.get("literature_candidates") if isinstance(metadata.get("literature_candidates"), list) else [],
+            "paper_index": metadata.get("paper_index")
+            if isinstance(metadata.get("paper_index"), list)
+            else [],
+            "items": metadata.get("literature_candidates")
+            if isinstance(metadata.get("literature_candidates"), list)
+            else [],
         }
 
 
@@ -1962,9 +2068,7 @@ def import_project_run_literature_candidates(
     body: ProjectRunLiteratureCandidateImportRequest,
 ) -> dict:
     requested_ref_ids = {
-        _clean_text(ref_id)
-        for ref_id in body.candidate_ref_ids
-        if _clean_text(ref_id)
+        _clean_text(ref_id) for ref_id in body.candidate_ref_ids if _clean_text(ref_id)
     }
     if not requested_ref_ids:
         raise HTTPException(status_code=400, detail="candidate_ref_ids 不能为空")
@@ -1976,16 +2080,21 @@ def import_project_run_literature_candidates(
         run = _load_run_or_404(project_repo, run_id)
         project = _load_project_or_404(project_repo, run.project_id)
         metadata = dict(run.metadata_json or {})
-        candidates = metadata.get("literature_candidates") if isinstance(metadata.get("literature_candidates"), list) else []
-        paper_index = metadata.get("paper_index") if isinstance(metadata.get("paper_index"), list) else []
+        candidates = (
+            metadata.get("literature_candidates")
+            if isinstance(metadata.get("literature_candidates"), list)
+            else []
+        )
+        paper_index = (
+            metadata.get("paper_index") if isinstance(metadata.get("paper_index"), list) else []
+        )
 
         updated_candidates: list[dict] = []
         imported_ids: list[str] = []
         linked_ids: list[str] = []
         missing_ref_ids = set(requested_ref_ids)
         existing_project_paper_ids = {
-            str(paper.id)
-            for _link, paper in project_repo.list_project_papers(run.project_id)
+            str(paper.id) for _link, paper in project_repo.list_project_papers(run.project_id)
         }
 
         for raw_candidate in candidates:
@@ -2047,12 +2156,21 @@ def import_project_run_literature_candidates(
             updated_candidates.append(candidate)
 
         if missing_ref_ids:
-            raise HTTPException(status_code=404, detail=f"候选不存在: {', '.join(sorted(missing_ref_ids)[:5])}")
+            raise HTTPException(
+                status_code=404, detail=f"候选不存在: {', '.join(sorted(missing_ref_ids)[:5])}"
+            )
 
         metadata["literature_candidates"] = updated_candidates
         metadata["paper_index"] = merge_paper_refs(
             paper_index,
-            _build_run_paper_index(project_repo, paper_repo, run.project_id, normalize_paper_ids(metadata.get("paper_ids") if isinstance(metadata.get("paper_ids"), list) else [])),
+            _build_run_paper_index(
+                project_repo,
+                paper_repo,
+                run.project_id,
+                normalize_paper_ids(
+                    metadata.get("paper_ids") if isinstance(metadata.get("paper_ids"), list) else []
+                ),
+            ),
         )
         project_repo.update_run(run.id, metadata=metadata)
         target = project_repo.get_target(run.target_id) if run.target_id else None
@@ -2087,7 +2205,9 @@ def delete_project_run(
             raise HTTPException(status_code=400, detail="运行仍在执行或等待确认，请先停止后再删除")
         active_actions = [action for action in actions if _run_is_active(action.status)]
         if active_actions:
-            raise HTTPException(status_code=400, detail="当前运行仍有后续动作在执行，请先停止后再删除")
+            raise HTTPException(
+                status_code=400, detail="当前运行仍有后续动作在执行，请先停止后再删除"
+            )
 
         if delete_artifacts:
             deleted_paths, skipped_paths = _delete_run_artifacts(run, actions)
@@ -2183,12 +2303,16 @@ def retry_project_run(run_id: str) -> dict:
                 session,
                 str(metadata.get("executor_engine_id") or ""),
                 field_label="executor_engine_id",
-            ) if _clean_text(str(metadata.get("executor_engine_id") or "")) else None,
+            )
+            if _clean_text(str(metadata.get("executor_engine_id") or ""))
+            else None,
             reviewer_profile=_resolve_engine_profile_or_400(
                 session,
                 str(metadata.get("reviewer_engine_id") or ""),
                 field_label="reviewer_engine_id",
-            ) if _clean_text(str(metadata.get("reviewer_engine_id") or "")) else None,
+            )
+            if _clean_text(str(metadata.get("reviewer_engine_id") or ""))
+            else None,
         )
         project_workspace_path = _project_workspace_path(project)
         target_workspace_path = _run_workspace_path(existing)
@@ -2217,7 +2341,9 @@ def retry_project_run(run_id: str) -> dict:
             project_id=existing.project_id,
             target_id=existing.target_id,
             workflow_type=existing.workflow_type,
-            title=_build_run_title(project.name, existing.workflow_type, f"{existing.title} · Retry"),
+            title=_build_run_title(
+                project.name, existing.workflow_type, f"{existing.title} · Retry"
+            ),
             prompt=existing.prompt,
             status=ProjectRunStatus.queued,
             active_phase="queued",
@@ -2275,7 +2401,11 @@ def retry_project_run(run_id: str) -> dict:
         project_repo = _project_data(session).projects
         retry_run = _load_run_or_404(project_repo, retry_run_id)
         target = project_repo.get_target(retry_run.target_id) if retry_run.target_id else None
-        return {"item": _serialize_run_detail(retry_run, target, project_repo.list_run_actions(retry_run.id))}
+        return {
+            "item": _serialize_run_detail(
+                retry_run, target, project_repo.list_run_actions(retry_run.id)
+            )
+        }
 
 
 @router.post("/project-runs/{run_id}/actions")
@@ -2387,7 +2517,9 @@ def delete_project_repo(project_id: str, repo_id: str) -> dict:
 
 
 @router.get("/projects/{project_id}/repos/{repo_id}/commits")
-def list_repo_commits(project_id: str, repo_id: str, limit: int = Query(default=20, ge=1, le=100)) -> dict:
+def list_repo_commits(
+    project_id: str, repo_id: str, limit: int = Query(default=20, ge=1, le=100)
+) -> dict:
     with session_scope() as session:
         project_repo = _project_data(session).projects
         _load_project_or_404(project_repo, project_id)
@@ -2473,7 +2605,9 @@ def update_project_idea(project_id: str, idea_id: str, body: ProjectIdeaUpdateRe
             idea_id,
             title=body.title.strip() if body.title is not None else idea.title,
             content=body.content.strip() if body.content is not None else idea.content,
-            paper_ids=body.paper_ids if body.paper_ids is not None else list(idea.paper_ids_json or []),
+            paper_ids=body.paper_ids
+            if body.paper_ids is not None
+            else list(idea.paper_ids_json or []),
         )
         assert updated is not None
         return {"item": _serialize_idea(updated)}
@@ -2489,4 +2623,3 @@ def delete_project_idea(project_id: str, idea_id: str) -> dict:
             raise HTTPException(status_code=404, detail="项目想法不存在")
         project_repo.delete_idea(idea_id)
     return {"deleted": idea_id}
-

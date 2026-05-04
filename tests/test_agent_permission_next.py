@@ -14,17 +14,19 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.routers import agent as agent_router
 from apps.api.routers import session_runtime as session_runtime_router
-from packages.agent import acp_service
 from packages.agent import (
+    acp_service,
     agent_service,
     permission_next,
     session_bus,
-    session_runtime as session_runtime_module,
+    session_plan,
     skill_tool_runtime,
+    tool_registry,
 )
-from packages.agent import session_plan
+from packages.agent import (
+    session_runtime as session_runtime_module,
+)
 from packages.agent.session.session_bus import SessionBusEvent
-from packages.agent import tool_registry
 from packages.agent.session.session_runtime import ensure_session_record, get_session_record
 from packages.agent.tools.tool_registry import get_openai_tools
 from packages.agent.tools.tool_runtime import AgentToolContext, ToolResult, execute_tool_stream
@@ -54,7 +56,9 @@ def _build_app() -> FastAPI:
     return app
 
 
-def _configure_acp_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, command: str, args: list[str]) -> None:
+def _configure_acp_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, command: str, args: list[str]
+) -> None:
     registry_path = tmp_path / "assistant_acp_registry.json"
     monkeypatch.setattr(acp_service, "_DATA_DIR", tmp_path)
     monkeypatch.setattr(acp_service, "_REGISTRY_PATH", registry_path)
@@ -79,7 +83,9 @@ def _configure_acp_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, c
     service.connect_server("mock-stdio")
 
 
-def _configure_http_acp_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, url: str) -> None:
+def _configure_http_acp_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, url: str
+) -> None:
     registry_path = tmp_path / "assistant_acp_registry.json"
     monkeypatch.setattr(acp_service, "_DATA_DIR", tmp_path)
     monkeypatch.setattr(acp_service, "_REGISTRY_PATH", registry_path)
@@ -174,7 +180,9 @@ class FakeDoublePermissionLLM:
             type="tool_call",
             tool_call_id="call_perm_2",
             tool_name="bash",
-            tool_arguments=json.dumps({"command": "pytest -q tests/test_agent_permission_next.py"}, ensure_ascii=False),
+            tool_arguments=json.dumps(
+                {"command": "pytest -q tests/test_agent_permission_next.py"}, ensure_ascii=False
+            ),
         )
         yield StreamEvent(type="usage", model="fake-model", input_tokens=12, output_tokens=0)
 
@@ -197,7 +205,9 @@ class FakeQuestionLLM:
             payload = json.loads(str(tool_messages[-1].get("content") or "{}"))
             data = payload.get("data") or {}
             answers = data.get("answers") or []
-            first_answer = ", ".join(answers[0]) if answers and isinstance(answers[0], list) else "未回答"
+            first_answer = (
+                ", ".join(answers[0]) if answers and isinstance(answers[0], list) else "未回答"
+            )
             yield StreamEvent(type="text_delta", content=f"收到你的选择：{first_answer}")
             yield StreamEvent(type="usage", model="fake-model", input_tokens=8, output_tokens=6)
             return
@@ -265,7 +275,9 @@ def _reset_runtime_state():
     _clear_pending_permissions()
 
 
-def test_permission_deny_rule_disables_tool_exposure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_permission_deny_rule_disables_tool_exposure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _patch_permission_runtime(monkeypatch)
 
@@ -280,7 +292,9 @@ def test_permission_deny_rule_disables_tool_exposure(monkeypatch: pytest.MonkeyP
         [{"permission": "bash", "pattern": "*", "action": "deny"}],
     )
 
-    ruleset = permission_next.effective_ruleset(get_session_record("perm_disable_session"), _test_exec_policy())
+    ruleset = permission_next.effective_ruleset(
+        get_session_record("perm_disable_session"), _test_exec_policy()
+    )
     disabled_tools = permission_next.disabled(["bash", "read", "websearch"], ruleset)
     tools = get_openai_tools("build", disabled_tools=disabled_tools)
     tool_names = {item["function"]["name"] for item in tools}
@@ -324,11 +338,20 @@ def test_get_openai_tools_defaults_to_opencode_core_set():
 def test_build_turn_tools_exposes_plan_file_tools_in_plan_mode():
     class FakeClaudeLLM:
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     tools = tool_registry.build_turn_tools(FakeClaudeLLM(), mode="plan")
     function_names = {
-        str(((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get("name") or "")
+        str(
+            ((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get(
+                "name"
+            )
+            or ""
+        )
         for tool in tools
         if str(tool.get("type") or "") == "function"
     }
@@ -374,7 +397,9 @@ def test_get_openai_tools_remote_workspace_still_filters_local_only_hidden_tools
     assert "list" not in tool_names
 
 
-def test_execute_tool_stream_skill_returns_opencode_style_skill_content(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_execute_tool_stream_skill_returns_opencode_style_skill_content(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     skill_dir = tmp_path / "demo-skill"
     skill_dir.mkdir()
     skill_file = skill_dir / "SKILL.md"
@@ -402,7 +427,7 @@ def test_execute_tool_stream_skill_returns_opencode_style_skill_content(monkeypa
     assert isinstance(result, ToolResult)
     assert result.success is True
     assert result.summary == "已加载 skill：demo-skill"
-    assert "<skill_content name=\"demo-skill\">" in result.data["output"]
+    assert '<skill_content name="demo-skill">' in result.data["output"]
     assert "# Skill: demo-skill" in result.data["output"]
     assert "Follow the bundled workflow." in result.data["output"]
     assert "<skill_files>" in result.data["output"]
@@ -651,7 +676,9 @@ def test_native_permission_confirm_does_not_fall_back_to_wrapper_persistence(
         },
     )
     assert prompt_resp.status_code == 200
-    permission_id = client.get("/session/perm_no_wrapper_confirm_session/permissions").json()[0]["id"]
+    permission_id = client.get("/session/perm_no_wrapper_confirm_session/permissions").json()[0][
+        "id"
+    ]
 
     def _unexpected_persist(*_args, **_kwargs):  # noqa: ANN001, ANN202
         raise AssertionError("native confirm should not use wrap_stream_with_persistence")
@@ -702,12 +729,16 @@ def test_native_permission_confirm_is_persisted_inside_native_resume_path(
         },
     )
     assert prompt_resp.status_code == 200
-    permission_id = client.get("/session/perm_native_resume_persisted_session/permissions").json()[0]["id"]
+    permission_id = client.get("/session/perm_native_resume_persisted_session/permissions").json()[
+        0
+    ]["id"]
 
     def _unexpected_inline_persist(*_args, **_kwargs):  # noqa: ANN001, ANN202
         raise AssertionError("native confirm should persist inside _respond_native_action_impl")
 
-    monkeypatch.setattr(agent_service, "_persist_inline_stream_if_needed", _unexpected_inline_persist)
+    monkeypatch.setattr(
+        agent_service, "_persist_inline_stream_if_needed", _unexpected_inline_persist
+    )
 
     reply_resp = client.post(
         f"/session/perm_native_resume_persisted_session/permissions/{permission_id}",
@@ -753,12 +784,16 @@ def test_native_permission_confirm_does_not_use_apply_event_bridge(
         },
     )
     assert prompt_resp.status_code == 200
-    permission_id = client.get("/session/perm_no_apply_event_bridge_session/permissions").json()[0]["id"]
+    permission_id = client.get("/session/perm_no_apply_event_bridge_session/permissions").json()[0][
+        "id"
+    ]
 
     def _unexpected_apply_event(*_args, **_kwargs):  # noqa: ANN001, ANN202
         raise AssertionError("native confirm should not use SessionStreamPersistence.apply_event")
 
-    monkeypatch.setattr(session_runtime_module.SessionStreamPersistence, "apply_event", _unexpected_apply_event)
+    monkeypatch.setattr(
+        session_runtime_module.SessionStreamPersistence, "apply_event", _unexpected_apply_event
+    )
 
     reply_resp = client.post(
         f"/session/perm_no_apply_event_bridge_session/permissions/{permission_id}",
@@ -862,7 +897,9 @@ def test_native_permission_response_delegates_to_session_prompt_processor(
         },
     )
     assert prompt_resp.status_code == 200
-    permission_id = client.get("/session/perm_delegate_processor_session/permissions").json()[0]["id"]
+    permission_id = client.get("/session/perm_delegate_processor_session/permissions").json()[0][
+        "id"
+    ]
     pending = agent_service.get_pending_action(permission_id)
     assert pending is not None
 
@@ -887,7 +924,7 @@ def test_native_permission_response_delegates_to_session_prompt_processor(
         captured["persistence"] = persistence
         captured["manage_session_lifecycle"] = manage_session_lifecycle
         yield 'event: text_delta\ndata: {"content":"delegated"}\n\n'
-        yield 'event: done\ndata: {}\n\n'
+        yield "event: done\ndata: {}\n\n"
 
     monkeypatch.setattr(
         agent_service.SessionPromptProcessor,
@@ -906,7 +943,10 @@ def test_native_permission_response_delegates_to_session_prompt_processor(
         )
     )
 
-    assert "".join(items) == 'event: text_delta\ndata: {"content":"delegated"}\n\nevent: done\ndata: {}\n\n'
+    assert (
+        "".join(items)
+        == 'event: text_delta\ndata: {"content":"delegated"}\n\nevent: done\ndata: {}\n\n'
+    )
     assert captured["action_id"] == permission_id
     assert captured["response"] == "once"
     assert captured["message"] is None
@@ -950,7 +990,7 @@ def test_native_permission_response_runtime_delegates_to_session_processor_helpe
     def _fake_stream_permission_runtime(config, callbacks):  # noqa: ANN001, ANN202
         captured["config"] = config
         captured["callbacks"] = callbacks
-        yield 'event: done\ndata: {}\n\n'
+        yield "event: done\ndata: {}\n\n"
 
     monkeypatch.setattr(
         agent_service,
@@ -1001,7 +1041,7 @@ def test_native_permission_response_runtime_delegates_to_session_processor_helpe
         )
     )
 
-    assert items == ['event: done\ndata: {}\n\n']
+    assert items == ["event: done\ndata: {}\n\n"]
     config = captured["config"]
     assert config is not None
     assert config.action_id == "perm_runtime_delegate"
@@ -1068,7 +1108,7 @@ def test_permission_callback_processor_reuses_stream_active_entry(
     def _fake_stream_permission_runtime(config, callbacks):  # noqa: ANN001, ANN202
         captured["config"] = config
         captured["callbacks"] = callbacks
-        yield 'event: done\ndata: {}\n\n'
+        yield "event: done\ndata: {}\n\n"
 
     monkeypatch.setattr(
         agent_service,
@@ -1098,7 +1138,7 @@ def test_permission_callback_processor_reuses_stream_active_entry(
 
     items = list(processor._stream_active())
 
-    assert items[-1] == 'event: done\ndata: {}\n\n'
+    assert items[-1] == "event: done\ndata: {}\n\n"
     config = captured["config"]
     assert config is not None
     assert config.action_id == "perm_callback_stream_active"
@@ -1235,7 +1275,9 @@ def test_native_pending_action_persistence_omits_continuation_messages(
     )
     assert prompt_resp.status_code == 200
 
-    permission_id = client.get("/session/perm_thin_pending_action_session/permissions").json()[0]["id"]
+    permission_id = client.get("/session/perm_thin_pending_action_session/permissions").json()[0][
+        "id"
+    ]
     with session_scope() as session:
         row = AgentPendingActionRepository(session).get(permission_id)
         assert row is not None
@@ -1248,14 +1290,16 @@ def test_native_pending_action_persistence_omits_continuation_messages(
     assert "assistant_message_id" not in continuation_json
     assert "step_snapshot" not in continuation_json
     assert "step_usage" not in continuation_json
-    assert str(((permission_json.get("tool") or {}).get("messageID") or "")).strip()
+    assert str((permission_json.get("tool") or {}).get("messageID") or "").strip()
 
     pending = agent_service.get_pending_action(permission_id)
     assert pending is not None
     assert pending.options.session_id == "perm_thin_pending_action_session"
     assert pending.kind == "native_prompt"
     assert pending.continuation is None
-    assert str((((pending.permission_request or {}).get("tool") or {}).get("messageID") or "")).strip()
+    assert str(
+        ((pending.permission_request or {}).get("tool") or {}).get("messageID") or ""
+    ).strip()
 
 
 def test_native_pending_persistence_prefers_permission_request_parent_message(tmp_path: Path):
@@ -1502,7 +1546,9 @@ def test_permission_always_persists_project_rule_and_skips_repeat_prompt(
 
     rules = permission_next.get_project_rules(get_session_record("perm_always_1")["projectID"])
     assert any(
-        rule.get("permission") == "bash" and rule.get("pattern") == "pytest -q" and rule.get("action") == "allow"
+        rule.get("permission") == "bash"
+        and rule.get("pattern") == "pytest -q"
+        and rule.get("action") == "allow"
         for rule in rules
     )
 
@@ -1531,7 +1577,9 @@ def test_permission_always_persists_project_rule_and_skips_repeat_prompt(
     assert client.get("/session/perm_always_2/permissions").json() == []
 
 
-def test_session_permission_reject_resumes_with_feedback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_session_permission_reject_resumes_with_feedback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _patch_permission_runtime(monkeypatch)
     client = TestClient(_build_app())
@@ -1697,7 +1745,9 @@ def test_custom_acp_abort_clears_paused_permission_and_publishes_aborted_message
         assert abort_resp.json() is True
 
         assert client.get("/session/custom_acp_abort_session/permissions").json() == []
-        assert session_runtime_module.get_session_status("custom_acp_abort_session")["type"] == "idle"
+        assert (
+            session_runtime_module.get_session_status("custom_acp_abort_session")["type"] == "idle"
+        )
 
         history = client.get("/session/custom_acp_abort_session/message").json()
         assistant = history[-1]
@@ -1707,7 +1757,8 @@ def test_custom_acp_abort_clears_paused_permission_and_publishes_aborted_message
 
         assert any(
             event_type == SessionBusEvent.MESSAGE_UPDATED
-            and str((properties.get("message") or {}).get("info", {}).get("finish") or "") == "aborted"
+            and str((properties.get("message") or {}).get("info", {}).get("finish") or "")
+            == "aborted"
             for event_type, properties in events
         )
         assert any(
@@ -1801,7 +1852,9 @@ def test_custom_acp_http_permission_confirm_flow(monkeypatch: pytest.MonkeyPatch
         assert "已确认，继续执行 ACP 权限请求" in confirm_resp.text
         assert "Permission outcome: allow_once" in confirm_resp.text
 
-        messages = client.get("/agent/conversations/custom_acp_http_permission_session").json()["messages"]
+        messages = client.get("/agent/conversations/custom_acp_http_permission_session").json()[
+            "messages"
+        ]
         assert len(messages) == 2
         assert "Permission required" in messages[1]["content"]
         assert "Permission outcome: allow_once" in messages[1]["content"]
@@ -1923,11 +1976,18 @@ def test_build_turn_tools_appends_official_openai_builtin_tools(
 def test_build_turn_tools_prefers_apply_patch_for_gpt5_models():
     class FakeGpt5LLM:
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="openai", base_url="https://api.openai.com/v1", model="gpt-5.2")
+            return SimpleNamespace(
+                provider="openai", base_url="https://api.openai.com/v1", model="gpt-5.2"
+            )
 
     tools = tool_registry.build_turn_tools(FakeGpt5LLM(), mode="build")
     function_names = {
-        str(((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get("name") or "")
+        str(
+            ((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get(
+                "name"
+            )
+            or ""
+        )
         for tool in tools
         if str(tool.get("type") or "") == "function"
     }
@@ -1940,11 +2000,20 @@ def test_build_turn_tools_prefers_apply_patch_for_gpt5_models():
 def test_build_turn_tools_prefers_edit_and_write_for_non_gpt5_models():
     class FakeClaudeLLM:
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     tools = tool_registry.build_turn_tools(FakeClaudeLLM(), mode="build")
     function_names = {
-        str(((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get("name") or "")
+        str(
+            ((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get(
+                "name"
+            )
+            or ""
+        )
         for tool in tools
         if str(tool.get("type") or "") == "function"
     }
@@ -2017,7 +2086,12 @@ def test_build_turn_tools_respects_latest_user_tool_overrides(
     )
 
     function_names = {
-        str(((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get("name") or "")
+        str(
+            ((tool.get("function") or {}) if isinstance(tool.get("function"), dict) else {}).get(
+                "name"
+            )
+            or ""
+        )
         for tool in tools
         if str(tool.get("type") or "") == "function"
     }
@@ -2181,4 +2255,3 @@ def test_plan_mode_execute_tool_stream_denies_mutating_bash(tmp_path: Path):
     assert isinstance(result, ToolResult)
     assert result.success is False
     assert "read-only shell inspection commands" in result.summary
-

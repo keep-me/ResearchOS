@@ -40,12 +40,16 @@ def prefer_apply_patch_tool(llm: Any, reasoning_level: str = "default") -> bool 
     target = resolve_chat_model_target(llm, reasoning_level)
     if target is None:
         return None
-    model = str(
-        getattr(target, "model", "")
-        or getattr(target, "model_id", "")
-        or getattr(target, "modelID", "")
-        or ""
-    ).strip().lower()
+    model = (
+        str(
+            getattr(target, "model", "")
+            or getattr(target, "model_id", "")
+            or getattr(target, "modelID", "")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
     if not model:
         return None
     return "gpt-" in model and "oss" not in model and "gpt-4" not in model

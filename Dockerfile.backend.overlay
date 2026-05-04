@@ -10,4 +10,4 @@ COPY scripts/ scripts/
 COPY alembic.ini ./
 COPY infra/migrations/ infra/migrations/
 
-RUN python scripts/local_bootstrap.py || true
+RUN python scripts/local_bootstrap.py

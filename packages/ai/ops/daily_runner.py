@@ -5,17 +5,17 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Optional
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from packages.ai.research.brief_service import DailyBriefService
-from packages.ai.research.arxiv_trend_service import ArxivTrendService
-from packages.ai.research.graph_service import GraphService
-from packages.ai.paper.pipelines import PaperPipelines
-from packages.ai.ops.rate_limiter import acquire_api
 from packages.agent import research_tool_runtime
+from packages.ai.ops.rate_limiter import acquire_api
+from packages.ai.paper.pipelines import PaperPipelines
+from packages.ai.research.arxiv_trend_service import ArxivTrendService
+from packages.ai.research.brief_service import DailyBriefService
+from packages.ai.research.graph_service import GraphService
 from packages.config import get_settings
 from packages.domain.enums import ActionType
 from packages.storage.db import session_scope
@@ -126,9 +126,7 @@ def _resolve_external_sort_mode(topic: TopicSubscription) -> str:
     return "relevance"
 
 
-def _process_paper(
-    paper_id, force_deep: bool = False, deep_read_quota: Optional[int] = None
-) -> dict:
+def _process_paper(paper_id, force_deep: bool = False, deep_read_quota: int | None = None) -> dict:
     """
     单篇论文：embed + skim 并行，智能精读
 
@@ -212,7 +210,7 @@ def _process_paper(
 
 def run_topic_ingest(
     topic_id: str,
-    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> dict:
     """
     Run one topic fetch + processing workflow with progress reporting.
@@ -242,8 +240,12 @@ def run_topic_ingest(
             try:
                 date_from, date_to = _topic_date_range(topic)
                 source_scope = str(getattr(topic, "source", "arxiv") or "arxiv").strip().lower()
-                venue_tier = str(getattr(topic, "venue_tier", "all") or "all").strip().lower() or "all"
-                venue_type = str(getattr(topic, "venue_type", "all") or "all").strip().lower() or "all"
+                venue_tier = (
+                    str(getattr(topic, "venue_tier", "all") or "all").strip().lower() or "all"
+                )
+                venue_type = (
+                    str(getattr(topic, "venue_type", "all") or "all").strip().lower() or "all"
+                )
                 venue_names = [
                     str(item).strip()
                     for item in (getattr(topic, "venue_names_json", []) or [])

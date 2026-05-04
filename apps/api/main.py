@@ -2,14 +2,14 @@
 ResearchOS API - FastAPI 入口
 """
 
-from contextlib import asynccontextmanager
 import logging
 import os
-from pathlib import Path
 import sys
 import threading
 import time
 import uuid as _uuid
+from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,14 +17,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
-from packages.config import get_settings
-from packages.domain.exceptions import AppError
 from packages.auth import (
     auth_enabled,
     decode_request_token,
     extract_request_token_with_source,
     validate_auth_configuration,
 )
+from packages.config import get_settings
+from packages.domain.exceptions import AppError
 from packages.logging_setup import setup_logging
 from packages.storage.bootstrap import bootstrap_api_runtime
 
@@ -124,7 +124,9 @@ class ApiPrefixMiddleware:
                 scope = dict(scope)
                 scope["path"] = path[4:] or "/"
                 raw_path = scope.get("raw_path")
-                if isinstance(raw_path, bytes) and (raw_path == b"/api" or raw_path.startswith(b"/api/")):
+                if isinstance(raw_path, bytes) and (
+                    raw_path == b"/api" or raw_path.startswith(b"/api/")
+                ):
                     scope["raw_path"] = raw_path[4:] or b"/"
         await self.app(scope, receive, send)
 
@@ -268,8 +270,8 @@ app.add_middleware(ApiPrefixMiddleware)
 from apps.api.routers import (  # noqa: E402
     acp,
     agent,
-    agents,
     agent_workspace,
+    agents,
     auth,
     content,
     dashboard,
@@ -283,10 +285,12 @@ from apps.api.routers import (  # noqa: E402
     projects,
     research_kg,
     session_runtime,
-    settings as settings_router,
     system,
     topics,
     writing,
+)
+from apps.api.routers import (
+    settings as settings_router,
 )
 
 app.include_router(system.router)

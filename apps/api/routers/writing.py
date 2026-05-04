@@ -1,5 +1,4 @@
-"""学术写作助手路由
-"""
+"""学术写作助手路由"""
 
 from fastapi import APIRouter, HTTPException
 

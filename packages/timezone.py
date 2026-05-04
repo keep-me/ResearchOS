@@ -5,7 +5,7 @@
 面向用户的逻辑，使用本模块提供的函数，保证与用户本地时间一致。
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from packages.config import get_settings
@@ -27,7 +27,7 @@ def user_today_start_utc() -> datetime:
     local_now = datetime.now(tz)
     local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     # 转成 UTC，再 strip tzinfo 以匹配数据库中的 naive datetime
-    utc_midnight = local_midnight.astimezone(timezone.utc).replace(tzinfo=None)
+    utc_midnight = local_midnight.astimezone(UTC).replace(tzinfo=None)
     return utc_midnight
 
 
@@ -51,9 +51,9 @@ def utc_naive_to_user_date(value: datetime) -> date:
     tz = _user_tz()
     dt = value
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     else:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
     return dt.astimezone(tz).date()
 
 
@@ -79,7 +79,7 @@ def user_date_range_to_utc_bounds(
             start_date.day,
             tzinfo=tz,
         )
-        start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+        start_utc = start_local.astimezone(UTC).replace(tzinfo=None)
 
     if end_date is not None:
         end_local = datetime(
@@ -88,6 +88,6 @@ def user_date_range_to_utc_bounds(
             end_date.day,
             tzinfo=tz,
         ) + timedelta(days=1)
-        end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+        end_utc = end_local.astimezone(UTC).replace(tzinfo=None)
 
     return start_utc, end_utc

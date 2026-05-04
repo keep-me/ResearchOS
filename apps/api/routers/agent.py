@@ -15,8 +15,8 @@ from packages.agent.session.session_runtime import (
     cleanup_reverted_session,
     delete_session,
     ensure_session_record,
-    get_session_record,
     get_latest_user_message_id,
+    get_session_record,
     list_session_messages,
     list_sessions,
     resolve_default_model_identity,
@@ -49,7 +49,13 @@ def _assistant_meta_from_session(session_record: dict) -> dict:
         "cwd": session_record.get("workspace_path") or session_record.get("directory"),
         "root": session_record.get("directory"),
         "variant": None,
-        "tokens": {"total": None, "input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+        "tokens": {
+            "total": None,
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {"read": 0, "write": 0},
+        },
         "cost": 0.0,
     }
 
@@ -109,7 +115,13 @@ async def agent_chat(req: AgentChatRequest):
         "cwd": workspace_path,
         "root": session_payload["directory"],
         "variant": req.reasoning_level,
-        "tokens": {"total": None, "input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+        "tokens": {
+            "total": None,
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {"read": 0, "write": 0},
+        },
         "cost": 0.0,
     }
     persistence = StreamPersistenceConfig(
@@ -141,12 +153,19 @@ async def agent_confirm(action_id: str):
     """确认一个待执行动作。"""
     pending = get_pending_permission(action_id)
     pending_session_id = pending.session_id if pending is not None else None
-    assistant_message_id = str(((pending.tool or {}) if pending is not None else {}).get("messageID") or "").strip() or None
+    assistant_message_id = (
+        str(((pending.tool or {}) if pending is not None else {}).get("messageID") or "").strip()
+        or None
+    )
     if pending_session_id is None:
         legacy_pending = get_pending_action(action_id)
-        pending_session_id = legacy_pending.options.session_id if legacy_pending is not None else None
+        pending_session_id = (
+            legacy_pending.options.session_id if legacy_pending is not None else None
+        )
         assistant_message_id = (
-            str((((legacy_pending.permission_request or {}).get("tool") or {}).get("messageID") or "")).strip()
+            str(
+                ((legacy_pending.permission_request or {}).get("tool") or {}).get("messageID") or ""
+            ).strip()
             or None
             if legacy_pending is not None
             else None
@@ -178,12 +197,19 @@ async def agent_reject(action_id: str):
     """拒绝一个待执行动作。"""
     pending = get_pending_permission(action_id)
     pending_session_id = pending.session_id if pending is not None else None
-    assistant_message_id = str(((pending.tool or {}) if pending is not None else {}).get("messageID") or "").strip() or None
+    assistant_message_id = (
+        str(((pending.tool or {}) if pending is not None else {}).get("messageID") or "").strip()
+        or None
+    )
     if pending_session_id is None:
         legacy_pending = get_pending_action(action_id)
-        pending_session_id = legacy_pending.options.session_id if legacy_pending is not None else None
+        pending_session_id = (
+            legacy_pending.options.session_id if legacy_pending is not None else None
+        )
         assistant_message_id = (
-            str((((legacy_pending.permission_request or {}).get("tool") or {}).get("messageID") or "")).strip()
+            str(
+                ((legacy_pending.permission_request or {}).get("tool") or {}).get("messageID") or ""
+            ).strip()
             or None
             if legacy_pending is not None
             else None
@@ -211,7 +237,9 @@ async def agent_reject(action_id: str):
 
 
 @router.get("/agent/conversations")
-def list_conversations(limit: int = Query(default=50, ge=1, le=200)) -> AssistantConversationListResponse:
+def list_conversations(
+    limit: int = Query(default=50, ge=1, le=200),
+) -> AssistantConversationListResponse:
     """列出对话会话。"""
     conversations = list_sessions(limit=limit, archived=False)
     return conversation_list_from_records(conversations)
@@ -238,4 +266,3 @@ def delete_conversation(conversation_id: str) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail="对话不存在")
     return {"deleted": conversation_id}
-

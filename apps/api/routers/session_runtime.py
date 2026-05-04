@@ -4,17 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from packages.agent.runtime.agent_service import StreamPersistenceConfig, respond_action, stream_chat
+from packages.agent.runtime.agent_service import (
+    StreamPersistenceConfig,
+    respond_action,
+    stream_chat,
+)
 from packages.agent.runtime.permission_next import get_pending, list_pending
 from packages.agent.session.session_compaction import summarize_session
+from packages.agent.session.session_instance import current_project_info
+from packages.agent.session.session_lifecycle import get_prompt_instance, list_session_statuses
 from packages.agent.session.session_runtime import (
     append_session_message,
     build_user_message_meta,
@@ -29,13 +36,11 @@ from packages.agent.session.session_runtime import (
     get_session_record,
     list_session_messages,
     list_sessions,
-    resolve_default_model_identity,
     request_session_abort,
+    resolve_default_model_identity,
     revert_session,
     unrevert_session,
 )
-from packages.agent.session.session_instance import current_project_info
-from packages.agent.session.session_lifecycle import get_prompt_instance, list_session_statuses
 from packages.domain.assistant_schemas import (
     AssistantSessionDiffEntry,
     AssistantSessionForkRequest,
@@ -134,7 +139,9 @@ def _consume_stream(raw_stream: Iterator[str], *, session_id: str, operation: st
         _close_stream(raw_stream)
 
 
-def _schedule_detached_stream(raw_stream: Iterator[str], *, session_id: str, operation: str) -> None:
+def _schedule_detached_stream(
+    raw_stream: Iterator[str], *, session_id: str, operation: str
+) -> None:
     asyncio.create_task(
         asyncio.to_thread(
             _consume_stream,
@@ -154,7 +161,13 @@ def _assistant_meta_from_session(session_record: dict) -> dict:
         "cwd": session_record.get("workspace_path") or session_record.get("directory"),
         "root": session_record.get("directory"),
         "variant": None,
-        "tokens": {"total": None, "input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+        "tokens": {
+            "total": None,
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {"read": 0, "write": 0},
+        },
         "cost": 0.0,
     }
 
@@ -165,7 +178,9 @@ def _assert_session_idle(session_id: str) -> None:
 
 
 def _message_text(parts: list[dict[str, Any]]) -> str:
-    return "".join(str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text")
+    return "".join(
+        str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text"
+    )
 
 
 def _resolve_workspace_binding(
@@ -178,8 +193,12 @@ def _resolve_workspace_binding(
     requested_directory = str(directory or "").strip()
     record_workspace = str((session_record or {}).get("workspace_path") or "").strip()
     record_directory = str((session_record or {}).get("directory") or "").strip()
-    resolved_workspace = requested_workspace or requested_directory or record_workspace or record_directory
-    resolved_directory = requested_directory or requested_workspace or record_directory or record_workspace
+    resolved_workspace = (
+        requested_workspace or requested_directory or record_workspace or record_directory
+    )
+    resolved_directory = (
+        requested_directory or requested_workspace or record_directory or record_workspace
+    )
     if not resolved_workspace or not resolved_directory:
         raise HTTPException(status_code=400, detail="当前未绑定工作区，请先导入或选择目录")
     return resolved_directory, resolved_workspace
@@ -204,22 +223,23 @@ def _prepare_prompt_stream(
             agent_backend_id=body.agent_backend_id,
         )
     elif (
-        workspace_path != str(session_payload.get("workspace_path") or "").strip()
-    ) or (
-        body.workspace_server_id
-        and body.workspace_server_id != session_payload.get("workspace_server_id")
-    ) or (
-        body.mode
-        and body.mode != session_payload.get("mode")
-    ) or (
-        body.agent_backend_id
-        and body.agent_backend_id != session_payload.get("agent_backend_id")
+        (workspace_path != str(session_payload.get("workspace_path") or "").strip())
+        or (
+            body.workspace_server_id
+            and body.workspace_server_id != session_payload.get("workspace_server_id")
+        )
+        or (body.mode and body.mode != session_payload.get("mode"))
+        or (
+            body.agent_backend_id
+            and body.agent_backend_id != session_payload.get("agent_backend_id")
+        )
     ):
         session_payload = ensure_session_record(
             session_id,
             directory=directory,
             workspace_path=workspace_path,
-            workspace_server_id=body.workspace_server_id or session_payload.get("workspace_server_id"),
+            workspace_server_id=body.workspace_server_id
+            or session_payload.get("workspace_server_id"),
             mode=body.mode or session_payload.get("mode"),
             agent_backend_id=body.agent_backend_id or session_payload.get("agent_backend_id"),
         )
@@ -264,7 +284,13 @@ def _prepare_prompt_stream(
             "cwd": workspace_path,
             "root": session_payload["directory"],
             "variant": reasoning_level,
-            "tokens": {"total": None, "input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+            "tokens": {
+                "total": None,
+                "input": 0,
+                "output": 0,
+                "reasoning": 0,
+                "cache": {"read": 0, "write": 0},
+            },
             "cost": 0.0,
         },
     )
@@ -297,7 +323,10 @@ def _prepare_permission_stream(
         if _session_ended_with_abort(session_id):
             return session_record, _aborted_permission_stream(), False
         raise HTTPException(status_code=404, detail="permission not found")
-    assistant_message_id = str(((pending.tool or {}) if pending is not None else {}).get("messageID") or "").strip() or None
+    assistant_message_id = (
+        str(((pending.tool or {}) if pending is not None else {}).get("messageID") or "").strip()
+        or None
+    )
     persistence = StreamPersistenceConfig(
         session_id=session_id,
         parent_id=get_latest_user_message_id(session_id),
@@ -344,7 +373,10 @@ def list_session_route(
     directory: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
 ) -> list[AssistantSessionInfo]:
-    return [session_info_from_record(item) for item in list_sessions(directory=directory, limit=limit, archived=False)]
+    return [
+        session_info_from_record(item)
+        for item in list_sessions(directory=directory, limit=limit, archived=False)
+    ]
 
 
 @router.get("/session/status")
@@ -358,7 +390,9 @@ def get_session_status_map(directory: str | None = Query(default=None)) -> dict[
     filtered: dict[str, dict] = {}
     for session_id, status in statuses.items():
         record = get_session_record(session_id) or {}
-        session_directory = str(record.get("directory") or record.get("workspace_path") or "").strip()
+        session_directory = str(
+            record.get("directory") or record.get("workspace_path") or ""
+        ).strip()
         if session_directory == normalized:
             filtered[session_id] = status
     return filtered
@@ -507,7 +541,9 @@ def reply_permission_route(session_id: str, permission_id: str, body: Permission
 
 
 @router.post("/session/{session_id}/permissions/{permission_id}/detached")
-async def reply_permission_route_detached(session_id: str, permission_id: str, body: PermissionReplyRequest) -> dict:
+async def reply_permission_route_detached(
+    session_id: str, permission_id: str, body: PermissionReplyRequest
+) -> dict:
     _, raw_stream, accepted = _prepare_permission_stream(session_id, permission_id, body)
     if not accepted:
         return {
@@ -543,4 +579,3 @@ def summarize_session_route(session_id: str, body: SessionSummarizeRequest) -> b
         overflow=False,
     )
     return True
-

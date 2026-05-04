@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from packages.agent.workspace.workspace_remote import clean_text
 from packages.agent.mcp.claw_mcp_registry import (
     CLAW_CONTEXT_MODE_ENV,
     CLAW_CONTEXT_SESSION_ID_ENV,
@@ -27,6 +26,8 @@ from packages.agent.mcp.claw_mcp_registry import (
 )
 from packages.agent.runtime.agent_runtime_policy import (
     CLAW_AUTO_COMPACTION_THRESHOLD_ENV_VAR,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     apply_claw_runtime_policy_env as _shared_apply_claw_runtime_policy_env,
 )
 from packages.agent.runtime.cli_agent_service import (
@@ -41,6 +42,7 @@ from packages.agent.runtime.cli_agent_service import (
     _session_mode_for_claw,
     _slugify,
 )
+from packages.agent.workspace.workspace_remote import clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -439,4 +441,3 @@ def get_claw_runtime_manager() -> ClawRuntimeManager:
             _MANAGER = ClawRuntimeManager()
             atexit.register(_MANAGER.stop_all)
         return _MANAGER
-

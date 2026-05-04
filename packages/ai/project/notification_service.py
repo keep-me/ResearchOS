@@ -10,7 +10,11 @@ from packages.domain.task_tracker import global_tracker
 from packages.integrations.email_service import EmailService
 from packages.integrations.feishu_service import FeishuNotificationService
 from packages.storage.db import session_scope
-from packages.storage.repositories import EmailConfigRepository, FeishuConfigRepository, ProjectRepository
+from packages.storage.repositories import (
+    EmailConfigRepository,
+    FeishuConfigRepository,
+    ProjectRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,9 @@ def notify_project_run_status(run_id: str, event: str) -> dict[str, Any]:
         recipients = _resolve_recipients(metadata)
         project_name = project.name if project else "ResearchOS 项目"
         run_title = run.title or getattr(run.workflow_type, "value", run.workflow_type)
-        workflow_label = str(run.workflow_type.value if hasattr(run.workflow_type, "value") else run.workflow_type)
+        workflow_label = str(
+            run.workflow_type.value if hasattr(run.workflow_type, "value") else run.workflow_type
+        )
 
         email_result = {"sent": False, "reason": "email_not_configured"}
         if email_config is not None and recipients:
@@ -92,7 +98,9 @@ def notify_project_run_status(run_id: str, event: str) -> dict[str, Any]:
                 webhook_secret=feishu_config.webhook_secret,
                 bridge_url=feishu_config.bridge_url,
                 timeout_seconds=int(feishu_config.timeout_seconds or 300),
-                timeout_action=str(getattr(feishu_config, "timeout_action", "approve") or "approve"),
+                timeout_action=str(
+                    getattr(feishu_config, "timeout_action", "approve") or "approve"
+                ),
             )
             title, body, options = _build_feishu_message(
                 project_name=project_name,
@@ -169,10 +177,14 @@ def _build_subject(project_name: str, run_title: str, event: str) -> str:
 
 def _build_html_body(*, project_name: str, run, event: str) -> str:
     event_label = _EMAIL_EVENT_SUBJECTS.get(event, event or "状态更新")
-    workflow_label = str(run.workflow_type.value if hasattr(run.workflow_type, "value") else run.workflow_type)
+    workflow_label = str(
+        run.workflow_type.value if hasattr(run.workflow_type, "value") else run.workflow_type
+    )
     prompt = escape(str(run.prompt or "")[:1200]) or "无"
     summary = escape(str(run.summary or "")[:1200]) or "无"
-    workspace = escape(str(run.remote_workdir or run.workdir or run.run_directory or "")[:1200]) or "未记录"
+    workspace = (
+        escape(str(run.remote_workdir or run.workdir or run.run_directory or "")[:1200]) or "未记录"
+    )
     return f"""
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -207,7 +219,9 @@ def _build_html_body(*, project_name: str, run, event: str) -> str:
 
 def _build_text_body(*, project_name: str, run, event: str) -> str:
     event_label = _EMAIL_EVENT_SUBJECTS.get(event, event or "状态更新")
-    workflow_label = str(run.workflow_type.value if hasattr(run.workflow_type, "value") else run.workflow_type)
+    workflow_label = str(
+        run.workflow_type.value if hasattr(run.workflow_type, "value") else run.workflow_type
+    )
     return "\n".join(
         [
             f"项目: {project_name}",
@@ -230,9 +244,15 @@ def _build_feishu_message(
     metadata: dict[str, Any],
 ) -> tuple[str, str, list[str] | None]:
     event_label = _EMAIL_EVENT_SUBJECTS.get(event, event or "状态更新")
-    workspace = str(run.remote_workdir or run.workdir or run.run_directory or "未记录").strip() or "未记录"
+    workspace = (
+        str(run.remote_workdir or run.workdir or run.run_directory or "未记录").strip() or "未记录"
+    )
     title = f"ResearchOS · {project_name} · {event_label}"
-    pending = metadata.get("pending_checkpoint") if isinstance(metadata.get("pending_checkpoint"), dict) else {}
+    pending = (
+        metadata.get("pending_checkpoint")
+        if isinstance(metadata.get("pending_checkpoint"), dict)
+        else {}
+    )
     checkpoint_type = str(pending.get("type") or "").strip().lower()
     body_lines = [
         f"**项目**：{project_name}",
@@ -244,10 +264,18 @@ def _build_feishu_message(
     ]
     options: list[str] | None = None
     if event == "paused":
-        body_lines.append(f"**确认类型**：{'阶段确认' if checkpoint_type == 'stage_transition' else '运行前确认'}")
+        body_lines.append(
+            f"**确认类型**：{'阶段确认' if checkpoint_type == 'stage_transition' else '运行前确认'}"
+        )
         if checkpoint_type == "stage_transition":
-            completed = str(pending.get("completed_stage_label") or pending.get("completed_stage_id") or "当前阶段").strip()
-            resume = str(pending.get("resume_stage_label") or pending.get("resume_stage_id") or "下一阶段").strip()
+            completed = str(
+                pending.get("completed_stage_label")
+                or pending.get("completed_stage_id")
+                or "当前阶段"
+            ).strip()
+            resume = str(
+                pending.get("resume_stage_label") or pending.get("resume_stage_id") or "下一阶段"
+            ).strip()
             body_lines.append(f"**阶段流转**：{completed} → {resume}")
             stage_summary = str(pending.get("stage_summary") or "").strip()
             if stage_summary:
@@ -303,7 +331,9 @@ def _await_interactive_checkpoint_reply(
         action, comment = _normalize_checkpoint_reply(result.get("reply"))
         if not action:
             reply_preview = str(result.get("reply") or "").strip()[:120] or "空回复"
-            _append_checkpoint_log(run_id, f"收到飞书回复但未识别为 approve / reject：{reply_preview}", level="warning")
+            _append_checkpoint_log(
+                run_id, f"收到飞书回复但未识别为 approve / reject：{reply_preview}", level="warning"
+            )
             return
 
         _append_checkpoint_log(
@@ -323,16 +353,27 @@ def _await_interactive_checkpoint_reply(
         except ValueError as exc:
             _append_checkpoint_log(run_id, f"飞书审批结果未生效：{str(exc)[:180]}", level="warning")
         except Exception:
-            logger.exception("failed to process interactive feishu checkpoint reply for run %s", run_id)
-            _append_checkpoint_log(run_id, "飞书审批回执处理失败，请在项目页手动确认。", level="error")
+            logger.exception(
+                "failed to process interactive feishu checkpoint reply for run %s", run_id
+            )
+            _append_checkpoint_log(
+                run_id, "飞书审批回执处理失败，请在项目页手动确认。", level="error"
+            )
     finally:
         with _INTERACTIVE_WAITERS_LOCK:
             _INTERACTIVE_WAITERS.discard(waiter_key)
 
 
 def _checkpoint_waiter_key(run_id: str, metadata: dict[str, Any]) -> str:
-    pending = metadata.get("pending_checkpoint") if isinstance(metadata.get("pending_checkpoint"), dict) else {}
-    requested_at = str(pending.get("requested_at") or metadata.get("checkpoint_requested_at") or "").strip() or "pending"
+    pending = (
+        metadata.get("pending_checkpoint")
+        if isinstance(metadata.get("pending_checkpoint"), dict)
+        else {}
+    )
+    requested_at = (
+        str(pending.get("requested_at") or metadata.get("checkpoint_requested_at") or "").strip()
+        or "pending"
+    )
     return f"{run_id}:{requested_at}"
 
 
@@ -348,14 +389,22 @@ def _append_checkpoint_log(run_id: str, message: str, *, level: str = "info") ->
 
 
 def _handle_interactive_timeout(run_id: str, service: FeishuNotificationService) -> None:
-    timeout_action = str(getattr(service, "timeout_action", "approve") or "approve").strip().lower() or "approve"
+    timeout_action = (
+        str(getattr(service, "timeout_action", "approve") or "approve").strip().lower() or "approve"
+    )
     if timeout_action == "wait":
-        _append_checkpoint_log(run_id, "飞书交互审批等待超时，当前运行保持暂停，仍可在前端或后续消息中继续审批。", level="warning")
+        _append_checkpoint_log(
+            run_id,
+            "飞书交互审批等待超时，当前运行保持暂停，仍可在前端或后续消息中继续审批。",
+            level="warning",
+        )
         return
 
     action = "approve" if timeout_action == "approve" else "reject"
     label = "自动批准继续" if action == "approve" else "自动拒绝继续"
-    _append_checkpoint_log(run_id, f"飞书交互审批等待超时，已按超时策略执行：{label}。", level="warning")
+    _append_checkpoint_log(
+        run_id, f"飞书交互审批等待超时，已按超时策略执行：{label}。", level="warning"
+    )
     try:
         from packages.ai.project.checkpoint_service import process_checkpoint_response
 
@@ -380,10 +429,30 @@ def _normalize_checkpoint_reply(reply: Any) -> tuple[str | None, str | None]:
     normalized = raw.lower().strip()
     separators = (":", "：", "-", " ", "\n")
     approve_tokens = {
-        "approve", "approved", "yes", "y", "ok", "go", "continue", "同意", "通过", "批准", "继续",
+        "approve",
+        "approved",
+        "yes",
+        "y",
+        "ok",
+        "go",
+        "continue",
+        "同意",
+        "通过",
+        "批准",
+        "继续",
     }
     reject_tokens = {
-        "reject", "rejected", "no", "n", "stop", "cancel", "deny", "拒绝", "不同意", "停止", "取消",
+        "reject",
+        "rejected",
+        "no",
+        "n",
+        "stop",
+        "cancel",
+        "deny",
+        "拒绝",
+        "不同意",
+        "停止",
+        "取消",
     }
 
     if normalized in approve_tokens:
@@ -395,12 +464,12 @@ def _normalize_checkpoint_reply(reply: Any) -> tuple[str | None, str | None]:
         for separator in separators:
             prefix = f"{token}{separator}"
             if normalized.startswith(prefix):
-                return "approve", raw[len(prefix):].strip() or None
+                return "approve", raw[len(prefix) :].strip() or None
 
     for token in reject_tokens:
         for separator in separators:
             prefix = f"{token}{separator}"
             if normalized.startswith(prefix):
-                return "reject", raw[len(prefix):].strip() or None
+                return "reject", raw[len(prefix) :].strip() or None
 
     return None, None

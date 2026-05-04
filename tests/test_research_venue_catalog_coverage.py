@@ -108,7 +108,9 @@ class _CoverageFakeOpenAlexClient:
 
 
 def test_ccf_a_conference_catalog_has_expected_core_coverage() -> None:
-    conferences = [entry for entry in venue_catalog._CCF_A_VENUES if entry.venue_type == "conference"]
+    conferences = [
+        entry for entry in venue_catalog._CCF_A_VENUES if entry.venue_type == "conference"
+    ]
     conference_names = {entry.display_name for entry in conferences}
 
     assert len(conferences) == 54
@@ -149,12 +151,15 @@ def test_ccf_a_catalog_rejects_workshop_and_extended_abstract_variants() -> None
 
     for venue_name in rejected_samples:
         assert venue_catalog.venue_tier_for_name(venue_name) is None
-        assert venue_catalog.matches_venue_filter(
-            venue_name,
-            raw_venue_type="conference",
-            venue_tier="ccf_a",
-            venue_type="conference",
-        ) is False
+        assert (
+            venue_catalog.matches_venue_filter(
+                venue_name,
+                raw_venue_type="conference",
+                venue_tier="ccf_a",
+                venue_type="conference",
+            )
+            is False
+        )
 
 
 def test_search_literature_returns_only_ccf_a_conferences_for_realistic_venues(monkeypatch) -> None:
@@ -173,7 +178,9 @@ def test_search_literature_returns_only_ccf_a_conferences_for_realistic_venues(m
     assert len(papers) == 5
     assert {paper["venue_tier"] for paper in papers} == {"ccf_a"}
     assert {paper["venue_type"] for paper in papers} == {"conference"}
-    assert "Proceedings of the Workshop on Foundation Models" not in {paper["venue"] for paper in papers}
+    assert "Proceedings of the Workshop on Foundation Models" not in {
+        paper["venue"] for paper in papers
+    }
 
 
 def test_search_literature_can_filter_specific_ccf_a_conference_aliases(monkeypatch) -> None:

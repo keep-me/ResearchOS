@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
+from packages.integrations import llm_provider_summary
 from packages.integrations.llm_client import LLMClient, LLMConfig, LLMResult
 from packages.integrations.llm_provider_schema import ResolvedModelTarget
-from packages.integrations import llm_provider_summary
 
 
 def _config() -> LLMConfig:
@@ -52,8 +52,16 @@ def test_provider_summary_openai_responses_success(monkeypatch) -> None:
         "get_openai_client",
         lambda *_args, **_kwargs: SimpleNamespace(responses=_FakeResponses()),
     )
-    monkeypatch.setattr(client, "_apply_variant_to_responses_kwargs", lambda kwargs, _resolved: kwargs.setdefault("variant_applied", True))
-    monkeypatch.setattr(client, "_extract_responses_text_and_reasoning", lambda _response: ("summary text", "reasoning text"))
+    monkeypatch.setattr(
+        client,
+        "_apply_variant_to_responses_kwargs",
+        lambda kwargs, _resolved: kwargs.setdefault("variant_applied", True),
+    )
+    monkeypatch.setattr(
+        client,
+        "_extract_responses_text_and_reasoning",
+        lambda _response: ("summary text", "reasoning text"),
+    )
     monkeypatch.setattr(client, "_extract_responses_usage", lambda _response: (11, 7))
     monkeypatch.setattr(client, "_estimate_cost", lambda **_kwargs: (0.1, 0.2))
 
@@ -94,8 +102,12 @@ def test_provider_summary_openai_responses_falls_back_to_chat_compatible(monkeyp
         "get_openai_client",
         lambda *_args, **_kwargs: SimpleNamespace(responses=_BrokenResponses()),
     )
-    monkeypatch.setattr(client, "_apply_variant_to_responses_kwargs", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        client, "_apply_variant_to_responses_kwargs", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: False
+    )
     monkeypatch.setattr(client, "_call_openai_compatible", lambda *_args, **_kwargs: fallback)
 
     result = llm_provider_summary.call_openai_responses(
@@ -127,9 +139,13 @@ def test_provider_summary_openai_compatible_prefers_raw_http_fallback(monkeypatc
         lambda *_args, **_kwargs: fake_client,
     )
     monkeypatch.setattr(client, "_apply_variant_to_chat_kwargs", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: True
+    )
     monkeypatch.setattr(client, "_call_openai_chat_raw_http", lambda **_kwargs: (raw_result, []))
-    monkeypatch.setattr(client, "_pseudo_summary", lambda *_args, **_kwargs: LLMResult(content="pseudo"))
+    monkeypatch.setattr(
+        client, "_pseudo_summary", lambda *_args, **_kwargs: LLMResult(content="pseudo")
+    )
 
     result = llm_provider_summary.call_openai_compatible(
         client,
@@ -137,13 +153,17 @@ def test_provider_summary_openai_compatible_prefers_raw_http_fallback(monkeypatc
         prompt="hello",
         stage="rag",
         cfg=_config(),
-        target=_target(provider="zhipu", base_url="https://open.bigmodel.cn/api/paas/v4/", model="glm-4.7"),
+        target=_target(
+            provider="zhipu", base_url="https://open.bigmodel.cn/api/paas/v4/", model="glm-4.7"
+        ),
     )
 
     assert result is raw_result
 
 
-def test_provider_summary_openai_compatible_falls_back_to_responses_when_legacy_chat_rejected(monkeypatch) -> None:
+def test_provider_summary_openai_compatible_falls_back_to_responses_when_legacy_chat_rejected(
+    monkeypatch,
+) -> None:
     client = LLMClient()
     captured: dict[str, object] = {}
 
@@ -160,7 +180,9 @@ def test_provider_summary_openai_compatible_falls_back_to_responses_when_legacy_
         lambda *_args, **_kwargs: fake_client,
     )
     monkeypatch.setattr(client, "_apply_variant_to_chat_kwargs", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(client, "_should_try_openai_responses_fallback", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        client, "_should_try_openai_responses_fallback", lambda *_args, **_kwargs: True
+    )
 
     def _fallback(*_args, **kwargs):
         captured.update(kwargs)
@@ -202,19 +224,25 @@ def test_provider_summary_anthropic_falls_back_to_pseudo(monkeypatch) -> None:
         prompt="hello",
         stage="rag",
         cfg=_config(),
-        target=_target(provider="anthropic", base_url="https://api.anthropic.com", model="claude-sonnet-4-5"),
+        target=_target(
+            provider="anthropic", base_url="https://api.anthropic.com", model="claude-sonnet-4-5"
+        ),
     )
 
     assert result is pseudo
 
 
-def test_provider_summary_openai_compatible_uses_stream_fallback_when_message_empty(monkeypatch) -> None:
+def test_provider_summary_openai_compatible_uses_stream_fallback_when_message_empty(
+    monkeypatch,
+) -> None:
     client = LLMClient()
 
     class _FakeChatCompletions:
         def create(self, **_kwargs):
             return SimpleNamespace(
-                choices=[SimpleNamespace(message=SimpleNamespace(content=None, reasoning_content=None))],
+                choices=[
+                    SimpleNamespace(message=SimpleNamespace(content=None, reasoning_content=None))
+                ],
                 usage=SimpleNamespace(prompt_tokens=13, completion_tokens=8),
             )
 
@@ -262,7 +290,9 @@ def test_provider_summary_openai_compatible_prefers_stream_for_custom_gpt5(monke
 
     class _ShouldNotBeCalled:
         def create(self, **_kwargs):
-            raise AssertionError("chat.completions.create should not be called for preferred stream path")
+            raise AssertionError(
+                "chat.completions.create should not be called for preferred stream path"
+            )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_ShouldNotBeCalled()))
     monkeypatch.setattr(

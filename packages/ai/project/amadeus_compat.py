@@ -226,7 +226,9 @@ _ACTION_LABELS: dict[str, str] = {
 
 
 def get_amadeus_workflow_config(workflow_type: ProjectWorkflowType | str) -> dict[str, Any]:
-    key = str(workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type)
+    key = str(
+        workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type
+    )
     return dict(_WORKFLOW_COMPAT.get(key) or {})
 
 
@@ -282,13 +284,31 @@ def infer_sync_strategy(
     resolved_target_server_id = str(target_workspace_server_id or workspace_server_id or "").strip()
     source_remote = bool(source_server_id)
     target_remote = bool(resolved_target_server_id)
-    if source_remote and target_remote and project_path and target_path and project_path != target_path:
+    if (
+        source_remote
+        and target_remote
+        and project_path
+        and target_path
+        and project_path != target_path
+    ):
         if source_server_id == resolved_target_server_id:
             return "remote_overlay_copy"
         return "remote_bridge_copy"
-    if source_remote and not target_remote and project_path and target_path and project_path != target_path:
+    if (
+        source_remote
+        and not target_remote
+        and project_path
+        and target_path
+        and project_path != target_path
+    ):
         return "remote_download"
-    if not source_remote and target_remote and project_path and target_path and project_path != target_path:
+    if (
+        not source_remote
+        and target_remote
+        and project_path
+        and target_path
+        and project_path != target_path
+    ):
         return "incremental_rsync"
     if target_remote and target_path:
         return "remote_workspace_only"
@@ -356,7 +376,9 @@ def build_remote_session_name(run_id: str, *, prefix: str = "aris-run") -> str:
     return f"{prefix}-{suffix}"
 
 
-def build_action_result_path(run_directory: str | None, action_id: str, *, remote: bool) -> str | None:
+def build_action_result_path(
+    run_directory: str | None, action_id: str, *, remote: bool
+) -> str | None:
     base = str(run_directory or "").strip()
     if not base:
         return None

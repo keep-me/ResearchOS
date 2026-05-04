@@ -119,7 +119,9 @@ def _html_to_text(payload: str) -> str:
         return ""
     cleaned = _HTML_DROP_RE.sub(" ", payload)
     cleaned = re.sub(r"(?i)<br\\s*/?>", "\n", cleaned)
-    cleaned = re.sub(r"(?i)</(p|div|h[1-6]|li|tr|section|article|main|header|footer)>", "\n", cleaned)
+    cleaned = re.sub(
+        r"(?i)</(p|div|h[1-6]|li|tr|section|article|main|header|footer)>", "\n", cleaned
+    )
     cleaned = html.unescape(_HTML_TAG_RE.sub(" ", cleaned))
     cleaned = cleaned.replace("\r", "\n")
     cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
@@ -252,4 +254,3 @@ def _codesearch(query: str, max_results: int = 8) -> ToolResult:
         },
         summary=f"代码搜索找到 {payload.get('count', 0)} 条结果",
     )
-

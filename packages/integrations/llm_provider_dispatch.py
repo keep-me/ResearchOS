@@ -58,7 +58,11 @@ def resolve_chat_dispatch(target: ResolvedModelTarget) -> ChatDispatch:
     provider = _provider(target.provider)
     if provider in ("", "none"):
         return ChatDispatch(route="pseudo")
-    if provider == "openai" and target.api_key and llm_provider_transform.is_official_openai_target(target):
+    if (
+        provider == "openai"
+        and target.api_key
+        and llm_provider_transform.is_official_openai_target(target)
+    ):
         return ChatDispatch(route="openai-responses")
     if provider in ("openai", "zhipu", "custom") and target.api_key:
         return ChatDispatch(route="openai-compatible")

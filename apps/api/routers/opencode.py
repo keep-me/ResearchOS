@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ipaddress
+import socket
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -18,6 +20,37 @@ from packages.agent.runtime.opencode_manager import (
 
 router = APIRouter()
 _ROOT = Path(__file__).resolve().parents[3]
+_PROVIDER_READ_TIMEOUT_SEC = 180.0
+_RUNTIME_READ_TIMEOUT_SEC = 180.0
+_BLOCKED_HOSTS = {"localhost"}
+
+
+def _host_resolves_to_blocked_address(host: str) -> bool:
+    try:
+        addresses = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return True
+    for *_, sockaddr in addresses:
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            return True
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+            return True
+    return False
+
+
+def _validate_provider_url(url: str) -> str:
+    parsed = urlparse(str(url or ""))
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").strip().lower()
+    if scheme != "https":
+        raise HTTPException(status_code=400, detail="模型代理仅允许 HTTPS provider URL")
+    if not host:
+        raise HTTPException(status_code=400, detail="模型代理 provider URL 缺少 host")
+    if host in _BLOCKED_HOSTS or _host_resolves_to_blocked_address(host):
+        raise HTTPException(status_code=400, detail="模型代理 provider URL 不能指向本机或内网地址")
+    return url
 
 
 def _runtime_base_url() -> str:
@@ -93,7 +126,8 @@ async def opencode_provider_proxy(subpath: str, request: Request):
     if not base_url or not api_key:
         raise HTTPException(status_code=400, detail="当前没有可用的 OpenAI 兼容模型配置")
 
-    target_url = urljoin(base_url.rstrip("/") + "/", subpath.lstrip("/"))
+    base_url = _validate_provider_url(base_url)
+    target_url = _validate_provider_url(urljoin(base_url.rstrip("/") + "/", subpath.lstrip("/")))
     verify_tls = not _requires_custom_tls_compat(base_url)
 
     upstream_headers: dict[str, str] = {}
@@ -105,12 +139,12 @@ async def opencode_provider_proxy(subpath: str, request: Request):
     upstream_headers["Authorization"] = f"Bearer {api_key}"
 
     body = await request.body()
-    timeout = httpx.Timeout(connect=30.0, read=None, write=120.0, pool=None)
+    timeout = httpx.Timeout(connect=30.0, read=_PROVIDER_READ_TIMEOUT_SEC, write=120.0, pool=30.0)
 
     try:
         client = httpx.AsyncClient(
             timeout=timeout,
-            follow_redirects=True,
+            follow_redirects=False,
             verify=verify_tls,
         )
         upstream_request = client.build_request(
@@ -163,12 +197,12 @@ async def opencode_runtime_proxy(subpath: str, request: Request):
         upstream_headers[key] = value
 
     body = await request.body()
-    timeout = httpx.Timeout(connect=30.0, read=None, write=120.0, pool=None)
+    timeout = httpx.Timeout(connect=30.0, read=_RUNTIME_READ_TIMEOUT_SEC, write=120.0, pool=30.0)
 
     try:
         client = httpx.AsyncClient(
             timeout=timeout,
-            follow_redirects=True,
+            follow_redirects=False,
         )
         upstream_request = client.build_request(
             request.method,
@@ -202,4 +236,3 @@ async def opencode_runtime_proxy(subpath: str, request: Request):
         reason = str(exc).strip() or target_url
         detail = f"opencode 运行时代理失败: {type(exc).__name__}: {reason}"
         raise HTTPException(status_code=502, detail=detail) from exc
-

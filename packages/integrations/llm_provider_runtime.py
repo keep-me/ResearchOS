@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 import re
+from collections.abc import Iterator
 from urllib.parse import urlparse
 
 from packages.integrations import llm_provider_error, llm_provider_probe

@@ -127,7 +127,9 @@ class _RpcClient(Protocol):
 
 @runtime_checkable
 class _InteractiveRpcClient(Protocol):
-    def start_prompt(self, session_id: str, prompt_blocks: list[dict[str, Any]]) -> _StreamingPromptHandle: ...
+    def start_prompt(
+        self, session_id: str, prompt_blocks: list[dict[str, Any]]
+    ) -> _StreamingPromptHandle: ...
 
     def wait_prompt_event(
         self,
@@ -224,9 +226,13 @@ class _StreamingRpcClient:
                         option_id=option_id,
                     )
                     if option_id:
-                        aggregated_notes.append("ACP 智能体请求权限，ResearchOS 已自动返回默认结果。")
+                        aggregated_notes.append(
+                            "ACP 智能体请求权限，ResearchOS 已自动返回默认结果。"
+                        )
                     else:
-                        aggregated_notes.append("ACP 智能体请求权限，但未找到可选项，已取消该请求。")
+                        aggregated_notes.append(
+                            "ACP 智能体请求权限，但未找到可选项，已取消该请求。"
+                        )
                     continue
                 return payload, aggregated_updates, aggregated_notes
         except Exception:
@@ -237,7 +243,9 @@ class _StreamingRpcClient:
                 raise RuntimeError("; ".join(dict.fromkeys(aggregated_notes)))
             raise
 
-    def start_prompt(self, session_id: str, prompt_blocks: list[dict[str, Any]]) -> _StreamingPromptHandle:
+    def start_prompt(
+        self, session_id: str, prompt_blocks: list[dict[str, Any]]
+    ) -> _StreamingPromptHandle:
         request_id = self._next_request_id()
         response_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
         with self._lock:
@@ -294,7 +302,9 @@ class _StreamingRpcClient:
                 raise RuntimeError(str(value))
 
             with self._lock:
-                permission_queue = self._permission_events.setdefault(handle.session_id, queue.Queue())
+                permission_queue = self._permission_events.setdefault(
+                    handle.session_id, queue.Queue()
+                )
             try:
                 permission_event = permission_queue.get_nowait()
             except queue.Empty:
@@ -431,8 +441,12 @@ class _StreamingRpcClient:
             }
             with self._lock:
                 if session_id:
-                    self._permission_events.setdefault(session_id, queue.Queue()).put(permission_event)
-                    self._permission_notes.setdefault(session_id, []).append("ACP 智能体请求权限，等待确认。")
+                    self._permission_events.setdefault(session_id, queue.Queue()).put(
+                        permission_event
+                    )
+                    self._permission_notes.setdefault(session_id, []).append(
+                        "ACP 智能体请求权限，等待确认。"
+                    )
 
     def _begin_capture(self, session_id: str) -> None:
         with self._lock:
@@ -531,7 +545,9 @@ class _HttpRpcClient:
             capture_session_id=session_id,
         )
 
-    def start_prompt(self, session_id: str, prompt_blocks: list[dict[str, Any]]) -> _StreamingPromptHandle:
+    def start_prompt(
+        self, session_id: str, prompt_blocks: list[dict[str, Any]]
+    ) -> _StreamingPromptHandle:
         request_id = self._next_request_id()
         response_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
         payload = {
@@ -588,7 +604,9 @@ class _HttpRpcClient:
                 raise RuntimeError(str(value))
 
             with self._lock:
-                permission_queue = self._permission_events.setdefault(handle.session_id, queue.Queue())
+                permission_queue = self._permission_events.setdefault(
+                    handle.session_id, queue.Queue()
+                )
             try:
                 permission_event = permission_queue.get_nowait()
             except queue.Empty:
@@ -689,14 +707,16 @@ class _HttpRpcClient:
                         continue
                     current_method = str(message.get("method") or "")
                     params_payload = (
-                        message.get("params")
-                        if isinstance(message.get("params"), dict)
-                        else {}
+                        message.get("params") if isinstance(message.get("params"), dict) else {}
                     )
                     if current_method == "session/update":
                         session_id = clean_text((params_payload or {}).get("sessionId"))
                         update = (params_payload or {}).get("update")
-                        if capture_session_id and session_id == capture_session_id and isinstance(update, dict):
+                        if (
+                            capture_session_id
+                            and session_id == capture_session_id
+                            and isinstance(update, dict)
+                        ):
                             updates.append(dict(update))
                         continue
                     if current_method == "session/request_permission":
@@ -710,7 +730,9 @@ class _HttpRpcClient:
             raise RuntimeError(f"HTTP ACP 没有返回 {method} 的结果")
         return result, updates, notes
 
-    def _request_timeout(self, timeout_sec: int, *, read_timeout: float | None = None) -> httpx.Timeout:
+    def _request_timeout(
+        self, timeout_sec: int, *, read_timeout: float | None = None
+    ) -> httpx.Timeout:
         base_timeout = max(5, timeout_sec)
         return httpx.Timeout(
             connect=base_timeout,
@@ -802,8 +824,12 @@ class _HttpRpcClient:
                     ],
                 }
                 with self._lock:
-                    self._permission_events.setdefault(session_id, queue.Queue()).put(permission_event)
-                    self._permission_notes.setdefault(session_id, []).append("ACP 智能体请求权限，等待确认。")
+                    self._permission_events.setdefault(session_id, queue.Queue()).put(
+                        permission_event
+                    )
+                    self._permission_notes.setdefault(session_id, []).append(
+                        "ACP 智能体请求权限，等待确认。"
+                    )
             return False
         return False
 
@@ -960,9 +986,7 @@ class AcpRegistryService:
         self._ensure_store()
         persisted_servers = {
             name: {
-                key: value
-                for key, value in server.items()
-                if key != "name" and value is not None
+                key: value for key, value in server.items() if key != "name" and value is not None
             }
             for name, server in (config.get("servers") or {}).items()
         }
@@ -1040,10 +1064,16 @@ class AcpRegistryService:
             items.append(
                 {
                     **server,
-                    "status": "connected" if connected else "disabled" if not server["enabled"] else "disconnected",
+                    "status": "connected"
+                    if connected
+                    else "disabled"
+                    if not server["enabled"]
+                    else "disconnected",
                     "connected": connected,
                     "last_error": state.get("last_error"),
-                    "last_connected_at": connection.connected_at if connection else state.get("last_connected_at"),
+                    "last_connected_at": connection.connected_at
+                    if connection
+                    else state.get("last_connected_at"),
                     "last_disconnected_at": state.get("last_disconnected_at"),
                     "default": config.get("default_server") == name,
                 }
@@ -1423,7 +1453,9 @@ class AcpRegistryService:
             "default_server_label": default_item.get("label") if default_item else None,
             "default_transport": default_item.get("transport") if default_item else None,
             "default_connected": bool(default_item and default_item.get("connected")),
-            "default_workspace_server_id": default_item.get("workspace_server_id") if default_item else None,
+            "default_workspace_server_id": default_item.get("workspace_server_id")
+            if default_item
+            else None,
             "chat_supported": True,
             "chat_ready": False,
             "chat_status": "requires_service",
@@ -1567,21 +1599,32 @@ class AcpRegistryService:
         options = [
             {
                 "option_id": clean_text(option.get("optionId")),
-                "name": clean_text(option.get("name")) or clean_text(option.get("kind")) or "Option",
+                "name": clean_text(option.get("name"))
+                or clean_text(option.get("kind"))
+                or "Option",
                 "kind": clean_text(option.get("kind")),
             }
             for option in (payload.get("options") or [])
             if isinstance(option, dict)
         ]
         tool_call = params.get("toolCall") if isinstance(params.get("toolCall"), dict) else {}
-        raw_input = dict(tool_call.get("rawInput") or {}) if isinstance(tool_call.get("rawInput"), dict) else {}
+        raw_input = (
+            dict(tool_call.get("rawInput") or {})
+            if isinstance(tool_call.get("rawInput"), dict)
+            else {}
+        )
         tool_name = clean_text(tool_call.get("kind")) or "custom_acp"
-        title = clean_text(tool_call.get("title")) or clean_text(tool_call.get("kind")) or "ACP 权限请求"
+        title = (
+            clean_text(tool_call.get("title"))
+            or clean_text(tool_call.get("kind"))
+            or "ACP 权限请求"
+        )
         return {
             "request_id": int(payload.get("request_id") or 0),
             "description": f"{title}（来自 ACP）",
             "tool_name": tool_name,
-            "tool_call_id": clean_text(tool_call.get("toolCallId")) or f"acp_permission_{int(payload.get('request_id') or 0)}",
+            "tool_call_id": clean_text(tool_call.get("toolCallId"))
+            or f"acp_permission_{int(payload.get('request_id') or 0)}",
             "raw_input": raw_input,
             "options": options,
         }
@@ -1771,7 +1814,10 @@ class AcpRegistryService:
 
         manager, session = _open_remote_session(server_entry)
         spawn_cwd = self._resolve_remote_spawn_cwd(server, server_entry, session)
-        command_parts = [str(server["command"]), *[str(item) for item in (server.get("args") or [])]]
+        command_parts = [
+            str(server["command"]),
+            *[str(item) for item in (server.get("args") or [])],
+        ]
         env_parts = [
             f"{key}={shlex.quote(str(value))}"
             for key, value in (server.get("env") or {}).items()
@@ -1830,4 +1876,3 @@ class AcpRegistryService:
 @lru_cache(maxsize=1)
 def get_acp_registry_service() -> AcpRegistryService:
     return AcpRegistryService()
-

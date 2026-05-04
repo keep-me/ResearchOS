@@ -12,25 +12,35 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from packages.config import get_settings
-from packages.agent import session_events, session_revert
 from packages.agent import (
     session_bus,
+    session_events,
+    session_message_v2,
+    session_revert,
+    session_store,
 )
-from packages.agent.session.session_bus import SessionBusEvent
 from packages.agent.session import sse_events
-from packages.agent import session_message_v2, session_store
+from packages.agent.session.session_bus import SessionBusEvent
 from packages.agent.session.session_lifecycle import (
     clear_session_abort,
+    drain_prompt_callbacks,
     finish_prompt_instance,
     get_prompt_instance,
-    get_session_status as _get_session_status,
-    is_session_aborted as _is_session_aborted,
-    drain_prompt_callbacks,
     reject_prompt_callbacks,
+)
+from packages.agent.session.session_lifecycle import (
+    get_session_status as _get_session_status,
+)
+from packages.agent.session.session_lifecycle import (
+    is_session_aborted as _is_session_aborted,
+)
+from packages.agent.session.session_lifecycle import (
     request_session_abort as _request_session_abort,
+)
+from packages.agent.session.session_lifecycle import (
     set_session_status as _set_session_status,
 )
+from packages.config import get_settings
 from packages.integrations.llm_client import LLMClient
 from packages.storage.db import session_scope
 from packages.storage.repositories import (
@@ -351,8 +361,7 @@ def _normalize_user_message_meta(meta: dict[str, Any] | None) -> dict[str, Any]:
     if mounted_paper_ids is not None:
         normalized["mountedPaperIDs"] = mounted_paper_ids
     mounted_primary_paper_id = _clean_text(
-        payload.get("mountedPrimaryPaperID")
-        or payload.get("mounted_primary_paper_id")
+        payload.get("mountedPrimaryPaperID") or payload.get("mounted_primary_paper_id")
     )
     if mounted_primary_paper_id:
         normalized["mountedPrimaryPaperID"] = mounted_primary_paper_id
@@ -434,7 +443,9 @@ def _project_key(directory: str, workspace_server_id: str | None) -> str:
 def _project_id_for(directory: str, workspace_server_id: str | None) -> str:
     if not directory:
         return "global"
-    digest = hashlib.sha1(_project_key(directory, workspace_server_id).encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(_project_key(directory, workspace_server_id).encode("utf-8")).hexdigest()[
+        :16
+    ]
     return f"project_{digest}"
 
 
@@ -464,7 +475,9 @@ def delete_session(session_id: str | None) -> bool:
 
 def _aggregate_message_content(parts: list[dict[str, Any]], *, role: str) -> str:
     del role
-    return "".join(str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text")
+    return "".join(
+        str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text"
+    )
 
 
 def _publish_message_updated(message: dict[str, Any]) -> None:
@@ -675,7 +688,9 @@ def _tool_calls_from_parts(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _split_assistant_segments(parts: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    step_indexes = [index for index, part in enumerate(parts) if str(part.get("type") or "") == "step-start"]
+    step_indexes = [
+        index for index, part in enumerate(parts) if str(part.get("type") or "") == "step-start"
+    ]
     if not step_indexes:
         return [parts]
     segments: list[list[dict[str, Any]]] = []
@@ -752,7 +767,8 @@ def load_agent_messages(
                     "content": _assistant_content_from_text_parts(text_parts),
                 }
                 if text_parts and (
-                    len(text_parts) > 1 or any(isinstance(item.get("metadata"), dict) for item in text_parts)
+                    len(text_parts) > 1
+                    or any(isinstance(item.get("metadata"), dict) for item in text_parts)
                 ):
                     payload["text_parts"] = copy.deepcopy(text_parts)
                 if reasoning_parts:
@@ -848,9 +864,7 @@ def sync_external_transcript(
     persisted = load_agent_messages(sid)
     normalized_reasoning_level = _clean_text(reasoning_level).lower() or None
     normalized_active_skill_ids = [
-        str(item).strip()
-        for item in (active_skill_ids or [])
-        if str(item).strip()
+        str(item).strip() for item in (active_skill_ids or []) if str(item).strip()
     ]
     for index, item in enumerate(messages or []):
         if index < len(persisted) or not isinstance(item, dict):
@@ -869,9 +883,7 @@ def sync_external_transcript(
                 active_skill_ids=normalized_active_skill_ids or None,
                 reasoning_level=normalized_reasoning_level,
                 fallback_agent=(
-                    _clean_text(mode)
-                    or _clean_text(session_record.get("mode"))
-                    or "build"
+                    _clean_text(mode) or _clean_text(session_record.get("mode")) or "build"
                 ),
             )
         parts: list[dict[str, Any]] | None = None
@@ -920,7 +932,9 @@ def get_session_todos(session_id: str | None) -> list[dict[str, Any]]:
         ]
 
 
-def replace_session_todos(session_id: str | None, todos: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def replace_session_todos(
+    session_id: str | None, todos: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     sid = _session_id(session_id)
     ensure_session_record(sid)
     with _DB_WRITE_LOCK, session_scope() as session:
@@ -977,7 +991,8 @@ def _finalize_paused_session_abort(session_id: str) -> bool:
 
     from packages.agent import agent_service
     from packages.agent.runtime.acp_service import get_acp_registry_service
-    from packages.agent.runtime.permission_next import list_pending, reply as reply_permission
+    from packages.agent.runtime.permission_next import list_pending
+    from packages.agent.runtime.permission_next import reply as reply_permission
     from packages.agent.session.session_processor import SessionProcessor
 
     pending_permissions = list_pending(sid)
@@ -1000,21 +1015,31 @@ def _finalize_paused_session_abort(session_id: str) -> bool:
         try:
             pending_action = agent_service.get_pending_action(action_id)
         except Exception:
-            logger.exception("Failed to load pending action during abort finalization: %s", action_id)
+            logger.exception(
+                "Failed to load pending action during abort finalization: %s", action_id
+            )
             pending_action = None
-        if pending_action is not None and agent_service.session_pending.is_acp_pending_action(pending_action):
+        if pending_action is not None and agent_service.session_pending.is_acp_pending_action(
+            pending_action
+        ):
             try:
                 acp_registry.discard_pending_permission(action_id)
             except Exception:
-                logger.exception("Failed to discard pending ACP permission during abort: %s", action_id)
+                logger.exception(
+                    "Failed to discard pending ACP permission during abort: %s", action_id
+                )
         try:
             reply_permission(action_id, "reject", "会话已中止")
         except Exception:
-            logger.exception("Failed to reject pending permission during abort finalization: %s", action_id)
+            logger.exception(
+                "Failed to reject pending permission during abort finalization: %s", action_id
+            )
         try:
             agent_service._delete_pending_action(action_id)
         except Exception:
-            logger.exception("Failed to delete pending action during abort finalization: %s", action_id)
+            logger.exception(
+                "Failed to delete pending action during abort finalization: %s", action_id
+            )
 
     processor = SessionProcessor(
         session_id=sid,
@@ -1043,7 +1068,11 @@ def set_session_status(session_id: str | None, status: dict[str, Any] | None) ->
     sid = _session_id(session_id)
     normalized = copy.deepcopy(status or {})
     _set_session_status(sid, normalized)
-    event_type = SessionBusEvent.IDLE if str(normalized.get("type") or "idle") == "idle" else SessionBusEvent.STATUS
+    event_type = (
+        SessionBusEvent.IDLE
+        if str(normalized.get("type") or "idle") == "idle"
+        else SessionBusEvent.STATUS
+    )
     session_bus.publish(
         event_type,
         {
@@ -1096,7 +1125,9 @@ def _update_message_parts(
     return message
 
 
-def _load_message_parts(session_id: str, message_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _load_message_parts(
+    session_id: str, message_id: str
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     history = list_session_messages(session_id, limit=5000)
     for message in history:
         info = message.get("info") if isinstance(message.get("info"), dict) else {}
@@ -1219,7 +1250,9 @@ def delete_session_message_part(session_id: str | None, message_id: str, part_id
     remaining = [part for part in parts if str(part.get("id") or "") != part_id]
     if len(remaining) == len(parts):
         return False
-    normalized_meta = _message_meta_from_info(message.get("info") if isinstance(message.get("info"), dict) else {})
+    normalized_meta = _message_meta_from_info(
+        message.get("info") if isinstance(message.get("info"), dict) else {}
+    )
     _update_message_parts(
         session_id=sid,
         message_id=message_id,
@@ -1246,7 +1279,9 @@ def fork_session(session_id: str | None, message_id: str | None) -> dict[str, An
 
     existing = list_sessions(directory=session_record.get("directory"), limit=500)
     base_title = str(session_record.get("title") or "Session").strip() or "Session"
-    fork_index = 1 + sum(1 for item in existing if str(item.get("title") or "").startswith(f"{base_title} (fork #"))
+    fork_index = 1 + sum(
+        1 for item in existing if str(item.get("title") or "").startswith(f"{base_title} (fork #")
+    )
     forked = ensure_session_record(
         f"{sid}_fork_{uuid4().hex[:8]}",
         directory=session_record.get("directory"),
@@ -1270,7 +1305,9 @@ def fork_session(session_id: str | None, message_id: str | None) -> dict[str, An
         created = append_session_message(
             session_id=forked["id"],
             role=str(info.get("role") or "user"),
-            content=_aggregate_message_content(message.get("parts") or [], role=str(info.get("role") or "user")),
+            content=_aggregate_message_content(
+                message.get("parts") or [], role=str(info.get("role") or "user")
+            ),
             parent_id=new_parent,
             meta=_message_meta_from_info(info) or None,
             parts=cloned_parts,
@@ -1387,7 +1424,9 @@ class _StreamPersistenceState:
             publish=publish,
         )
 
-    def commit_current_message(self, *, finish: str | None = None, meta: dict[str, Any] | None = None) -> None:
+    def commit_current_message(
+        self, *, finish: str | None = None, meta: dict[str, Any] | None = None
+    ) -> None:
         if self.current_message_id is None:
             return
         message, parts = _load_message_parts(self.session_id, self.current_message_id)
@@ -1586,7 +1625,9 @@ class _LegacySessionStreamPersistenceShim:
     def finalize_done(self) -> list[tuple[str, dict[str, Any]]]:  # type: ignore[override]
         return self._processor.finalize_done()
 
-    def apply_event(self, event_name: str, data: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:  # type: ignore[override]
+    def apply_event(
+        self, event_name: str, data: dict[str, Any]
+    ) -> list[tuple[str, dict[str, Any]]]:  # type: ignore[override]
         return self._processor.apply_event(event_name, data)
 
     def consume(self, raw: Any) -> list[str]:  # type: ignore[override]
@@ -1643,7 +1684,9 @@ class SessionStreamPersistence:
     def consume(self, raw: Any) -> list[str]:
         return self._processor.consume(raw)
 
-    def apply_event(self, event_name: str, data: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    def apply_event(
+        self, event_name: str, data: dict[str, Any]
+    ) -> list[tuple[str, dict[str, Any]]]:
         return self._processor.apply_event(event_name, data)
 
     def stream(
@@ -1687,4 +1730,3 @@ def wrap_stream_with_persistence(
         manage_lifecycle=not processor_managed_lifecycle,
         control=prompt_control,
     )
-

@@ -19,6 +19,8 @@ from packages.agent import (
     session_lifecycle,
     session_message_v2,
     session_plan,
+)
+from packages.agent import (
     session_runtime as session_runtime_module,
 )
 from packages.agent.runtime.agent_runtime_state import ensure_session, get_todos, update_todos
@@ -35,7 +37,6 @@ from packages.integrations.llm_client import StreamEvent
 from packages.storage import db
 from packages.storage.db import Base
 from packages.storage.repositories import AgentProjectRepository, AgentSessionMessageRepository
-
 
 REMOVED_NATIVE_ROUTE = pytest.mark.skip(
     reason="部分 native 专项回归尚未恢复；仅保留当前未纳入双栈修复范围的用例。"
@@ -78,7 +79,7 @@ def _fake_stream_chat(*_args, **kwargs):
     return _wrap_persisted_if_needed(
         [
             'event: text_delta\ndata: {"content":"已完成测试回复。"}\n\n',
-            'event: done\ndata: {}\n\n',
+            "event: done\ndata: {}\n\n",
         ],
         kwargs,
     )
@@ -92,10 +93,10 @@ def _fake_reasoning_stream_chat(*_args, **kwargs):
             'event: text_delta\ndata: {"content":"这是最终回答。"}\n\n',
             'event: usage\ndata: {"model":"fake-reasoning","input_tokens":10,"output_tokens":6,"reasoning_tokens":8}\n\n',
             (
-                'event: session_step_finish\ndata: '
+                "event: session_step_finish\ndata: "
                 '{"step":1,"reason":"stop","usage":{"input_tokens":10,"output_tokens":6,"reasoning_tokens":8},"cost":0}\n\n'
             ),
-            'event: done\ndata: {}\n\n',
+            "event: done\ndata: {}\n\n",
         ],
         kwargs,
     )
@@ -107,7 +108,7 @@ def _fake_tool_abort_stream_chat(*_args, **kwargs):
         [
             'event: session_step_start\ndata: {"step":1}\n\n',
             'event: tool_start\ndata: {"id":"call_abort_tool_1","name":"bash","args":{"command":"ls"}}\n\n',
-            'event: done\ndata: {}\n\n',
+            "event: done\ndata: {}\n\n",
         ],
         kwargs,
     )
@@ -118,7 +119,9 @@ def test_normalize_messages_injects_hard_output_constraint_prompt(monkeypatch: p
 
     monkeypatch.setattr(agent_service, "list_workspace_roots", lambda: [])
     monkeypatch.setattr(agent_service, "get_todos", lambda _session_id: [])
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "default"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "default"}
+    )
     monkeypatch.setattr(agent_service, "get_local_skill_detail", lambda *_args, **_kwargs: None)
 
     normalized = agent_service._normalize_messages(
@@ -151,14 +154,20 @@ def test_normalize_messages_includes_opencode_provider_environment_and_skills_se
     )
     monkeypatch.setattr(agent_service, "list_workspace_roots", lambda: [])
     monkeypatch.setattr(agent_service, "get_todos", lambda _session_id: [])
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "default"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "default"}
+    )
     monkeypatch.setattr(agent_service, "get_local_skill_detail", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         agent_service,
         "list_local_skills",
         lambda: [{"id": "skill.alpha", "name": "skill.alpha", "description": "Alpha workflow"}],
     )
-    monkeypatch.setattr(agent_service, "get_session_record", lambda _session_id: {"mode": "build", "permission": None})
+    monkeypatch.setattr(
+        agent_service,
+        "get_session_record",
+        lambda _session_id: {"mode": "build", "permission": None},
+    )
 
     normalized = agent_service._normalize_messages(
         [{"role": "user", "content": "continue"}],
@@ -175,7 +184,9 @@ def test_normalize_messages_includes_opencode_provider_environment_and_skills_se
         if str(message.get("role") or "") == "system"
     ]
     assert any("You are OpenCode" in message for message in system_messages)
-    assert any("<env>" in message and "Workspace root folder" in message for message in system_messages)
+    assert any(
+        "<env>" in message and "Workspace root folder" in message for message in system_messages
+    )
     assert any("Skills are optional workflow templates" in message for message in system_messages)
     assert not any("当前待办" in message for message in system_messages)
     assert not any("当前已保存工作区" in message for message in system_messages)
@@ -281,7 +292,7 @@ def test_session_message_route_passes_agent_backend_and_active_skill_ids(
         return _wrap_persisted_if_needed(
             [
                 'event: text_delta\ndata: {"content":"route ok"}\n\n',
-                'event: done\ndata: {}\n\n',
+                "event: done\ndata: {}\n\n",
             ],
             kwargs,
         )
@@ -349,7 +360,7 @@ def test_session_create_and_prompt_route_persist_backend_selection(
         return _wrap_persisted_if_needed(
             [
                 'event: text_delta\ndata: {"content":"route ok"}\n\n',
-                'event: done\ndata: {}\n\n',
+                "event: done\ndata: {}\n\n",
             ],
             kwargs,
         )
@@ -386,15 +397,21 @@ class FakeConstraintRepairLLM:
         session_cache_key=None,
     ):
         del max_tokens, variant_override, model_override, session_cache_key
-        if tools is None and any("你负责压缩回答" in str(item.get("content") or "") for item in messages):
+        if tools is None and any(
+            "你负责压缩回答" in str(item.get("content") or "") for item in messages
+        ):
             yield StreamEvent(type="text_delta", content="解耦传输层，集中持久化。")
             return
-        yield StreamEvent(type="text_delta", content="这是一个明显超过二十字限制的回答，用来触发压缩修复流程。")
+        yield StreamEvent(
+            type="text_delta", content="这是一个明显超过二十字限制的回答，用来触发压缩修复流程。"
+        )
         yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=8, output_tokens=12)
 
 
 @REMOVED_NATIVE_ROUTE
-def test_stream_chat_repairs_explicit_length_constraint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_stream_chat_repairs_explicit_length_constraint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     from packages.agent import agent_service
 
     _configure_test_db(monkeypatch)
@@ -432,7 +449,9 @@ def test_stream_chat_injects_opencode_max_steps_prompt_on_last_step(
     FakeMaxStepsPromptLLM.calls = []
     monkeypatch.setattr(agent_service, "LLMClient", FakeMaxStepsPromptLLM)
     monkeypatch.setattr(agent_service, "_get_max_tool_steps", lambda: 2)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
 
     def _fake_execute_tool_stream(_name, _arguments, context=None):  # noqa: ANN001, ANN202
         del context
@@ -478,7 +497,9 @@ def test_session_prompt_route_reloads_latest_transcript_between_steps(
     client = TestClient(_build_app())
     FakeReloadBetweenStepsLLM.calls = []
     monkeypatch.setattr(agent_service, "LLMClient", FakeReloadBetweenStepsLLM)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
 
     def _fake_execute_tool_stream(_name, _arguments, context=None):  # noqa: ANN001, ANN202
         del context
@@ -542,7 +563,9 @@ def test_plan_exit_confirmation_switches_to_build_and_reloads_transcript(
     client = TestClient(_build_app())
     FakePlanModeTransitionLLM.calls = []
     monkeypatch.setattr(agent_service, "LLMClient", FakePlanModeTransitionLLM)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
 
     created = client.post(
         "/session",
@@ -575,7 +598,9 @@ def test_plan_exit_confirmation_switches_to_build_and_reloads_transcript(
     permissions = client.get("/session/plan_exit_transition_session/permissions").json()
     assert len(permissions) == 1
     assert permissions[0]["permission"] == "plan"
-    metadata = permissions[0].get("metadata") if isinstance(permissions[0].get("metadata"), dict) else {}
+    metadata = (
+        permissions[0].get("metadata") if isinstance(permissions[0].get("metadata"), dict) else {}
+    )
     assert "切换到 build 模式" in str(metadata.get("title") or "")
 
     permission_id = permissions[0]["id"]
@@ -599,7 +624,8 @@ def test_plan_exit_confirmation_switches_to_build_and_reloads_transcript(
     assert any(
         msg["info"]["role"] == "assistant"
         and str(msg["info"].get("mode") or "") == "build"
-        and "开始执行计划" in "".join(str(part.get("text") or "") for part in msg.get("parts") or [])
+        and "开始执行计划"
+        in "".join(str(part.get("text") or "") for part in msg.get("parts") or [])
         for msg in history
     )
     assert len(FakePlanModeTransitionLLM.calls) >= 2
@@ -631,7 +657,8 @@ class FakeToolContinuationLLM:
         del tools, max_tokens, variant_override, model_override, session_cache_key
         FakeToolContinuationLLM.calls.append(copy.deepcopy(messages))
         has_tool_result = any(
-            str(item.get("role") or "") == "tool" and "命令执行成功" in str(item.get("content") or "")
+            str(item.get("role") or "") == "tool"
+            and "命令执行成功" in str(item.get("content") or "")
             for item in messages
         )
         if not has_tool_result:
@@ -641,7 +668,9 @@ class FakeToolContinuationLLM:
                 tool_name="bash",
                 tool_arguments='{"command":"echo ok"}',
             )
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=4)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=10, output_tokens=4
+            )
             return
 
         yield StreamEvent(type="text_delta", content="工具后继续完成。")
@@ -678,7 +707,8 @@ class FakeLocalShellContinuationLLM:
         del tools, max_tokens, variant_override, model_override, session_cache_key
         FakeLocalShellContinuationLLM.calls.append(copy.deepcopy(messages))
         has_tool_result = any(
-            str(item.get("role") or "") == "tool" and "local-shell-ok" in str(item.get("content") or "")
+            str(item.get("role") or "") == "tool"
+            and "local-shell-ok" in str(item.get("content") or "")
             for item in messages
         )
         if not has_tool_result:
@@ -697,7 +727,9 @@ class FakeLocalShellContinuationLLM:
                     ensure_ascii=False,
                 ),
             )
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=4)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=10, output_tokens=4
+            )
             return
 
         yield StreamEvent(type="text_delta", content="local_shell 后继续完成。")
@@ -722,7 +754,13 @@ class FakeBoundaryLifecycleLLM:
         yield StreamEvent(type="reasoning_delta", content="上下文。")
         yield StreamEvent(type="text_delta", content="这是")
         yield StreamEvent(type="text_delta", content="最终回答。")
-        yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6, reasoning_tokens=8)
+        yield StreamEvent(
+            type="usage",
+            model="fake-chat-model",
+            input_tokens=10,
+            output_tokens=6,
+            reasoning_tokens=8,
+        )
 
 
 class FakeReasoningAsciiSpacingLLM:
@@ -744,7 +782,13 @@ class FakeReasoningAsciiSpacingLLM:
         yield StreamEvent(type="reasoning_delta", content="the")
         yield StreamEvent(type="reasoning_delta", content="repo.")
         yield StreamEvent(type="text_delta", content="done")
-        yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6, reasoning_tokens=8)
+        yield StreamEvent(
+            type="usage",
+            model="fake-chat-model",
+            input_tokens=10,
+            output_tokens=6,
+            reasoning_tokens=8,
+        )
 
 
 class FakeReasoningMetadataLLM:
@@ -773,7 +817,13 @@ class FakeReasoningMetadataLLM:
             },
         )
         yield StreamEvent(type="text_delta", content="最终回答。")
-        yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6, reasoning_tokens=8)
+        yield StreamEvent(
+            type="usage",
+            model="fake-chat-model",
+            input_tokens=10,
+            output_tokens=6,
+            reasoning_tokens=8,
+        )
 
 
 class FakeTextMetadataLLM:
@@ -802,7 +852,13 @@ class FakeTextMetadataLLM:
             part_id="msg_text_2",
             metadata={"openai": {"itemId": "msg_text_2"}},
         )
-        yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6, reasoning_tokens=0)
+        yield StreamEvent(
+            type="usage",
+            model="fake-chat-model",
+            input_tokens=10,
+            output_tokens=6,
+            reasoning_tokens=0,
+        )
 
 
 class FakeToolCallMetadataLLM:
@@ -826,7 +882,13 @@ class FakeToolCallMetadataLLM:
             tool_arguments='{"command":"ls"}',
             metadata={"openai": {"itemId": "fc_meta_1"}},
         )
-        yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=0, reasoning_tokens=0)
+        yield StreamEvent(
+            type="usage",
+            model="fake-chat-model",
+            input_tokens=10,
+            output_tokens=0,
+            reasoning_tokens=0,
+        )
 
 
 class FakeMirroredReasoningToolLLM:
@@ -852,7 +914,13 @@ class FakeMirroredReasoningToolLLM:
             tool_name="grep",
             tool_arguments='{"pattern":"needle"}',
         )
-        yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=0, reasoning_tokens=0)
+        yield StreamEvent(
+            type="usage",
+            model="fake-chat-model",
+            input_tokens=10,
+            output_tokens=0,
+            reasoning_tokens=0,
+        )
 
 
 class FakeMaxStepsPromptLLM:
@@ -878,7 +946,9 @@ class FakeMaxStepsPromptLLM:
             for item in messages
         ):
             yield StreamEvent(type="text_delta", content="已达到最大步数，停止继续调用工具。")
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6
+            )
             return
         yield StreamEvent(
             type="tool_call",
@@ -912,7 +982,9 @@ class FakeReloadBetweenStepsLLM:
             for item in messages
         ):
             yield StreamEvent(type="text_delta", content="看到了新的用户消息。")
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=12, output_tokens=8)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=12, output_tokens=8
+            )
             return
         yield StreamEvent(
             type="tool_call",
@@ -946,7 +1018,9 @@ class FakePlanModeTransitionLLM:
             for item in messages
         ):
             yield StreamEvent(type="text_delta", content="开始执行计划。")
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=14, output_tokens=6)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=14, output_tokens=6
+            )
             return
         yield StreamEvent(
             type="tool_call",
@@ -1104,7 +1178,9 @@ def test_session_delete_message_route_respects_busy_guard(
     assert owner is not None
 
     try:
-        deleted = client.delete(f"/session/delete_message_busy_session/message/{user_message['info']['id']}")
+        deleted = client.delete(
+            f"/session/delete_message_busy_session/message/{user_message['info']['id']}"
+        )
         assert deleted.status_code == 400
         assert deleted.json()["detail"] == "session is busy"
     finally:
@@ -1256,7 +1332,9 @@ def test_agent_runtime_state_persists_todos(monkeypatch: pytest.MonkeyPatch, tmp
     assert [item.content for item in state_again.todos] == ["梳理 session model", "补路由测试"]
 
 
-def test_agent_chat_persists_into_new_session_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_agent_chat_persists_into_new_session_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     monkeypatch.setattr(agent_router, "stream_chat", _fake_stream_chat)
     client = TestClient(_build_app())
@@ -1311,7 +1389,7 @@ def test_legacy_agent_chat_preserves_structured_user_parts_and_tools(
         return _wrap_persisted_if_needed(
             [
                 'event: text_delta\ndata: {"content":"已完成结构化回复。"}\n\n',
-                'event: done\ndata: {}\n\n',
+                "event: done\ndata: {}\n\n",
             ],
             kwargs,
         )
@@ -1458,7 +1536,9 @@ def test_legacy_agent_chat_persists_active_skill_ids_on_user_message(
 
 def test_get_session_turn_state_tracks_latest_pending_user():
     session_id = "session_turn_state_test"
-    ensure_session_record(session_id, directory=str(Path.cwd()), workspace_path=str(Path.cwd()), mode="build")
+    ensure_session_record(
+        session_id, directory=str(Path.cwd()), workspace_path=str(Path.cwd()), mode="build"
+    )
     first_user = append_session_message(
         session_id=session_id,
         role="user",
@@ -1631,7 +1711,7 @@ def test_session_prompt_route_passes_persistence_into_stream_chat(
 
         def __iter__(self):
             yield 'event: text_delta\ndata: {"content":"inner-persisted"}\n\n'
-            yield 'event: done\ndata: {}\n\n'
+            yield "event: done\ndata: {}\n\n"
 
     def _fake_persisted_stream_chat(*_args, **kwargs):  # noqa: ANN002, ANN003, ANN202
         captured.update(kwargs)
@@ -1714,7 +1794,10 @@ def test_session_prompt_persists_reasoning_parts_and_tokens(
     assert len(history) == 2
     assistant = history[1]
     assert assistant["info"]["tokens"]["reasoning"] == 8
-    assert any(part["type"] == "reasoning" and part["text"] == "先梳理已知条件。" for part in assistant["parts"])
+    assert any(
+        part["type"] == "reasoning" and part["text"] == "先梳理已知条件。"
+        for part in assistant["parts"]
+    )
     finish_parts = [part for part in assistant["parts"] if part["type"] == "step-finish"]
     assert finish_parts
     assert finish_parts[0]["tokens"]["reasoning"] == 8
@@ -1773,7 +1856,9 @@ def test_session_prompt_rolls_over_assistant_message_after_tool_step(
     _configure_test_db(monkeypatch)
     FakeToolContinuationLLM.calls = []
     monkeypatch.setattr(agent_service, "LLMClient", FakeToolContinuationLLM)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
 
     def _fake_execute_tool_stream(_name, _arguments, context=None):  # noqa: ANN001, ANN202
         del context
@@ -1813,13 +1898,18 @@ def test_session_prompt_rolls_over_assistant_message_after_tool_step(
     assert first_assistant["info"]["finish"] == "tool-calls"
     assert first_assistant["info"]["parentID"] == history[0]["info"]["id"]
     assert any(
-        part["type"] == "tool" and part["state"]["status"] == "completed" and part.get("summary") == "命令执行成功"
+        part["type"] == "tool"
+        and part["state"]["status"] == "completed"
+        and part.get("summary") == "命令执行成功"
         for part in first_assistant["parts"]
     )
     assert second_assistant["info"]["finish"] == "stop"
     assert second_assistant["info"]["id"] != first_assistant["info"]["id"]
     assert second_assistant["info"]["parentID"] == history[0]["info"]["id"]
-    assert any(part["type"] == "text" and part["text"] == "工具后继续完成。" for part in second_assistant["parts"])
+    assert any(
+        part["type"] == "text" and part["text"] == "工具后继续完成。"
+        for part in second_assistant["parts"]
+    )
 
     continuation_messages = FakeToolContinuationLLM.calls[-1]
     assert any(
@@ -1839,7 +1929,9 @@ def test_session_prompt_executes_local_shell_and_continues(
     FakeLocalShellContinuationLLM.calls = []
     FakeLocalShellContinuationLLM.working_directory = str(tmp_path)
     monkeypatch.setattr(agent_service, "LLMClient", FakeLocalShellContinuationLLM)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
     client = TestClient(_build_app())
 
     created = client.post(
@@ -1874,10 +1966,16 @@ def test_session_prompt_executes_local_shell_and_continues(
     assert len(tool_parts) == 1
     assert tool_parts[0]["tool"] == "local_shell"
     assert tool_parts[0]["state"]["status"] == "completed"
-    assert tool_parts[0]["state"]["input"]["action"]["command"] == ["Write-Output", "local-shell-ok"]
+    assert tool_parts[0]["state"]["input"]["action"]["command"] == [
+        "Write-Output",
+        "local-shell-ok",
+    ]
 
     assert second_assistant["info"]["finish"] == "stop"
-    assert any(part["type"] == "text" and part["text"] == "local_shell 后继续完成。" for part in second_assistant["parts"])
+    assert any(
+        part["type"] == "text" and part["text"] == "local_shell 后继续完成。"
+        for part in second_assistant["parts"]
+    )
 
     continuation_messages = FakeLocalShellContinuationLLM.calls[-1]
     assert any(
@@ -1911,7 +2009,7 @@ def test_wrap_stream_persists_text_part_incrementally_before_stream_completion(
         yield 'event: assistant_message_id\ndata: {"message_id":"message_incremental_1"}\n\n'
         yield 'event: text_delta\ndata: {"content":"增量内容。"}\n\n'
         allow_finish.wait(timeout=5)
-        yield 'event: done\ndata: {}\n\n'
+        yield "event: done\ndata: {}\n\n"
 
     def _consume() -> None:
         for item in wrap_stream_with_persistence(
@@ -1932,7 +2030,9 @@ def test_wrap_stream_persists_text_part_incrementally_before_stream_completion(
     assert len(history) == 2
     assistant = history[1]
     assert assistant["info"]["id"] == "message_incremental_1"
-    assert any(part["type"] == "text" and part["text"] == "增量内容。" for part in assistant["parts"])
+    assert any(
+        part["type"] == "text" and part["text"] == "增量内容。" for part in assistant["parts"]
+    )
 
     with db.session_scope() as session:
         row = AgentSessionMessageRepository(session).get_by_id("message_incremental_1")
@@ -1977,7 +2077,7 @@ def test_wrap_stream_respects_explicit_text_and_reasoning_boundaries(
                     'event: text_delta\ndata: {"id":"part_text_2","content":"第二段"}\n\n',
                     'event: text-end\ndata: {"id":"part_text_2"}\n\n',
                     'event: usage\ndata: {"model":"fake-chat-model","input_tokens":10,"output_tokens":6,"reasoning_tokens":8}\n\n',
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="explicit_boundary_session",
@@ -2061,18 +2161,18 @@ def test_wrap_stream_persists_empty_reasoning_metadata_parts(
                 [
                     'event: assistant_message_id\ndata: {"message_id":"message_reasoning_meta_1"}\n\n',
                     (
-                        'event: reasoning-start\ndata: '
+                        "event: reasoning-start\ndata: "
                         '{"id":"rs_meta:0","metadata":{"openai":{"itemId":"rs_meta","reasoningEncryptedContent":"enc-meta"}}}\n\n'
                     ),
                     (
-                        'event: reasoning_delta\ndata: '
+                        "event: reasoning_delta\ndata: "
                         '{"id":"rs_meta:0","content":"","metadata":{"openai":{"itemId":"rs_meta","reasoningEncryptedContent":"enc-meta"}}}\n\n'
                     ),
                     'event: reasoning-end\ndata: {"id":"rs_meta:0"}\n\n',
                     'event: text-start\ndata: {"id":"part_text_meta"}\n\n',
                     'event: text_delta\ndata: {"id":"part_text_meta","content":"最终回答"}\n\n',
                     'event: text-end\ndata: {"id":"part_text_meta"}\n\n',
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="reasoning_metadata_session",
@@ -2131,7 +2231,7 @@ def test_wrap_stream_persists_reasoning_ascii_spacing_across_deltas(
                     'event: text-start\ndata: {"id":"part_text_ascii_1"}\n\n',
                     'event: text_delta\ndata: {"id":"part_text_ascii_1","content":"done"}\n\n',
                     'event: text-end\ndata: {"id":"part_text_ascii_1"}\n\n',
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="reasoning_ascii_spacing_session",
@@ -2171,15 +2271,15 @@ def test_wrap_stream_persists_text_metadata_parts(
                 [
                     'event: assistant_message_id\ndata: {"message_id":"message_text_meta_1"}\n\n',
                     (
-                        'event: text-start\ndata: '
+                        "event: text-start\ndata: "
                         '{"id":"msg_text_meta","metadata":{"openai":{"itemId":"msg_text_meta"}}}\n\n'
                     ),
                     (
-                        'event: text_delta\ndata: '
+                        "event: text_delta\ndata: "
                         '{"id":"msg_text_meta","content":"最终回答","metadata":{"openai":{"itemId":"msg_text_meta"}}}\n\n'
                     ),
                     'event: text-end\ndata: {"id":"msg_text_meta"}\n\n',
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="text_metadata_session",
@@ -2221,16 +2321,16 @@ def test_wrap_stream_persists_tool_metadata_parts(
                 [
                     'event: assistant_message_id\ndata: {"message_id":"message_tool_meta_1"}\n\n',
                     (
-                        'event: tool_start\ndata: '
+                        "event: tool_start\ndata: "
                         '{"id":"call_tool_meta_1","name":"bash","args":{"command":"ls"},'
                         '"metadata":{"openai":{"itemId":"fc_tool_meta_1"}}}\n\n'
                     ),
                     (
-                        'event: tool_result\ndata: '
+                        "event: tool_result\ndata: "
                         '{"id":"call_tool_meta_1","name":"bash","success":true,"summary":"bash 执行成功",'
                         '"data":{"command":"ls","exit_code":0},"metadata":{"openai":{"itemId":"fc_tool_meta_1"}}}\n\n'
                     ),
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="tool_metadata_session",
@@ -2272,12 +2372,12 @@ def test_wrap_stream_merges_tool_display_data_into_persisted_tool_part(
                     'event: assistant_message_id\ndata: {"message_id":"message_tool_display_1"}\n\n',
                     'event: tool_start\ndata: {"id":"call_tool_display_1","name":"get_paper_analysis","args":{"paper_id":"paper-1"}}\n\n',
                     (
-                        'event: tool_result\ndata: '
+                        "event: tool_result\ndata: "
                         '{"id":"call_tool_display_1","name":"get_paper_analysis","success":true,'
                         '"summary":"已读取论文三轮分析结果","data":{"paper_id":"paper-1","title":"Test Paper","figure_count":1},'
                         '"display_data":{"figures":[{"id":"fig-1","caption":"Figure 1","image_url":"/papers/paper-1/figures/fig-1/image"}]}}\n\n'
                     ),
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="tool_display_data_session",
@@ -2294,7 +2394,9 @@ def test_wrap_stream_merges_tool_display_data_into_persisted_tool_part(
     assert tool_parts[0]["data"]["paper_id"] == "paper-1"
     assert tool_parts[0]["data"]["figure_count"] == 1
     assert tool_parts[0]["data"]["figures"][0]["id"] == "fig-1"
-    assert tool_parts[0]["state"]["metadata"]["figures"][0]["image_url"].endswith("/papers/paper-1/figures/fig-1/image")
+    assert tool_parts[0]["state"]["metadata"]["figures"][0]["image_url"].endswith(
+        "/papers/paper-1/figures/fig-1/image"
+    )
 
 
 def test_wrap_stream_persists_usage_provider_metadata_on_assistant_message(
@@ -2321,11 +2423,11 @@ def test_wrap_stream_persists_usage_provider_metadata_on_assistant_message(
                     'event: assistant_message_id\ndata: {"message_id":"message_response_meta_1"}\n\n',
                     'event: text_delta\ndata: {"content":"最终回答"}\n\n',
                     (
-                        'event: usage\ndata: '
+                        "event: usage\ndata: "
                         '{"model":"gpt-5.2","input_tokens":10,"output_tokens":6,"reasoning_tokens":8,'
                         '"metadata":{"openai":{"responseId":"resp_meta_1"}}}\n\n'
                     ),
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="response_metadata_session",
@@ -2376,11 +2478,11 @@ def test_wrap_stream_persists_tool_input_lifecycle_before_confirmation(
                     'event: tool-input-delta\ndata: {"id":"call_tool_input_1","delta":"{\\"command\\":\\"ls\\"}"}\n\n',
                     'event: tool-input-end\ndata: {"id":"call_tool_input_1"}\n\n',
                     (
-                        'event: action_confirm\ndata: '
+                        "event: action_confirm\ndata: "
                         '{"id":"action_tool_input_1","call_id":"call_tool_input_1","tool":"bash",'
                         '"args":{"command":"ls"},"assistant_message_id":"message_tool_input_1"}\n\n'
                     ),
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ]
             ),
             session_id="tool_input_session",
@@ -2430,7 +2532,7 @@ def test_tool_input_delta_publishes_part_delta_event(
                         'event: assistant_message_id\ndata: {"message_id":"message_tool_input_delta_1"}\n\n',
                         'event: tool-input-start\ndata: {"id":"call_tool_input_delta_1","toolName":"bash"}\n\n',
                         'event: tool-input-delta\ndata: {"id":"call_tool_input_delta_1","delta":"{\\"command\\":\\"ls\\"}"}\n\n',
-                        'event: done\ndata: {}\n\n',
+                        "event: done\ndata: {}\n\n",
                     ]
                 ),
                 session_id="tool_input_delta_event_session",
@@ -2441,7 +2543,9 @@ def test_tool_input_delta_publishes_part_delta_event(
     finally:
         unsubscribe()
 
-    delta_events = [event for event in events if event.type == session_bus.SessionBusEvent.PART_DELTA]
+    delta_events = [
+        event for event in events if event.type == session_bus.SessionBusEvent.PART_DELTA
+    ]
     assert len(delta_events) == 1
     assert delta_events[0].properties["sessionID"] == "tool_input_delta_event_session"
     assert delta_events[0].properties["messageID"] == "message_tool_input_delta_1"
@@ -3202,4 +3306,3 @@ def test_load_agent_messages_reconstructs_tool_calls_and_tool_results(
         "summary": "bash 执行成功",
         "data": {"command": "ls", "exit_code": 0},
     }
-

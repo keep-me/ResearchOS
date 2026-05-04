@@ -149,15 +149,19 @@ class FigureService:
         if not text:
             return {"ocr_markdown": "", "analysis_markdown": "", "candidate_source": ""}
         if text.startswith(cls._DESCRIPTION_PAYLOAD_PREFIX):
-            payload_text = text[len(cls._DESCRIPTION_PAYLOAD_PREFIX):].strip()
+            payload_text = text[len(cls._DESCRIPTION_PAYLOAD_PREFIX) :].strip()
             try:
                 payload = json.loads(payload_text)
             except Exception:
                 payload = {}
             if isinstance(payload, dict):
                 return {
-                    "ocr_markdown": cls._clean_markdown_fences(str(payload.get("ocr_markdown") or "")),
-                    "analysis_markdown": cls._clean_markdown_fences(str(payload.get("analysis_markdown") or "")),
+                    "ocr_markdown": cls._clean_markdown_fences(
+                        str(payload.get("ocr_markdown") or "")
+                    ),
+                    "analysis_markdown": cls._clean_markdown_fences(
+                        str(payload.get("analysis_markdown") or "")
+                    ),
                     "candidate_source": str(payload.get("candidate_source") or "").strip(),
                 }
         cleaned = cls._clean_markdown_fences(text)
@@ -169,9 +173,20 @@ class FigureService:
     def _resolve_extract_mode(preferred_mode: str | None = None) -> str:
         from packages.config import get_settings
 
-        source = preferred_mode if preferred_mode is not None else get_settings().figure_extract_mode
+        source = (
+            preferred_mode if preferred_mode is not None else get_settings().figure_extract_mode
+        )
         raw = str(source or "arxiv_source").strip().lower()
-        if raw in {"mineru", "magic_pdf", "magic-pdf", "pdf_direct", "pdf", "direct", "pymupdf", "pdfimages"}:
+        if raw in {
+            "mineru",
+            "magic_pdf",
+            "magic-pdf",
+            "pdf_direct",
+            "pdf",
+            "direct",
+            "pymupdf",
+            "pdfimages",
+        }:
             return "mineru"
         return "arxiv_source"
 
@@ -190,7 +205,9 @@ class FigureService:
         if not text:
             return ""
         normalized = re.sub(r"(?is)<br\s*/?>", "\n", text)
-        normalized = re.sub(r"(?is)</(?:p|div|section|article|blockquote|ul|ol|li|h[1-6])\s*>", "\n", normalized)
+        normalized = re.sub(
+            r"(?is)</(?:p|div|section|article|blockquote|ul|ol|li|h[1-6])\s*>", "\n", normalized
+        )
         normalized = re.sub(r"(?is)<li\b[^>]*>", "- ", normalized)
         normalized = re.sub(r"(?is)<[^>]+>", " ", normalized)
         normalized = html.unescape(normalized)
@@ -277,7 +294,9 @@ class FigureService:
         normalized_source = str(candidate_source or "").strip()
 
         if not normalized_analysis and normalized_ocr:
-            if cls._normalize_candidate_plain_text(normalized_ocr) == cls._normalize_candidate_plain_text(normalized_caption):
+            if cls._normalize_candidate_plain_text(
+                normalized_ocr
+            ) == cls._normalize_candidate_plain_text(normalized_caption):
                 normalized_ocr = ""
 
         return {
@@ -408,7 +427,9 @@ class FigureService:
 
                 image_variants = [
                     image_bytes
-                    for image_bytes in (cls._load_source_image(path) for path in candidate.image_paths)
+                    for image_bytes in (
+                        cls._load_source_image(path) for path in candidate.image_paths
+                    )
                     if image_bytes
                 ]
                 image_bytes = cls._compose_source_images(image_variants)
@@ -418,7 +439,10 @@ class FigureService:
                 matched = cls._match_pdf_caption(candidate.caption, caption_entries)
                 caption = str((matched or {}).get("caption") or candidate.caption).strip()
                 page_number = int((matched or {}).get("page_number") or 1)
-                image_type = str((matched or {}).get("type") or cls._infer_type(caption, "")).strip() or "figure"
+                image_type = (
+                    str((matched or {}).get("type") or cls._infer_type(caption, "")).strip()
+                    or "figure"
+                )
 
                 results.append(
                     ExtractedFigure(
@@ -468,7 +492,9 @@ class FigureService:
             return structured_figures[:max_figures]
 
         if has_structured_outputs:
-            logger.info("MinerU produced structured outputs but no usable whole-figure crops; skip fallback because PDF direct extraction is disabled")
+            logger.info(
+                "MinerU produced structured outputs but no usable whole-figure crops; skip fallback because PDF direct extraction is disabled"
+            )
             return []
 
         caption_map = cls._collect_mineru_markdown_captions(output_root)
@@ -522,7 +548,9 @@ class FigureService:
             include_image_types={"table"},
         )
         if tables:
-            logger.info("MinerU OCR supplemented %d table candidates from %s", len(tables), pdf_path)
+            logger.info(
+                "MinerU OCR supplemented %d table candidates from %s", len(tables), pdf_path
+            )
         return tables
 
     @classmethod
@@ -550,7 +578,9 @@ class FigureService:
             include_image_types={"figure", "algorithm", "equation"},
         )
         if figures:
-            logger.info("MinerU OCR supplied %d fallback figure candidates from %s", len(figures), pdf_path)
+            logger.info(
+                "MinerU OCR supplied %d fallback figure candidates from %s", len(figures), pdf_path
+            )
         return figures
 
     @classmethod
@@ -678,7 +708,9 @@ class FigureService:
     @classmethod
     def _collect_mineru_content_list_blocks(cls, output_root: Path) -> list[dict]:
         results: list[dict] = []
-        for content_path in cls._collect_mineru_structured_json_files(output_root, "_content_list.json"):
+        for content_path in cls._collect_mineru_structured_json_files(
+            output_root, "_content_list.json"
+        ):
             try:
                 payload = json.loads(content_path.read_text(encoding="utf-8", errors="ignore"))
             except Exception:
@@ -734,7 +766,9 @@ class FigureService:
         cursor = 0
         while cursor < len(entries):
             entry = entries[cursor]
-            if entry.get("type") not in {"image", "chart"} or not isinstance(entry.get("bbox"), list):
+            if entry.get("type") not in {"image", "chart"} or not isinstance(
+                entry.get("bbox"), list
+            ):
                 cursor += 1
                 continue
 
@@ -745,7 +779,9 @@ class FigureService:
                 candidate = entries[lookahead]
                 if int(candidate.get("page_number") or 0) != page_number:
                     break
-                if candidate.get("type") not in {"image", "chart"} or not isinstance(candidate.get("bbox"), list):
+                if candidate.get("type") not in {"image", "chart"} or not isinstance(
+                    candidate.get("bbox"), list
+                ):
                     break
                 run.append(candidate)
                 lookahead += 1
@@ -787,8 +823,12 @@ class FigureService:
         heights = [max(0.0, float(bbox[3]) - float(bbox[1])) for bbox in bboxes]
         tolerance_x = max(12.0, min(40.0, (sum(widths) / max(len(widths), 1)) * 0.28))
         tolerance_y = max(12.0, min(40.0, (sum(heights) / max(len(heights), 1)) * 0.28))
-        column_count = cls._count_mineru_axis_clusters([float(bbox[0]) for bbox in bboxes], tolerance_x)
-        row_count = cls._count_mineru_axis_clusters([float(bbox[1]) for bbox in bboxes], tolerance_y)
+        column_count = cls._count_mineru_axis_clusters(
+            [float(bbox[0]) for bbox in bboxes], tolerance_x
+        )
+        row_count = cls._count_mineru_axis_clusters(
+            [float(bbox[1]) for bbox in bboxes], tolerance_y
+        )
         caption_entry = cls._find_mineru_composite_caption_entry(entries, run_end, union_bbox)
 
         if column_count < 2 or row_count < 2:
@@ -858,7 +898,9 @@ class FigureService:
         if raw_type in {"text", "aside_text", "list"}:
             text_value = cls._normalize_caption_text(str(item.get("text") or ""))
         elif raw_type in {"image", "table", "chart"}:
-            text_value = caption or cls._normalize_caption_text(cls._resolve_mineru_content_list_body(item))
+            text_value = caption or cls._normalize_caption_text(
+                cls._resolve_mineru_content_list_body(item)
+            )
 
         return {
             "index": index,
@@ -969,21 +1011,37 @@ class FigureService:
 
     @staticmethod
     def _mineru_bbox_gap(first, second, *, axis: str) -> float:
-        if not isinstance(first, list) or not isinstance(second, list) or len(first) < 4 or len(second) < 4:
+        if (
+            not isinstance(first, list)
+            or not isinstance(second, list)
+            or len(first) < 4
+            or len(second) < 4
+        ):
             return math.inf
         if axis == "x":
-            return max(0.0, max(float(second[0]) - float(first[2]), float(first[0]) - float(second[2])))
+            return max(
+                0.0, max(float(second[0]) - float(first[2]), float(first[0]) - float(second[2]))
+            )
         return max(0.0, max(float(second[1]) - float(first[3]), float(first[1]) - float(second[3])))
 
     @staticmethod
     def _mineru_bbox_overlap_ratio(first, second, *, axis: str) -> float:
-        if not isinstance(first, list) or not isinstance(second, list) or len(first) < 4 or len(second) < 4:
+        if (
+            not isinstance(first, list)
+            or not isinstance(second, list)
+            or len(first) < 4
+            or len(second) < 4
+        ):
             return 0.0
         if axis == "x":
-            overlap = min(float(first[2]), float(second[2])) - max(float(first[0]), float(second[0]))
+            overlap = min(float(first[2]), float(second[2])) - max(
+                float(first[0]), float(second[0])
+            )
             span = min(float(first[2]) - float(first[0]), float(second[2]) - float(second[0]))
         else:
-            overlap = min(float(first[3]), float(second[3])) - max(float(first[1]), float(second[1]))
+            overlap = min(float(first[3]), float(second[3])) - max(
+                float(first[1]), float(second[1])
+            )
             span = min(float(first[3]) - float(first[1]), float(second[3]) - float(second[1]))
         if span <= 0:
             return 0.0
@@ -1029,12 +1087,20 @@ class FigureService:
                 existing_bbox = existing.get("bbox")
                 if not isinstance(existing_bbox, list):
                     continue
-                if cls._mineru_bbox_contains(existing_bbox, bbox) and cls._mineru_bbox_area(existing_bbox) >= cls._mineru_bbox_area(bbox) * 1.18:
+                if (
+                    cls._mineru_bbox_contains(existing_bbox, bbox)
+                    and cls._mineru_bbox_area(existing_bbox) >= cls._mineru_bbox_area(bbox) * 1.18
+                ):
                     should_skip = True
                     break
             if not should_skip:
                 kept.append(block)
-        kept.sort(key=lambda item: (int(item.get("page_number") or 0), -cls._mineru_bbox_area(item.get("bbox"))))
+        kept.sort(
+            key=lambda item: (
+                int(item.get("page_number") or 0),
+                -cls._mineru_bbox_area(item.get("bbox")),
+            )
+        )
         return kept
 
     @staticmethod
@@ -1042,13 +1108,20 @@ class FigureService:
         if not isinstance(bbox, list) or len(bbox) < 4:
             return 0.0
         try:
-            return max(0.0, float(bbox[2]) - float(bbox[0])) * max(0.0, float(bbox[3]) - float(bbox[1]))
+            return max(0.0, float(bbox[2]) - float(bbox[0])) * max(
+                0.0, float(bbox[3]) - float(bbox[1])
+            )
         except Exception:
             return 0.0
 
     @staticmethod
     def _mineru_bbox_contains(outer, inner, tolerance: float = 4.0) -> bool:
-        if not isinstance(outer, list) or not isinstance(inner, list) or len(outer) < 4 or len(inner) < 4:
+        if (
+            not isinstance(outer, list)
+            or not isinstance(inner, list)
+            or len(outer) < 4
+            or len(inner) < 4
+        ):
             return False
         try:
             return (
@@ -1183,7 +1256,9 @@ class FigureService:
         return "\n".join(parts).strip()[:4000]
 
     @classmethod
-    def _mineru_bbox_to_page_rect(cls, page, bbox: list[float], *, normalized: bool) -> object | None:
+    def _mineru_bbox_to_page_rect(
+        cls, page, bbox: list[float], *, normalized: bool
+    ) -> object | None:
         try:
             import fitz  # type: ignore
         except Exception:
@@ -1282,7 +1357,9 @@ class FigureService:
         return ""
 
     @staticmethod
-    def _register_mineru_caption_ref(caption_map: dict[str, str], raw_ref: str, caption: str) -> None:
+    def _register_mineru_caption_ref(
+        caption_map: dict[str, str], raw_ref: str, caption: str
+    ) -> None:
         normalized_ref = str(raw_ref or "").strip().strip("\"'")
         if not normalized_ref:
             return
@@ -1575,7 +1652,9 @@ class FigureService:
     @staticmethod
     def _looks_like_tex_source(payload: bytes) -> bool:
         probe = payload[:4096].decode("utf-8", errors="ignore").lower()
-        return "\\documentclass" in probe or "\\includegraphics" in probe or "\\begin{figure" in probe
+        return (
+            "\\documentclass" in probe or "\\includegraphics" in probe or "\\begin{figure" in probe
+        )
 
     @staticmethod
     def _load_tex_file(path: Path) -> str:
@@ -1622,7 +1701,9 @@ class FigureService:
     def _collect_source_candidates(cls, source_root: Path) -> list[SourceFigureCandidate]:
         candidates: list[SourceFigureCandidate] = []
         seen_labels: set[str] = set()
-        tex_files = sorted(source_root.rglob("*.tex"), key=lambda path: (len(path.parts), str(path)))
+        tex_files = sorted(
+            source_root.rglob("*.tex"), key=lambda path: (len(path.parts), str(path))
+        )
         for tex_path in tex_files:
             content = cls._strip_tex_comments(cls._load_tex_file(tex_path))
             if not content:
@@ -1888,7 +1969,9 @@ class FigureService:
         paper_id: UUID,
         figure_ids: list[str] | None = None,
     ) -> list[FigureAnalysis]:
-        selected = [str(figure_id).strip() for figure_id in (figure_ids or []) if str(figure_id).strip()]
+        selected = [
+            str(figure_id).strip() for figure_id in (figure_ids or []) if str(figure_id).strip()
+        ]
 
         with session_scope() as session:
             from sqlalchemy import select
@@ -1914,14 +1997,21 @@ class FigureService:
             if not candidates:
                 return []
 
-            def _analyze_one(item: tuple[str, ExtractedFigure]) -> tuple[str, FigureAnalysis] | None:
+            def _analyze_one(
+                item: tuple[str, ExtractedFigure],
+            ) -> tuple[str, FigureAnalysis] | None:
                 figure_id, figure = item
                 try:
                     analysis = self.analyze_figure(figure)
                     analysis.image_path = row_map[figure_id].image_path
                     return figure_id, analysis
                 except Exception as exc:
-                    logger.warning("Failed to analyze figure %s on page %d: %s", figure_id, figure.page_number, exc)
+                    logger.warning(
+                        "Failed to analyze figure %s on page %d: %s",
+                        figure_id,
+                        figure.page_number,
+                        exc,
+                    )
                     return None
 
             results: list[tuple[str, FigureAnalysis]] = []
@@ -1979,7 +2069,9 @@ class FigureService:
     @staticmethod
     def _save_analyses(paper_id: UUID, analyses: list[FigureAnalysis]) -> None:
         with session_scope() as session:
-            session.execute(ImageAnalysis.__table__.delete().where(ImageAnalysis.paper_id == str(paper_id)))
+            session.execute(
+                ImageAnalysis.__table__.delete().where(ImageAnalysis.paper_id == str(paper_id))
+            )
             for analysis in analyses:
                 session.add(
                     ImageAnalysis(
@@ -2092,7 +2184,9 @@ class FigureService:
 
     @classmethod
     def delete_paper_figures(cls, paper_id: UUID, figure_ids: list[str]) -> list[str]:
-        normalized_ids = list({str(figure_id).strip() for figure_id in figure_ids if str(figure_id).strip()})
+        normalized_ids = list(
+            {str(figure_id).strip() for figure_id in figure_ids if str(figure_id).strip()}
+        )
         if not normalized_ids:
             return []
 

@@ -17,8 +17,8 @@ from uuid import UUID
 
 import httpx
 
-from packages.config import get_settings
 from packages.ai.paper.document_context import PaperDocumentContext
+from packages.config import get_settings
 from packages.storage.db import session_scope
 from packages.storage.repositories import PaperRepository
 
@@ -237,7 +237,9 @@ class MinerUOcrRuntime:
                     extra_manifest=manifest,
                 )
                 if not bundle.available:
-                    raise RuntimeError("MinerU completed but produced no OCR markdown or structured outputs")
+                    raise RuntimeError(
+                        "MinerU completed but produced no OCR markdown or structured outputs"
+                    )
                 success_manifest = dict(bundle.manifest)
                 success_manifest["status"] = "success"
                 success_manifest["updated_at"] = _utc_now_iso()
@@ -333,19 +335,21 @@ class MinerUOcrRuntime:
     @classmethod
     def _mineru_api_base_url(cls) -> str:
         settings = get_settings()
-        return str(
-            os.environ.get("MINERU_API_BASE_URL")
-            or getattr(settings, "mineru_api_base_url", "")
-            or "https://mineru.net"
-        ).strip().rstrip("/")
+        return (
+            str(
+                os.environ.get("MINERU_API_BASE_URL")
+                or getattr(settings, "mineru_api_base_url", "")
+                or "https://mineru.net"
+            )
+            .strip()
+            .rstrip("/")
+        )
 
     @classmethod
     def _mineru_api_token(cls) -> str:
         settings = get_settings()
         return str(
-            os.environ.get("MINERU_API_TOKEN")
-            or getattr(settings, "mineru_api_token", "")
-            or ""
+            os.environ.get("MINERU_API_TOKEN") or getattr(settings, "mineru_api_token", "") or ""
         ).strip()
 
     @classmethod
@@ -470,10 +474,14 @@ class MinerUOcrRuntime:
                     headers={"Authorization": f"Bearer {token}"},
                 )
                 poll_response.raise_for_status()
-                poll_payload = cls._decode_json_response(poll_response, "查询 MinerU 批量任务状态失败")
+                poll_payload = cls._decode_json_response(
+                    poll_response, "查询 MinerU 批量任务状态失败"
+                )
                 last_payload = poll_payload
                 result_data = cls._extract_response_data(poll_payload)
-                file_result = cls._pick_batch_file_result(result_data, paper_id=paper_id, filename=pdf_path.name)
+                file_result = cls._pick_batch_file_result(
+                    result_data, paper_id=paper_id, filename=pdf_path.name
+                )
                 state = cls._normalize_remote_state(file_result.get("state"))
                 if state in {"done", "success", "completed", "finish", "finished"}:
                     full_zip_url = cls._extract_zip_url(file_result)
@@ -494,7 +502,9 @@ class MinerUOcrRuntime:
                         "mineru_api_result_url": full_zip_url,
                     }
                 if state in {"failed", "error"}:
-                    message = cls._extract_remote_error(file_result) or cls._extract_remote_error(result_data)
+                    message = cls._extract_remote_error(file_result) or cls._extract_remote_error(
+                        result_data
+                    )
                     raise RuntimeError(message or f"MinerU API 解析失败（batch_id={batch_id}）")
                 time.sleep(poll_interval)
 
@@ -511,7 +521,9 @@ class MinerUOcrRuntime:
         code = payload.get("code")
         success_values = {0, 200, "0", "200", None}
         if code not in success_values:
-            detail = payload.get("msg") or payload.get("message") or payload.get("detail") or payload
+            detail = (
+                payload.get("msg") or payload.get("message") or payload.get("detail") or payload
+            )
             raise RuntimeError(f"{message}：{detail}")
         return payload
 
@@ -525,7 +537,9 @@ class MinerUOcrRuntime:
         return str(value or "").strip().lower().replace("_", "-")
 
     @classmethod
-    def _pick_batch_file_result(cls, payload: dict[str, Any], *, paper_id: UUID, filename: str) -> dict[str, Any]:
+    def _pick_batch_file_result(
+        cls, payload: dict[str, Any], *, paper_id: UUID, filename: str
+    ) -> dict[str, Any]:
         files = payload.get("extract_result")
         if not isinstance(files, list):
             files = payload.get("files")
@@ -670,11 +684,15 @@ class MinerUOcrRuntime:
 
     @classmethod
     def _has_outputs(cls, output_root: Path) -> bool:
-        return bool(cls._collect_markdown_files(output_root) or cls._has_structured_outputs(output_root))
+        return bool(
+            cls._collect_markdown_files(output_root) or cls._has_structured_outputs(output_root)
+        )
 
     @staticmethod
     def _has_structured_outputs(output_root: Path) -> bool:
-        return any(output_root.rglob("*_middle.json")) or any(output_root.rglob("*_content_list.json"))
+        return any(output_root.rglob("*_middle.json")) or any(
+            output_root.rglob("*_content_list.json")
+        )
 
     @staticmethod
     def _split_markdown_sections(markdown: str) -> list[tuple[str, str]]:
@@ -741,7 +759,9 @@ class MinerUOcrRuntime:
         return captions
 
     @staticmethod
-    def _select_context_sections(sections: list[tuple[str, str]], *, max_sections: int = 7) -> list[tuple[str, str]]:
+    def _select_context_sections(
+        sections: list[tuple[str, str]], *, max_sections: int = 7
+    ) -> list[tuple[str, str]]:
         if len(sections) <= max_sections:
             return sections
 
@@ -786,7 +806,9 @@ class MinerUOcrRuntime:
                 chosen_indices.append(index)
 
         if len(chosen_indices) < max_sections:
-            for index in MinerUOcrRuntime._select_evenly_spaced_indices(len(sections), max_sections):
+            for index in MinerUOcrRuntime._select_evenly_spaced_indices(
+                len(sections), max_sections
+            ):
                 if index not in chosen_indices:
                     chosen_indices.append(index)
                 if len(chosen_indices) >= max_sections:
@@ -803,10 +825,7 @@ class MinerUOcrRuntime:
             return list(range(total))
         if count == 1:
             return [0]
-        picked = {
-            round(step * (total - 1) / (count - 1))
-            for step in range(count)
-        }
+        picked = {round(step * (total - 1) / (count - 1)) for step in range(count)}
         return sorted(min(total - 1, max(0, int(index))) for index in picked)
 
     @staticmethod
@@ -851,8 +870,12 @@ class MinerUOcrRuntime:
                     "pdf_sha256": str(manifest.get("pdf_sha256") or ""),
                     "output_root": str(manifest.get("output_root") or ""),
                     "backend": str(manifest.get("backend") or "").strip() or None,
-                    "mineru_api_batch_id": str(manifest.get("mineru_api_batch_id") or "").strip() or None,
-                    "mineru_api_model_version": str(manifest.get("mineru_api_model_version") or "").strip() or None,
+                    "mineru_api_batch_id": str(manifest.get("mineru_api_batch_id") or "").strip()
+                    or None,
+                    "mineru_api_model_version": str(
+                        manifest.get("mineru_api_model_version") or ""
+                    ).strip()
+                    or None,
                     "markdown_chars": int(manifest.get("markdown_chars") or 0),
                     "has_structured_output": bool(manifest.get("has_structured_output")),
                     "error": str(manifest.get("error") or "").strip() or None,

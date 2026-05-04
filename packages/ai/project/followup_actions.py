@@ -513,8 +513,14 @@ _FOLLOWUP_ACTIONS: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def list_followup_actions(parent_workflow_type: ProjectWorkflowType | str | None) -> list[dict[str, Any]]:
-    key = str(parent_workflow_type.value if isinstance(parent_workflow_type, ProjectWorkflowType) else parent_workflow_type or "").strip()
+def list_followup_actions(
+    parent_workflow_type: ProjectWorkflowType | str | None,
+) -> list[dict[str, Any]]:
+    key = str(
+        parent_workflow_type.value
+        if isinstance(parent_workflow_type, ProjectWorkflowType)
+        else parent_workflow_type or ""
+    ).strip()
     items = _FOLLOWUP_ACTIONS.get(key)
     if not items:
         return deepcopy(_GENERIC_ACTIONS)
@@ -530,14 +536,22 @@ def resolve_followup_action(
     workflow_type: ProjectWorkflowType | str | None = None,
 ) -> dict[str, Any]:
     parent = ProjectWorkflowType(
-        str(parent_workflow_type.value if isinstance(parent_workflow_type, ProjectWorkflowType) else parent_workflow_type)
+        str(
+            parent_workflow_type.value
+            if isinstance(parent_workflow_type, ProjectWorkflowType)
+            else parent_workflow_type
+        )
     )
     action = ProjectRunActionType(
         str(action_type.value if isinstance(action_type, ProjectRunActionType) else action_type)
     )
     desired_workflow = (
         ProjectWorkflowType(
-            str(workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type)
+            str(
+                workflow_type.value
+                if isinstance(workflow_type, ProjectWorkflowType)
+                else workflow_type
+            )
         )
         if workflow_type
         else None

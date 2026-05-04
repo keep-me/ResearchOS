@@ -1,4 +1,8 @@
-from packages.ai.research.brief_service import DAILY_TEMPLATE, _render_markdown_fragment, _repair_legacy_daily_brief_html
+from packages.ai.research.brief_service import (
+    DAILY_TEMPLATE,
+    _render_markdown_fragment,
+    _repair_legacy_daily_brief_html,
+)
 
 
 def test_render_markdown_fragment_renders_lists_and_bold():
@@ -40,7 +44,10 @@ def test_repair_legacy_daily_brief_html_upgrades_plain_markdown_block():
 
     repaired = _repair_legacy_daily_brief_html(legacy_html)
 
-    assert '<div class="ai-summary-content"><ol><li><strong>今日焦点</strong>：多模态推理</li></ol></div>' in repaired
+    assert (
+        '<div class="ai-summary-content"><ol><li><strong>今日焦点</strong>：多模态推理</li></ol></div>'
+        in repaired
+    )
     assert "**今日焦点**" not in repaired
     assert ".ai-summary-content p" in repaired
 

@@ -49,7 +49,10 @@ def test_sanitize_project_run_metadata_sanitizes_markdown_but_keeps_json_content
 
     assert "to=mcp" not in cleaned["workflow_output_markdown"]
     assert "# Checkpoint" not in cleaned["stage_outputs"]["collect_context"]["content"]
-    assert cleaned["stage_outputs"]["expand_directions"]["content"] == metadata["stage_outputs"]["expand_directions"]["content"]
+    assert (
+        cleaned["stage_outputs"]["expand_directions"]["content"]
+        == metadata["stage_outputs"]["expand_directions"]["content"]
+    )
 
 
 def test_sanitize_project_artifact_preview_only_for_aris_markdown():

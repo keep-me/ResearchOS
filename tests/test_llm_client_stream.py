@@ -49,7 +49,9 @@ def test_provider_stream_openai_responses_falls_back_to_compatible(monkeypatch) 
     monkeypatch.setattr(
         client,
         "_chat_stream_openai_compatible",
-        lambda *args, **kwargs: iter([StreamEvent(type="text_delta", content="fallback"), StreamEvent(type="done")]),
+        lambda *args, **kwargs: iter(
+            [StreamEvent(type="text_delta", content="fallback"), StreamEvent(type="done")]
+        ),
     )
 
     events = list(
@@ -69,7 +71,9 @@ def test_provider_stream_openai_responses_falls_back_to_compatible(monkeypatch) 
     assert events[0].content == "fallback"
 
 
-def test_provider_stream_openai_responses_preserves_attempt_chain_when_fallback_errors(monkeypatch) -> None:
+def test_provider_stream_openai_responses_preserves_attempt_chain_when_fallback_errors(
+    monkeypatch,
+) -> None:
     client = LLMClient()
 
     class _BrokenResponses:
@@ -136,7 +140,9 @@ def test_provider_stream_openai_compatible_prefers_raw_http_fallback(monkeypatch
             raise RuntimeError("sdk blocked")
 
     sdk_client = SimpleNamespace(chat=SimpleNamespace(completions=_BrokenChatCompletions()))
-    monkeypatch.setattr(client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: True
+    )
     monkeypatch.setattr(
         llm_provider_stream,
         "_yield_raw_openai_chat_stream",
@@ -144,7 +150,12 @@ def test_provider_stream_openai_compatible_prefers_raw_http_fallback(monkeypatch
             [
                 StreamEvent(type="reasoning_delta", content="raw reasoning"),
                 StreamEvent(type="text_delta", content="raw text"),
-                StreamEvent(type="tool_call", tool_call_id="call_1", tool_name="bash", tool_arguments='{"command":"dir"}'),
+                StreamEvent(
+                    type="tool_call",
+                    tool_call_id="call_1",
+                    tool_name="bash",
+                    tool_arguments='{"command":"dir"}',
+                ),
                 StreamEvent(type="usage", input_tokens=8, output_tokens=5, reasoning_tokens=2),
                 StreamEvent(type="done"),
             ]
@@ -160,18 +171,28 @@ def test_provider_stream_openai_compatible_prefers_raw_http_fallback(monkeypatch
             tools=None,
             max_tokens=256,
             cfg=_config(),
-            target=_target(provider="zhipu", base_url="https://open.bigmodel.cn/api/paas/v4/", model="glm-4.7"),
+            target=_target(
+                provider="zhipu", base_url="https://open.bigmodel.cn/api/paas/v4/", model="glm-4.7"
+            ),
         )
     )
 
-    assert [event.type for event in events] == ["reasoning_delta", "text_delta", "tool_call", "usage", "done"]
+    assert [event.type for event in events] == [
+        "reasoning_delta",
+        "text_delta",
+        "tool_call",
+        "usage",
+        "done",
+    ]
     assert events[0].content == "raw reasoning"
     assert events[1].content == "raw text"
     assert events[2].tool_name == "bash"
     assert events[3].input_tokens == 8
 
 
-def test_provider_stream_openai_compatible_falls_back_to_responses_when_legacy_chat_rejected(monkeypatch) -> None:
+def test_provider_stream_openai_compatible_falls_back_to_responses_when_legacy_chat_rejected(
+    monkeypatch,
+) -> None:
     client = LLMClient()
     captured: dict[str, object] = {}
 
@@ -182,11 +203,15 @@ def test_provider_stream_openai_compatible_falls_back_to_responses_when_legacy_c
             )
 
     sdk_client = SimpleNamespace(chat=SimpleNamespace(completions=_BrokenChatCompletions()))
-    monkeypatch.setattr(client, "_should_try_openai_responses_fallback", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        client, "_should_try_openai_responses_fallback", lambda *_args, **_kwargs: True
+    )
 
     def _responses_stream(*args, **kwargs):
         captured.update(kwargs)
-        return iter([StreamEvent(type="text_delta", content="responses-ok"), StreamEvent(type="done")])
+        return iter(
+            [StreamEvent(type="text_delta", content="responses-ok"), StreamEvent(type="done")]
+        )
 
     monkeypatch.setattr(client, "_chat_stream_openai_responses", _responses_stream)
 
@@ -199,7 +224,9 @@ def test_provider_stream_openai_compatible_falls_back_to_responses_when_legacy_c
             tools=None,
             max_tokens=256,
             cfg=_config(),
-            target=_target(provider="custom", base_url="https://compat.example/v1", model="gpt-5.4"),
+            target=_target(
+                provider="custom", base_url="https://compat.example/v1", model="gpt-5.4"
+            ),
         )
     )
 
@@ -226,8 +253,17 @@ def test_provider_stream_openai_compatible_adds_litellm_noop_tool_for_tool_histo
             StreamEvent,
             sdk_client=sdk_client,
             messages=[
-                {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "function": {"name": "bash"}}]},
-                {"role": "tool", "tool_call_id": "call_1", "name": "bash", "content": '{"ok":true}'},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{"id": "call_1", "function": {"name": "bash"}}],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "name": "bash",
+                    "content": '{"ok":true}',
+                },
             ],
             tools=[],
             max_tokens=256,
@@ -275,7 +311,12 @@ def test_provider_stream_openai_compatible_repairs_tool_name_case_to_lowercase_m
             StreamEvent,
             sdk_client=sdk_client,
             messages=[{"role": "user", "content": "继续"}],
-            tools=[{"type": "function", "function": {"name": "bash", "description": "run bash", "parameters": {}}}],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {"name": "bash", "description": "run bash", "parameters": {}},
+                }
+            ],
             max_tokens=256,
             cfg=_config(),
             target=_target(),
@@ -294,7 +335,9 @@ def test_provider_stream_openai_compatible_surfaces_structured_transport_error(m
             raise RuntimeError("sdk blocked")
 
     sdk_client = SimpleNamespace(chat=SimpleNamespace(completions=_BrokenChatCompletions()))
-    monkeypatch.setattr(client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        client, "_should_try_raw_openai_http_fallback", lambda *_args, **_kwargs: True
+    )
     monkeypatch.setattr(
         llm_provider_stream,
         "_yield_raw_openai_chat_stream",

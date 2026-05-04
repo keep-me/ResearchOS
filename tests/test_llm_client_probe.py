@@ -63,7 +63,11 @@ def test_probe_openai_chat_reports_responses_success(monkeypatch) -> None:  # no
         responses=SimpleNamespace(create=lambda **kwargs: object()),
         chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **kwargs: None)),
     )
-    monkeypatch.setattr(llm_provider_probe.llm_provider_registry, "get_openai_client", lambda *args, **kwargs: fake_sdk)
+    monkeypatch.setattr(
+        llm_provider_probe.llm_provider_registry,
+        "get_openai_client",
+        lambda *args, **kwargs: fake_sdk,
+    )
 
     result = llm_provider_probe.probe_openai_chat(_FakeClient(), _target())
 
@@ -130,7 +134,9 @@ def test_probe_openai_compatible_reports_normalized_failure_payload(monkeypatch)
     assert result["error"]["responseHeaders"]["retry-after"] == "3"
 
 
-def test_probe_openai_compatible_falls_back_to_responses_when_legacy_chat_rejected(monkeypatch) -> None:
+def test_probe_openai_compatible_falls_back_to_responses_when_legacy_chat_rejected(
+    monkeypatch,
+) -> None:
     class _BrokenChatCompletions:
         def create(self, **_kwargs):
             raise ProviderHTTPError(
@@ -258,7 +264,9 @@ def test_probe_anthropic_chat_reports_normalized_failure_payload(monkeypatch) ->
     result = llm_provider_probe.probe_anthropic_chat(
         SimpleNamespace(),
         cfg=SimpleNamespace(),
-        target=_target(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet"),
+        target=_target(
+            provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet"
+        ),
     )
 
     assert result["ok"] is False

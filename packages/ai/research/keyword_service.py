@@ -1,6 +1,7 @@
 """
 AI 检索词建议服务 - 自然语言 → 更适合实际检索的关键词
 """
+
 from __future__ import annotations
 
 import logging
@@ -133,8 +134,7 @@ class KeywordService:
             result,
             stage="keyword_suggest",
             prompt_digest=(
-                f"suggest:{normalized_scope}:{normalized_field}:"
-                f"{cleaned_description[:80]}"
+                f"suggest:{normalized_scope}:{normalized_field}:{cleaned_description[:80]}"
             ),
         )
 
@@ -180,7 +180,9 @@ class KeywordService:
             if not result.success:
                 continue
             papers = result.data.get("papers") if isinstance(result.data, dict) else None
-            hit_count = len(papers) if isinstance(papers, list) else int(result.data.get("count") or 0)
+            hit_count = (
+                len(papers) if isinstance(papers, list) else int(result.data.get("count") or 0)
+            )
             if hit_count <= 0:
                 continue
 

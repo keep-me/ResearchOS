@@ -3,6 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from uuid import UUID
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
 from apps.api.routers.papers import analyze_paper_rounds
 from packages.ai.research.reasoning_service import ReasoningService
 from packages.domain.schemas import PaperCreate
@@ -10,9 +14,6 @@ from packages.integrations.llm_client import LLMResult
 from packages.storage import db
 from packages.storage.db import Base
 from packages.storage.repositories import PaperRepository
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 
 def _configure_test_db(monkeypatch):
@@ -123,7 +124,9 @@ def test_analyze_paper_rounds_syncs_retry_metadata(monkeypatch):
         )
 
     monkeypatch.setattr("apps.api.routers.papers.global_tracker.submit", _fake_submit)
-    monkeypatch.setattr("apps.api.routers.papers.global_tracker.register_retry", _fake_register_retry)
+    monkeypatch.setattr(
+        "apps.api.routers.papers.global_tracker.register_retry", _fake_register_retry
+    )
 
     result = analyze_paper_rounds(
         UUID(paper_id),
@@ -164,7 +167,9 @@ def test_reasoning_service_prefers_mineru_ocr_context(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "packages.ai.research.reasoning_service.PdfTextExtractor.extract_text",
-        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(AssertionError("should not fallback")),
+        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(
+            AssertionError("should not fallback")
+        ),
     )
 
     def _fake_complete(

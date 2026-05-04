@@ -20,7 +20,7 @@ class PaperDataFacade:
     papers: PaperRepository
 
     @classmethod
-    def from_session(cls, session: Session) -> "PaperDataFacade":
+    def from_session(cls, session: Session) -> PaperDataFacade:
         return cls(papers=PaperRepository(session))
 
 
@@ -30,7 +30,7 @@ class TopicDataFacade:
     papers: PaperRepository
 
     @classmethod
-    def from_session(cls, session: Session) -> "TopicDataFacade":
+    def from_session(cls, session: Session) -> TopicDataFacade:
         return cls(
             topics=TopicRepository(session),
             papers=PaperRepository(session),
@@ -45,7 +45,7 @@ class ProjectDataFacade:
     generated: GeneratedContentRepository
 
     @classmethod
-    def from_session(cls, session: Session) -> "ProjectDataFacade":
+    def from_session(cls, session: Session) -> ProjectDataFacade:
         return cls(
             projects=ProjectRepository(session),
             papers=PaperRepository(session),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 
 _HEADING_RE = re.compile(r"(?m)^(#{1,6})\s+(.+?)\s*$")
 _FALLBACK_HEADING_RE = re.compile(
@@ -23,35 +23,104 @@ _BRACKET_EQUATION_RE = re.compile(r"(?s)\\\[(.+?)\\\]")
 _NON_WORD_RE = re.compile(r"[^0-9a-z\u4e00-\u9fff]+", re.IGNORECASE)
 _TARGET_KEYWORDS = {
     "overview": (
-        "abstract", "summary", "overview", "introduction", "motivation",
-        "conclusion", "discussion", "摘要", "概述", "引言", "结论", "讨论",
+        "abstract",
+        "summary",
+        "overview",
+        "introduction",
+        "motivation",
+        "conclusion",
+        "discussion",
+        "摘要",
+        "概述",
+        "引言",
+        "结论",
+        "讨论",
     ),
     "method": (
-        "method", "methods", "approach", "model", "architecture", "framework",
-        "algorithm", "design", "preliminar", "methodology", "方法", "模型",
-        "框架", "算法", "设计", "原理",
+        "method",
+        "methods",
+        "approach",
+        "model",
+        "architecture",
+        "framework",
+        "algorithm",
+        "design",
+        "preliminar",
+        "methodology",
+        "方法",
+        "模型",
+        "框架",
+        "算法",
+        "设计",
+        "原理",
     ),
     "experiment": (
-        "experiment", "evaluation", "result", "results", "benchmark", "dataset",
-        "implementation", "setting", "实验", "评估", "结果", "数据集", "实现", "设置",
+        "experiment",
+        "evaluation",
+        "result",
+        "results",
+        "benchmark",
+        "dataset",
+        "implementation",
+        "setting",
+        "实验",
+        "评估",
+        "结果",
+        "数据集",
+        "实现",
+        "设置",
     ),
     "results": (
-        "result", "results", "benchmark", "comparison", "main result", "主结果", "结果", "对比",
+        "result",
+        "results",
+        "benchmark",
+        "comparison",
+        "main result",
+        "主结果",
+        "结果",
+        "对比",
     ),
     "ablation": (
-        "ablation", "analysis", "case study", "sensitivity", "error analysis",
-        "消融", "分析", "案例", "误差", "敏感性",
+        "ablation",
+        "analysis",
+        "case study",
+        "sensitivity",
+        "error analysis",
+        "消融",
+        "分析",
+        "案例",
+        "误差",
+        "敏感性",
     ),
     "limitations": (
-        "limitation", "limitations", "failure", "future work", "threat", "caveat",
-        "局限", "失败", "未来工作", "风险", "威胁",
+        "limitation",
+        "limitations",
+        "failure",
+        "future work",
+        "threat",
+        "caveat",
+        "局限",
+        "失败",
+        "未来工作",
+        "风险",
+        "威胁",
     ),
     "discussion": ("discussion", "conclusion", "讨论", "结论"),
     "conclusion": ("conclusion", "future work", "结论", "未来工作"),
     "appendix": ("appendix", "supplementary", "附录", "补充"),
     "equation": (
-        "theory", "theoretical", "derivation", "objective", "loss", "proof",
-        "公式", "定理", "推导", "目标", "损失", "证明",
+        "theory",
+        "theoretical",
+        "derivation",
+        "objective",
+        "loss",
+        "proof",
+        "公式",
+        "定理",
+        "推导",
+        "目标",
+        "损失",
+        "证明",
     ),
     "figure": ("figure", "fig.", "diagram", "chart", "plot", "图", "示意图", "曲线"),
     "table": ("table", "tab.", "表", "统计", "结果表"),
@@ -74,7 +143,17 @@ _ROUND_CONFIG = {
         "include_outline": True,
     },
     "deep_analysis": {
-        "targets": ["method", "experiment", "results", "ablation", "limitations", "discussion", "table", "figure", "equation"],
+        "targets": [
+            "method",
+            "experiment",
+            "results",
+            "ablation",
+            "limitations",
+            "discussion",
+            "table",
+            "figure",
+            "equation",
+        ],
         "max_sections": 10,
         "max_figures": 6,
         "max_tables": 6,
@@ -118,7 +197,9 @@ def _truncate_block(text: str, limit: int) -> str:
     return f"{head}\n...\n{tail}"
 
 
-def _extract_candidate_body(lines: list[str], start_index: int, *, max_lines: int = 6, max_chars: int = 900) -> str:
+def _extract_candidate_body(
+    lines: list[str], start_index: int, *, max_lines: int = 6, max_chars: int = 900
+) -> str:
     body_lines: list[str] = []
     used_chars = 0
     for index in range(start_index + 1, min(len(lines), start_index + 1 + max_lines)):
@@ -251,7 +332,9 @@ class AnalysisEvidenceBundle:
         if max_chars <= 0:
             if not blocks:
                 return preface
-            return f"{preface}\n\n" + "\n\n".join(_compact_block(block) for block in blocks if _compact_block(block))
+            return f"{preface}\n\n" + "\n\n".join(
+                _compact_block(block) for block in blocks if _compact_block(block)
+            )
         if not blocks:
             return _truncate_block(preface, max_chars)
         budget = max_chars - len(preface) - 2
@@ -375,7 +458,9 @@ class PaperDocumentContext:
         return sections
 
     @staticmethod
-    def _extract_caption_items(text: str, *, source: str) -> tuple[list[StructuredEvidence], list[StructuredEvidence]]:
+    def _extract_caption_items(
+        text: str, *, source: str
+    ) -> tuple[list[StructuredEvidence], list[StructuredEvidence]]:
         lines = text.splitlines()
         figures: list[StructuredEvidence] = []
         tables: list[StructuredEvidence] = []
@@ -485,12 +570,20 @@ class PaperDocumentContext:
         include_outline: bool = True,
         notes: list[str] | None = None,
     ) -> AnalysisEvidenceBundle:
-        normalized_targets = [str(target or "").strip().lower() for target in targets if str(target or "").strip()]
+        normalized_targets = [
+            str(target or "").strip().lower() for target in targets if str(target or "").strip()
+        ]
         selected_sections = self._select_sections(normalized_targets, limit=max_sections)
         selected_figures = self._select_items(self.figures, normalized_targets, limit=max_figures)
         selected_tables = self._select_items(self.tables, normalized_targets, limit=max_tables)
-        selected_equations = self._select_items(self.equations, normalized_targets, limit=max_equations)
-        outline_max_items = 0 if any(limit <= 0 for limit in (max_sections, max_figures, max_tables, max_equations)) else 18
+        selected_equations = self._select_items(
+            self.equations, normalized_targets, limit=max_equations
+        )
+        outline_max_items = (
+            0
+            if any(limit <= 0 for limit in (max_sections, max_figures, max_tables, max_equations))
+            else 18
+        )
         return AnalysisEvidenceBundle(
             name=name,
             source=self.source,
@@ -623,16 +716,22 @@ class PaperDocumentContext:
                     score += 2
         if section.order == 0 and any(target in {"overview", "method"} for target in targets):
             score += 3
-        if section.order >= max(0, len(self.sections) - 2) and any(target in {"discussion", "conclusion", "limitations"} for target in targets):
+        if section.order >= max(0, len(self.sections) - 2) and any(
+            target in {"discussion", "conclusion", "limitations"} for target in targets
+        ):
             score += 3
         return score
 
     def _item_score(self, item: StructuredEvidence, targets: list[str]) -> int:
         text = item.search_text
         score = 0
-        if item.kind == "table" and any(target in {"experiment", "results", "ablation", "table"} for target in targets):
+        if item.kind == "table" and any(
+            target in {"experiment", "results", "ablation", "table"} for target in targets
+        ):
             score += 3
-        if item.kind == "figure" and any(target in {"method", "experiment", "figure"} for target in targets):
+        if item.kind == "figure" and any(
+            target in {"method", "experiment", "figure"} for target in targets
+        ):
             score += 2
         if item.kind == "equation" and any(target in {"method", "equation"} for target in targets):
             score += 4
@@ -652,8 +751,5 @@ class PaperDocumentContext:
             return list(range(total))
         if count == 1:
             return [0]
-        picked = {
-            round(step * (total - 1) / (count - 1))
-            for step in range(count)
-        }
+        picked = {round(step * (total - 1) / (count - 1)) for step in range(count)}
         return sorted(min(total - 1, max(0, int(index))) for index in picked)

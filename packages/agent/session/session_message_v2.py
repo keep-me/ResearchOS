@@ -13,7 +13,6 @@ from packages.agent.session.session_errors import normalize_error
 from packages.storage.db import session_scope
 from packages.storage.repositories import AgentSessionMessageRepository, AgentSessionPartRepository
 
-
 _ATTACH_RIGHT_PUNCT = set("([{/\\")
 _ATTACH_LEFT_PUNCT = set(",.!?;:%)]}/\\")
 _WORD_GAP_AFTER_PUNCT = set(",.;:!?")
@@ -385,7 +384,9 @@ def parts(message_id: str, *, session_id: str | None = None) -> list[dict[str, A
     if not normalized_message_id:
         return []
     if session_id is not None:
-        _message, rows = runtime._load_message_parts(runtime._session_id(session_id), normalized_message_id)
+        _message, rows = runtime._load_message_parts(
+            runtime._session_id(session_id), normalized_message_id
+        )
         return copy.deepcopy(rows)
     with session_scope() as session:
         message_row = AgentSessionMessageRepository(session).get_by_id(normalized_message_id)
@@ -421,10 +422,19 @@ def filter_compacted(messages: Iterable[dict[str, Any]]) -> list[dict[str, Any]]
         if (
             role == "user"
             and str(info.get("id") or "").strip() in completed
-            and any(str(part.get("type") or "") == "compaction" for part in parts_list if isinstance(part, dict))
+            and any(
+                str(part.get("type") or "") == "compaction"
+                for part in parts_list
+                if isinstance(part, dict)
+            )
         ):
             break
-        if role == "assistant" and info.get("summary") and info.get("finish") and not info.get("error"):
+        if (
+            role == "assistant"
+            and info.get("summary")
+            and info.get("finish")
+            and not info.get("error")
+        ):
             parent_id = str(info.get("parentID") or "").strip()
             if parent_id:
                 completed.add(parent_id)
@@ -532,7 +542,11 @@ def _tool_calls_from_parts(parts_list: list[dict[str, Any]]) -> list[dict[str, A
 
 
 def _split_assistant_segments(parts_list: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    indexes = [index for index, part in enumerate(parts_list) if str(part.get("type") or "") == "step-start"]
+    indexes = [
+        index
+        for index, part in enumerate(parts_list)
+        if str(part.get("type") or "") == "step-start"
+    ]
     if not indexes:
         return [parts_list]
     segments: list[list[dict[str, Any]]] = []
@@ -549,7 +563,10 @@ def _provider_matches_model(info: dict[str, Any], model: dict[str, Any] | None) 
     model_id = str(model.get("modelID") or model.get("model_id") or model.get("id") or "").strip()
     if not provider_id or not model_id:
         return False
-    return provider_id == str(info.get("providerID") or "").strip() and model_id == str(info.get("modelID") or "").strip()
+    return (
+        provider_id == str(info.get("providerID") or "").strip()
+        and model_id == str(info.get("modelID") or "").strip()
+    )
 
 
 def to_model_messages(
@@ -602,13 +619,17 @@ def to_model_messages(
                     content.append({"type": "text", "text": "What did we do so far?"})
                     continue
                 if part_type == "subtask":
-                    content.append({"type": "text", "text": "The following tool was executed by the user"})
+                    content.append(
+                        {"type": "text", "text": "The following tool was executed by the user"}
+                    )
 
             if not content:
                 continue
             payload: dict[str, Any] = {
                 "role": "user",
-                "content": content[0]["text"] if text_only and len(content) == 1 and content[0]["type"] == "text" else content,
+                "content": content[0]["text"]
+                if text_only and len(content) == 1 and content[0]["type"] == "text"
+                else content,
             }
             if isinstance(info.get("tools"), dict):
                 payload["tools"] = copy.deepcopy(info["tools"])
@@ -646,7 +667,10 @@ def to_model_messages(
                 "role": "assistant",
                 "content": _assistant_content_from_text_parts(text_parts),
             }
-            if text_parts and (len(text_parts) > 1 or any(isinstance(item.get("metadata"), dict) for item in text_parts)):
+            if text_parts and (
+                len(text_parts) > 1
+                or any(isinstance(item.get("metadata"), dict) for item in text_parts)
+            ):
                 payload["text_parts"] = copy.deepcopy(text_parts)
             if reasoning_parts:
                 payload["reasoning_content"] = merge_reasoning_fragments(
@@ -670,7 +694,10 @@ def from_error(error: Any, ctx: dict[str, Any] | None = None) -> dict[str, Any]:
     else:
         payload = normalize_error(error)
     provider_id = str((ctx or {}).get("providerID") or (ctx or {}).get("provider_id") or "").strip()
-    if payload.get("name") == "AuthError" and provider_id and not str(payload.get("providerID") or "").strip():
+    if (
+        payload.get("name") == "AuthError"
+        and provider_id
+        and not str(payload.get("providerID") or "").strip()
+    ):
         payload["providerID"] = provider_id
     return payload
-

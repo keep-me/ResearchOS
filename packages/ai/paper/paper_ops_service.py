@@ -5,8 +5,9 @@ from __future__ import annotations
 import re
 import shutil
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, BinaryIO, Callable
+from typing import Any, BinaryIO
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -75,7 +76,7 @@ def normalize_manual_paper_id(raw: str | None) -> str:
         "http://arxiv.org/pdf/",
     ):
         if value.startswith(prefix):
-            value = value[len(prefix):]
+            value = value[len(prefix) :]
             break
     if value.endswith(".pdf"):
         value = value[:-4]
@@ -266,7 +267,11 @@ def resolve_external_pdf_source(paper) -> dict[str, str | None]:
         if isinstance(scholar_id, str) and scholar_id.strip().startswith(("http://", "https://")):
             resolved["source_url"] = scholar_id.strip()
 
-    if not resolved["pdf_url"] and isinstance(resolved["source_url"], str) and resolved["source_url"].strip():
+    if (
+        not resolved["pdf_url"]
+        and isinstance(resolved["source_url"], str)
+        and resolved["source_url"].strip()
+    ):
         source_candidate = resolved["source_url"].strip()
         source_lower = source_candidate.lower()
         if source_lower.endswith(".pdf") or "/pdf/" in source_lower:
@@ -282,14 +287,21 @@ def resolve_external_pdf_source(paper) -> dict[str, str | None]:
             resolved["arxiv_id"] = normalize_manual_paper_id(candidate)
             break
 
-    needs_openalex_lookup = not resolved["arxiv_id"] or not resolved["pdf_url"] or not resolved["source_url"]
+    needs_openalex_lookup = (
+        not resolved["arxiv_id"] or not resolved["pdf_url"] or not resolved["source_url"]
+    )
     if not needs_openalex_lookup:
         return resolved
 
     work_id = extract_openalex_work_id(metadata)
     import_source = str(metadata.get("import_source") or "").lower()
-    looks_like_openalex = import_source == "openalex" or work_id is not None or (
-        isinstance(resolved["source_url"], str) and "openalex.org" in resolved["source_url"].lower()
+    looks_like_openalex = (
+        import_source == "openalex"
+        or work_id is not None
+        or (
+            isinstance(resolved["source_url"], str)
+            and "openalex.org" in resolved["source_url"].lower()
+        )
     )
     if not looks_like_openalex:
         return resolved
@@ -311,7 +323,9 @@ def resolve_external_pdf_source(paper) -> dict[str, str | None]:
         elif restriction_note and not resolved["download_note"]:
             resolved["blocked_pdf_url"] = str(extracted_pdf_url or "").strip() or None
             resolved["download_note"] = restriction_note
-    resolved["source_url"] = resolved["source_url"] or OpenAlexClient.extract_source_url(work) or work.get("id")
+    resolved["source_url"] = (
+        resolved["source_url"] or OpenAlexClient.extract_source_url(work) or work.get("id")
+    )
     ids = work.get("ids") or {}
     if isinstance(ids, dict):
         doi = ids.get("doi")
@@ -387,7 +401,9 @@ def ensure_paper_pdf(session, repo: PaperRepository, paper, paper_id: UUID) -> s
     pdf_url = resolved.get("pdf_url")
     if pdf_url:
         try:
-            pdf_path = download_remote_pdf(pdf_url, getattr(paper, "arxiv_id", None) or str(paper_id))
+            pdf_path = download_remote_pdf(
+                pdf_url, getattr(paper, "arxiv_id", None) or str(paper_id)
+            )
             repo.set_pdf_path(paper_id, pdf_path)
             session.flush()
             return pdf_path
@@ -398,7 +414,10 @@ def ensure_paper_pdf(session, repo: PaperRepository, paper, paper_id: UUID) -> s
     if download_note:
         errors.append(download_note)
 
-    detail = "；".join(error for error in errors if error) or "当前论文没有可用的 arXiv 或开放 PDF 来源，请打开来源页或手动导入 PDF"
+    detail = (
+        "；".join(error for error in errors if error)
+        or "当前论文没有可用的 arXiv 或开放 PDF 来源，请打开来源页或手动导入 PDF"
+    )
     raise PaperPdfUnavailableError(detail)
 
 
@@ -463,7 +482,9 @@ def upload_paper_pdf(
             shutil.copyfileobj(file_obj, buffer)
 
         normalized_id = normalize_manual_paper_id(arxiv_id)
-        fallback_title = title.strip() or Path(filename).stem.replace("_", " ").replace("-", " ").strip()
+        fallback_title = (
+            title.strip() or Path(filename).stem.replace("_", " ").replace("-", " ").strip()
+        )
         extracted_title, extracted_abstract = extract_uploaded_pdf_metadata(
             stored_path,
             fallback_title or safe_name,
@@ -629,7 +650,9 @@ def extract_paper_figures_payload(
         if progress_callback:
             progress_callback(message, current, total)
 
-    def _start_pulse(message: str, *, start: int = 20, end: int = 85, step: int = 2, interval: float = 1.8):
+    def _start_pulse(
+        message: str, *, start: int = 20, end: int = 85, step: int = 2, interval: float = 1.8
+    ):
         if not progress_callback:
             return None, None
         stop_event = threading.Event()
@@ -641,7 +664,9 @@ def extract_paper_figures_payload(
                 if current < end:
                     current = min(end, current + step)
 
-        thread = threading.Thread(target=_runner, daemon=True, name=f"figure-progress-{str(paper_id)[:8]}")
+        thread = threading.Thread(
+            target=_runner, daemon=True, name=f"figure-progress-{str(paper_id)[:8]}"
+        )
         thread.start()
         return stop_event, thread
 
@@ -650,9 +675,13 @@ def extract_paper_figures_payload(
         repo = PaperRepository(session)
         paper = repo.get_by_id(paper_id)
         pdf_path = ensure_paper_pdf(session, repo, paper, paper_id)
-        source_arxiv_id = paper.arxiv_id if has_real_arxiv_id(getattr(paper, "arxiv_id", None)) else None
+        source_arxiv_id = (
+            paper.arxiv_id if has_real_arxiv_id(getattr(paper, "arxiv_id", None)) else None
+        )
 
-    raw_mode = str(extract_mode or get_settings().figure_extract_mode or "arxiv_source").strip().lower()
+    raw_mode = (
+        str(extract_mode or get_settings().figure_extract_mode or "arxiv_source").strip().lower()
+    )
     if raw_mode in {"mineru", "magic_pdf", "magic-pdf", "pdf_direct"}:
         selected_mode = "mineru"
     elif raw_mode == "arxiv_source":
@@ -664,7 +693,9 @@ def extract_paper_figures_payload(
         pulse_message = "正在通过 MinerU API 解析 PDF 图表..."
     else:
         kickoff_message = "启动图表提取..."
-        pulse_message = "正在提取 arXiv 图片；若原图不可用且 OCR 已就绪，将回退到 OCR 图像候选并补充表格..."
+        pulse_message = (
+            "正在提取 arXiv 图片；若原图不可用且 OCR 已就绪，将回退到 OCR 图像候选并补充表格..."
+        )
 
     _progress(kickoff_message, 15, 100)
     stop_event, pulse_thread = _start_pulse(pulse_message, start=20, end=85)

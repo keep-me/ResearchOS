@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from packages.ai.project.aris_skill_templates import clear_aris_skill_template_cache, load_aris_skill_template
 from packages.ai.project.amadeus_compat import workflow_runner_preamble
+from packages.ai.project.aris_skill_templates import (
+    clear_aris_skill_template_cache,
+    load_aris_skill_template,
+)
 from packages.domain.enums import ProjectWorkflowType
 
 
@@ -15,7 +18,7 @@ def test_aris_skill_template_loader_and_compat_preamble(monkeypatch, tmp_path: P
         "\n".join(
             [
                 "---",
-                'name: research-lit',
+                "name: research-lit",
                 'description: "Template description"',
                 "argument-hint: [topic]",
                 "allowed-tools: Bash(*), Read, WebSearch",

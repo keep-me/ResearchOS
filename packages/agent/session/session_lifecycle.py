@@ -184,7 +184,9 @@ def _state(
         return state
 
 
-def _new_prompt_instance(session_id: str, *, loop_kind: str = "prompt", running: bool = True) -> PromptInstance:
+def _new_prompt_instance(
+    session_id: str, *, loop_kind: str = "prompt", running: bool = True
+) -> PromptInstance:
     return PromptInstance(
         session_id=session_id,
         owner_id=f"{loop_kind}_{time.time_ns()}",
@@ -224,7 +226,9 @@ def _dispose_directory_sessions(current: dict[str, PromptSessionState]) -> None:
         current.clear()
 
 
-def _resolve_waiters_locked(state: PromptSessionState, result: dict[str, Any] | None = None) -> None:
+def _resolve_waiters_locked(
+    state: PromptSessionState, result: dict[str, Any] | None = None
+) -> None:
     waiters = list(state.waiters)
     if waiters:
         resolved = copy.deepcopy(result) if isinstance(result, dict) else result
@@ -234,7 +238,9 @@ def _resolve_waiters_locked(state: PromptSessionState, result: dict[str, Any] | 
         state.waiters = []
 
 
-def _finish_active_loop_locked(state: PromptSessionState, *, result: dict[str, Any] | None = None) -> None:
+def _finish_active_loop_locked(
+    state: PromptSessionState, *, result: dict[str, Any] | None = None
+) -> None:
     state.instance = None
     _resolve_waiters_locked(state, result)
     state.condition.notify_all()
@@ -247,7 +253,9 @@ def _pause_active_loop_locked(state: PromptSessionState, *, loop_kind: str = "pr
     state.instance.running = False
 
 
-def _start_callback_loop_locked(state: PromptSessionState, session_id: str) -> PromptCallback | None:
+def _start_callback_loop_locked(
+    state: PromptSessionState, session_id: str
+) -> PromptCallback | None:
     if not state.callbacks:
         return None
     if state.instance is None:
@@ -345,7 +353,9 @@ def register_prompt_waiter(session_id: str) -> PromptWaiter:
     return waiter
 
 
-def wait_for_prompt_completion(waiter: PromptWaiter, *, timeout_ms: int | None = None) -> dict[str, Any] | None:
+def wait_for_prompt_completion(
+    waiter: PromptWaiter, *, timeout_ms: int | None = None
+) -> dict[str, Any] | None:
     timeout = None if timeout_ms is None else max(timeout_ms, 0) / 1000
     waiter.event.wait(timeout=timeout)
     return copy.deepcopy(waiter.result) if isinstance(waiter.result, dict) else waiter.result
@@ -413,6 +423,7 @@ def reject_prompt_callbacks(
         callback.reject(reason, control=control)
         rejected.append(callback)
     return rejected
+
 
 def queued_prompt_callbacks(session_id: str) -> list[PromptCallback]:
     sid = str(session_id or "").strip()
@@ -549,4 +560,3 @@ def reset_for_tests() -> None:
         _SESSION_DIRECTORIES.clear()
         _ABORTED_SESSION_IDS.clear()
         _DISPOSED_SESSION_IDS.clear()
-

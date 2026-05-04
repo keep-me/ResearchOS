@@ -79,10 +79,14 @@ def test_runtime_chat_missing_api_key_returns_structured_error() -> None:
     assert result["error"]["providerID"] == "openai"
 
 
-def test_runtime_embedding_custom_routes_through_openai_compatible_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_runtime_embedding_custom_routes_through_openai_compatible_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _FakeClient:
         def _resolve_embedding_config(self, _cfg):
-            return _embedding(provider="custom", api_key="embed-key", base_url="https://embed.example/v1")
+            return _embedding(
+                provider="custom", api_key="embed-key", base_url="https://embed.example/v1"
+            )
 
         def _resolve_embedding_test_dispatch(self, _provider, _embedding_cfg):
             return SimpleNamespace(route="openai-compatible")

@@ -252,7 +252,9 @@ class AgentPendingActionRepository:
     def get(self, action_id: str) -> AgentPendingAction | None:
         return self.session.get(AgentPendingAction, action_id)
 
-    def list_by_session(self, session_id: str, *, action_type: str | None = None) -> list[AgentPendingAction]:
+    def list_by_session(
+        self, session_id: str, *, action_type: str | None = None
+    ) -> list[AgentPendingAction]:
         q = select(AgentPendingAction).where(AgentPendingAction.session_id == session_id)
         if action_type is not None:
             q = q.where(AgentPendingAction.action_type == action_type)
@@ -704,7 +706,9 @@ class AgentSessionTodoRepository:
         return list(self.session.execute(q).scalars())
 
     def replace(self, session_id: str, todos: list[dict]) -> list[AgentSessionTodo]:
-        self.session.execute(delete(AgentSessionTodo).where(AgentSessionTodo.session_id == session_id))
+        self.session.execute(
+            delete(AgentSessionTodo).where(AgentSessionTodo.session_id == session_id)
+        )
         created: list[AgentSessionTodo] = []
         for index, item in enumerate(todos or []):
             content = str(item.get("content") or "").strip()

@@ -6,15 +6,15 @@ from __future__ import annotations
 
 import logging
 import time
-from threading import Thread, Event
-from typing import Optional
+from threading import Event, Thread
 
+from sqlalchemy import select
+
+from packages.ai.ops.rate_limiter import acquire_api, get_rate_limiter
 from packages.ai.paper.pipelines import PaperPipelines
-from packages.ai.ops.rate_limiter import get_rate_limiter, acquire_api
 from packages.config import get_settings
 from packages.storage.db import session_scope
-from packages.storage.models import Paper, AnalysisReport
-from sqlalchemy import select
+from packages.storage.models import AnalysisReport, Paper
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ class IdleProcessor:
 
     def __init__(
         self,
-        idle_detector: Optional[IdleDetector] = None,
+        idle_detector: IdleDetector | None = None,
         batch_size: int = 5,
         check_interval: int = 60,
     ):
@@ -147,7 +147,7 @@ class IdleProcessor:
         self.check_interval = check_interval  # 秒
 
         self._stop_event = Event()
-        self._thread: Optional[Thread] = None
+        self._thread: Thread | None = None
         self._is_processing = False
         self._papers_processed = 0
 
@@ -338,7 +338,7 @@ class IdleProcessor:
 
 
 # 全局单例
-_global_processor: Optional[IdleProcessor] = None
+_global_processor: IdleProcessor | None = None
 
 
 def get_idle_processor() -> IdleProcessor:

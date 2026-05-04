@@ -79,7 +79,9 @@ def _paper_analysis_summary(paper: Paper) -> str:
         deep_report = getattr(paper, "deep_report_json", None)
     if isinstance(deep_report, dict) and deep_report:
         parts.append("精读")
-    analysis_rounds = metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
+    analysis_rounds = (
+        metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
+    )
     round_keys: list[str] = []
     for key in ("round_1", "round_2", "round_3", "final_notes"):
         payload = analysis_rounds.get(key) if isinstance(analysis_rounds, dict) else None
@@ -104,7 +106,9 @@ def _paper_figure_summary(paper_id: str) -> str | None:
 
 def _paper_asset_summary(paper: Paper) -> str:
     statuses: list[str] = []
-    if str(getattr(paper, "pdf_path", "") or "").strip() or _is_real_arxiv_id(getattr(paper, "arxiv_id", None)):
+    if str(getattr(paper, "pdf_path", "") or "").strip() or _is_real_arxiv_id(
+        getattr(paper, "arxiv_id", None)
+    ):
         statuses.append("PDF")
     if getattr(paper, "embedding", None):
         statuses.append("向量")
@@ -168,10 +172,16 @@ def build_mounted_papers_prompt(
             lines.append(f"   资产：{_paper_asset_summary(paper)}")
             authors = metadata.get("authors") if isinstance(metadata.get("authors"), list) else []
             if authors:
-                lines.append(f"   作者：{'、'.join(str(item).strip() for item in authors if str(item).strip())}")
-            keywords = metadata.get("keywords") if isinstance(metadata.get("keywords"), list) else []
+                lines.append(
+                    f"   作者：{'、'.join(str(item).strip() for item in authors if str(item).strip())}"
+                )
+            keywords = (
+                metadata.get("keywords") if isinstance(metadata.get("keywords"), list) else []
+            )
             if keywords:
-                lines.append(f"   关键词：{'、'.join(str(item).strip() for item in keywords if str(item).strip())}")
+                lines.append(
+                    f"   关键词：{'、'.join(str(item).strip() for item in keywords if str(item).strip())}"
+                )
             analysis_summary = _paper_analysis_summary(paper)
             if analysis_summary != "无":
                 lines.append(f"   已有分析：{analysis_summary}")
@@ -179,4 +189,3 @@ def build_mounted_papers_prompt(
             if source_url:
                 lines.append(f"   来源：{source_url}")
     return "\n".join(lines).strip()
-

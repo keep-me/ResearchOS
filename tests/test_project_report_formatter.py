@@ -594,7 +594,9 @@ def test_build_workflow_report_markdown_formats_custom_run_output():
     assert "generated implementation checklist" in report
 
 
-def test_workspace_preview_content_rerenders_primary_run_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_workspace_preview_content_rerenders_primary_run_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     workspace_dir = tmp_path / "anchorcot"
     workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -624,7 +626,9 @@ def test_workspace_preview_content_rerenders_primary_run_report(monkeypatch: pyt
                 ],
                 "stage_outputs": {
                     "collect_context": {"content": "## 文献地形\n- 现有 PRM 缺少可验证中间奖励。"},
-                    "verify_novelty": {"content": "## 查新判断\n- 与空间定位任务的锚点奖励结合较少。"},
+                    "verify_novelty": {
+                        "content": "## 查新判断\n- 与空间定位任务的锚点奖励结合较少。"
+                    },
                     "external_review": {"content": "## 外部评审\n- 建议增加更细的失败案例分析。"},
                 },
                 "workflow_output_markdown": "旧的短输出",
@@ -652,7 +656,9 @@ def test_workspace_preview_content_rerenders_primary_run_report(monkeypatch: pyt
                 ],
                 "stage_outputs": {
                     "collect_context": {"content": "## 文献地形\n- 现有 PRM 缺少可验证中间奖励。"},
-                    "verify_novelty": {"content": "## 查新判断\n- 与空间定位任务的锚点奖励结合较少。"},
+                    "verify_novelty": {
+                        "content": "## 查新判断\n- 与空间定位任务的锚点奖励结合较少。"
+                    },
                     "external_review": {"content": "## 外部评审\n- 建议增加更细的失败案例分析。"},
                 },
                 "workflow_output_markdown": "旧的短输出",

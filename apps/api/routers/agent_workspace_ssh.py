@@ -13,4 +13,3 @@ def format_ssh_exception(exc: Exception, *, host: str, port: int) -> str:
         return _remote.format_ssh_exception(exc, host=host, port=port)
     finally:
         _remote.probe_ssh_banner = original_probe
-

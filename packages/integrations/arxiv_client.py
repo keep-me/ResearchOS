@@ -58,7 +58,11 @@ def _build_date_filter(
 
         start_bound, end_bound = user_date_range_to_utc_bounds(date_from, date_to)
         from_date = start_bound or datetime(1970, 1, 1)
-        to_date = (end_bound - timedelta(seconds=1)) if end_bound else (datetime.utcnow() + timedelta(days=1))
+        to_date = (
+            (end_bound - timedelta(seconds=1))
+            if end_bound
+            else (datetime.utcnow() + timedelta(days=1))
+        )
         return (
             f" AND submittedDate:[{from_date.strftime('%Y%m%d%H%M%S')} "
             f"TO {to_date.strftime('%Y%m%d%H%M%S')}]"
@@ -97,7 +101,9 @@ def _build_arxiv_query(
 
     normalized_phrase = re.sub(r"\s+", " ", raw).strip()
     raw_tokens = re.findall(r"[A-Za-z0-9.+_-]+", raw.lower())
-    tokens = [token for token in raw_tokens if len(token) >= 2 and token not in _QUERY_STOPWORDS][:5]
+    tokens = [token for token in raw_tokens if len(token) >= 2 and token not in _QUERY_STOPWORDS][
+        :5
+    ]
 
     if tokens:
         return " AND ".join(f"all:{token}" for token in tokens) + date_filter
@@ -156,7 +162,9 @@ def _title_match_score(query: str, title: str | None) -> float:
         overlap = len(query_set & title_set)
         score += (overlap / max(len(query_set), 1)) * 20.0
         ordered_prefix_hits = sum(
-            1 for index, token in enumerate(query_tokens[:8]) if index < len(title_tokens) and title_tokens[index] == token
+            1
+            for index, token in enumerate(query_tokens[:8])
+            if index < len(title_tokens) and title_tokens[index] == token
         )
         score += ordered_prefix_hits * 2.0
 
@@ -337,9 +345,7 @@ class ArxivClient:
 
             if impact:
                 metadata["citation_count"] = impact.get("citationCount") or 0
-                metadata["influential_citation_count"] = (
-                    impact.get("influentialCitationCount") or 0
-                )
+                metadata["influential_citation_count"] = impact.get("influentialCitationCount") or 0
                 metadata["citation_venue"] = impact.get("venue")
                 metadata["fields_of_study"] = impact.get("fieldsOfStudy") or []
                 metadata["impact_source"] = impact.get("source") or "citation_provider"

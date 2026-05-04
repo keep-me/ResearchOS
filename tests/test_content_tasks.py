@@ -46,7 +46,9 @@ def test_run_paper_wiki_task_persists_generated_content(monkeypatch) -> None:
 
     result = content._run_paper_wiki_task(
         "paper-123",
-        progress_callback=lambda message, current, total: progress.append((message, current, total)),
+        progress_callback=lambda message, current, total: progress.append(
+            (message, current, total)
+        ),
     )
 
     assert result["paper_id"] == "paper-123"

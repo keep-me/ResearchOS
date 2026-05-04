@@ -18,9 +18,10 @@ def test_get_settings_respects_researchos_data_dir(monkeypatch, tmp_path: Path):
         settings = config.get_settings()
         assert settings.pdf_storage_root == data_dir / "papers"
         assert settings.brief_output_root == data_dir / "briefs"
-        assert Path(settings.database_url.replace("sqlite:///", "")).resolve() == (
-            data_dir / "researchos.db"
-        ).resolve()
+        assert (
+            Path(settings.database_url.replace("sqlite:///", "")).resolve()
+            == (data_dir / "researchos.db").resolve()
+        )
     finally:
         config.get_settings.cache_clear()
 
@@ -33,7 +34,4 @@ def test_bridge_local_path_to_relative_maps_bridge_workspace_paths(monkeypatch, 
     monkeypatch.chdir(bridge_dir)
 
     assert claw_mcp_runtime._bridge_local_path_to_relative(str(bridge_dir)) == ""
-    assert (
-        claw_mcp_runtime._bridge_local_path_to_relative(str(nested_file))
-        == "src/main.py"
-    )
+    assert claw_mcp_runtime._bridge_local_path_to_relative(str(nested_file)) == "src/main.py"

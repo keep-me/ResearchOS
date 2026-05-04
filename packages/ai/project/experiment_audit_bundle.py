@@ -46,7 +46,18 @@ _AUDIT_CLAIM_FILE_NAMES = {
     "IDEA_REPORT.md",
 }
 _AUDIT_EVAL_MARKERS = ("eval", "metric", "benchmark", "test")
-_AUDIT_RESULT_DIR_MARKERS = ("result", "results", "output", "outputs", "log", "logs", "metric", "metrics", "report", "reports")
+_AUDIT_RESULT_DIR_MARKERS = (
+    "result",
+    "results",
+    "output",
+    "outputs",
+    "log",
+    "logs",
+    "metric",
+    "metrics",
+    "report",
+    "reports",
+)
 _AUDIT_CONFIG_MARKERS = ("config", "configs", "conf", "setting", "settings")
 _AUDIT_CATEGORY_LIMITS = {
     "evaluation_scripts": 8,
@@ -84,9 +95,13 @@ def _classify_audit_relative_path(relative_path: str) -> str | None:
         return "paper_claims"
     if suffix in {".yaml", ".yml", ".toml"}:
         return "config_files"
-    if suffix == ".json" and any(marker in stem or marker in parts for marker in _AUDIT_CONFIG_MARKERS):
+    if suffix == ".json" and any(
+        marker in stem or marker in parts for marker in _AUDIT_CONFIG_MARKERS
+    ):
         return "config_files"
-    if suffix == ".py" and any(marker in stem or marker in lowered for marker in _AUDIT_EVAL_MARKERS):
+    if suffix == ".py" and any(
+        marker in stem or marker in lowered for marker in _AUDIT_EVAL_MARKERS
+    ):
         return "evaluation_scripts"
     if suffix in {".json", ".csv", ".md", ".txt", ".log", ".out", ".err"} and any(
         marker in lowered for marker in _AUDIT_RESULT_DIR_MARKERS
@@ -285,7 +300,9 @@ def _collect_experiment_audit_bundle(
     workspace_path: str,
 ) -> dict[str, Any]:
     if context.run.workspace_server_id:
-        relative_paths = _collect_remote_audit_relative_paths(workspace_path, context.run.workspace_server_id)
+        relative_paths = _collect_remote_audit_relative_paths(
+            workspace_path, context.run.workspace_server_id
+        )
     else:
         relative_paths = _collect_local_audit_relative_paths(workspace_path)
     grouped_paths = _select_experiment_audit_files(relative_paths)

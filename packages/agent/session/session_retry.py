@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from email.utils import parsedate_to_datetime
 import time
-
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from packages.agent.session.session_errors import normalize_error
@@ -71,4 +70,3 @@ def sleep(session_id: str | None, delay_ms: int) -> bool:
         time.sleep(interval / 1000)
         remaining -= interval
     return not is_session_aborted(session_id)
-

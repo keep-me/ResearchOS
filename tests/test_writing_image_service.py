@@ -93,7 +93,10 @@ def test_generate_image_builds_gemini_request(monkeypatch: pytest.MonkeyPatch) -
 
     assert len(fake_client.calls) == 1
     call = fake_client.calls[0]
-    assert call["url"] == "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
+    assert (
+        call["url"]
+        == "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
+    )
     assert call["headers"]["x-goog-api-key"] == "gemini-key"
     assert call["json"]["generationConfig"]["imageConfig"]["aspectRatio"] == "16:9"
     parts = call["json"]["contents"][0]["parts"]

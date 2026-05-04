@@ -9,13 +9,17 @@ import pytest
 
 from apps.api.routers import agent_workspace
 from packages.agent.workspace.workspace_executor import (
+    WorkspaceAccessError,
     _translate_powershell_compat_command,
     edit_path_file,
     glob_path_entries,
     grep_path_contents,
     inspect_workspace,
     read_path_file,
+    resolve_path_input,
+    resolve_workspace_dir,
     run_workspace_command,
+    update_assistant_exec_policy,
     write_workspace_file,
 )
 
@@ -29,6 +33,42 @@ def test_inspect_workspace_does_not_create_missing_directory(tmp_path: Path) -> 
     assert snapshot["files"] == []
     assert snapshot["total_entries"] == 0
     assert not missing_workspace.exists()
+
+
+def test_resolve_workspace_dir_rejects_paths_outside_allowed_roots(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+
+    with pytest.raises(WorkspaceAccessError, match="允许的工作区根目录"):
+        resolve_workspace_dir(str(outside), create=False)
+
+
+def test_resolve_path_input_rejects_absolute_paths_outside_allowed_roots(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
+
+    with pytest.raises(WorkspaceAccessError, match="允许的工作区根目录"):
+        resolve_path_input(str(outside), workspace_path=str(workspace), expect_dir=False)
+
+
+def test_resolve_path_input_rejects_relative_traversal_outside_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with pytest.raises(WorkspaceAccessError, match="文件路径越界"):
+        resolve_path_input("../outside.txt", workspace_path=str(workspace), expect_dir=False)
+
+
+def test_resolve_path_input_allows_paths_inside_allowed_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    target = workspace / "notes.txt"
+
+    assert resolve_workspace_dir(str(workspace), create=False) == workspace.resolve()
+    assert (
+        resolve_path_input(str(target), workspace_path=str(workspace), expect_dir=False)
+        == target.resolve()
+    )
 
 
 def test_inspect_workspace_can_disable_entry_cap(tmp_path: Path) -> None:
@@ -96,7 +136,9 @@ def test_edit_path_file_with_empty_old_string_creates_missing_file(tmp_path: Pat
     assert target.read_text(encoding="utf-8") == "# Plan\n\n- Check runtime parity\n"
 
 
-def test_reveal_workspace_does_not_create_missing_file_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reveal_workspace_does_not_create_missing_file_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     report_path = tmp_path / "reports" / "literature-review.md"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(agent_workspace.shutil, "which", lambda _: None)
@@ -126,7 +168,9 @@ def test_run_workspace_command_returns_updated_cwd(tmp_path: Path) -> None:
     assert result["stdout"] == ""
 
 
-@pytest.mark.skipif(os.name == "nt", reason="PowerShell compatibility translation is for non-Windows hosts")
+@pytest.mark.skipif(
+    os.name == "nt", reason="PowerShell compatibility translation is for non-Windows hosts"
+)
 def test_powershell_compat_translation_preserves_semicolons_inside_strings() -> None:
     translated = _translate_powershell_compat_command(
         "Set-Content -Path notes/out.txt -Value 'alpha; beta'; Write-Output done"
@@ -140,16 +184,31 @@ def test_powershell_compat_translation_preserves_semicolons_inside_strings() -> 
 def test_create_workspace_git_branch_detects_existing_branch(tmp_path: Path) -> None:
     if shutil.which("git") is None:
         pytest.skip("git is not installed")
+    update_assistant_exec_policy({"allowed_command_prefixes": ["git checkout"]})
 
     workspace = tmp_path / "repo"
     workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "README.md").write_text("hello\n", encoding="utf-8")
 
     subprocess.run(["git", "init"], cwd=workspace, check=True, capture_output=True, text=True)
-    subprocess.run(["git", "config", "user.email", "pytest@example.com"], cwd=workspace, check=True, capture_output=True, text=True)
-    subprocess.run(["git", "config", "user.name", "Pytest"], cwd=workspace, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "pytest@example.com"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Pytest"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     subprocess.run(["git", "add", "."], cwd=workspace, check=True, capture_output=True, text=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=workspace, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=workspace, check=True, capture_output=True, text=True
+    )
 
     created = agent_workspace.create_workspace_git_branch(
         agent_workspace.WorkspaceGitBranchPayload(
@@ -176,7 +235,9 @@ def test_create_workspace_git_branch_detects_existing_branch(tmp_path: Path) -> 
     assert switched["git"]["branch"] == "feature/demo"
 
 
-def test_grep_path_contents_prioritizes_implementation_paths_over_tests_and_docs(tmp_path: Path) -> None:
+def test_grep_path_contents_prioritizes_implementation_paths_over_tests_and_docs(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "repo"
     impl_dir = workspace / "packages" / "ai"
     test_dir = workspace / "tests"
@@ -186,11 +247,17 @@ def test_grep_path_contents_prioritizes_implementation_paths_over_tests_and_docs
     docs_dir.mkdir(parents=True, exist_ok=True)
 
     symbol = "build_plan_mode_reminder"
-    (impl_dir / "session_plan.py").write_text(f"def {symbol}():\n    return 'impl'\n", encoding="utf-8")
-    (test_dir / "test_session_plan.py").write_text(f"def test_symbol():\n    assert '{symbol}'\n", encoding="utf-8")
+    (impl_dir / "session_plan.py").write_text(
+        f"def {symbol}():\n    return 'impl'\n", encoding="utf-8"
+    )
+    (test_dir / "test_session_plan.py").write_text(
+        f"def test_symbol():\n    assert '{symbol}'\n", encoding="utf-8"
+    )
     (docs_dir / "notes.md").write_text(f"{symbol} appears in docs\n", encoding="utf-8")
 
-    result = grep_path_contents(symbol, path_input=str(workspace), workspace_path=str(workspace), limit=10)
+    result = grep_path_contents(
+        symbol, path_input=str(workspace), workspace_path=str(workspace), limit=10
+    )
 
     assert result["count"] >= 1
     assert result["matches"][0]["relative_path"] == "packages/ai/session_plan.py"
@@ -198,7 +265,9 @@ def test_grep_path_contents_prioritizes_implementation_paths_over_tests_and_docs
     assert all(not str(item["relative_path"]).startswith("docs/") for item in result["matches"])
 
 
-def test_glob_path_entries_prioritizes_implementation_paths_over_tests_and_docs(tmp_path: Path) -> None:
+def test_glob_path_entries_prioritizes_implementation_paths_over_tests_and_docs(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "repo"
     impl_dir = workspace / "packages" / "ai"
     test_dir = workspace / "tests"
@@ -211,13 +280,17 @@ def test_glob_path_entries_prioritizes_implementation_paths_over_tests_and_docs(
     (test_dir / "test_session_plan.py").write_text("test\n", encoding="utf-8")
     (docs_dir / "notes.py").write_text("docs\n", encoding="utf-8")
 
-    result = glob_path_entries("**/*.py", path_input=str(workspace), workspace_path=str(workspace), limit=10)
+    result = glob_path_entries(
+        "**/*.py", path_input=str(workspace), workspace_path=str(workspace), limit=10
+    )
 
     assert result["count"] >= 3
     assert result["matches"][0]["relative_path"] == "packages/ai/session_plan.py"
 
 
-def test_grep_path_contents_prioritizes_definition_lines_for_identifier_queries(tmp_path: Path) -> None:
+def test_grep_path_contents_prioritizes_definition_lines_for_identifier_queries(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "repo"
     impl_dir = workspace / "packages" / "ai"
     impl_dir.mkdir(parents=True, exist_ok=True)
@@ -238,14 +311,18 @@ def test_grep_path_contents_prioritizes_definition_lines_for_identifier_queries(
         encoding="utf-8",
     )
 
-    result = grep_path_contents(symbol, path_input=str(workspace), workspace_path=str(workspace), limit=10)
+    result = grep_path_contents(
+        symbol, path_input=str(workspace), workspace_path=str(workspace), limit=10
+    )
 
     assert result["count"] >= 3
     assert result["matches"][0]["relative_path"] == "packages/ai/session_plan.py"
     assert result["matches"][0]["line"] == 1
 
 
-def test_grep_path_contents_skips_generated_noise_before_falling_back_to_workspace_root(tmp_path: Path) -> None:
+def test_grep_path_contents_skips_generated_noise_before_falling_back_to_workspace_root(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "repo"
     impl_dir = workspace / "packages" / "ai"
     tmp_dir = workspace / "tmp"
@@ -262,14 +339,18 @@ def test_grep_path_contents_skips_generated_noise_before_falling_back_to_workspa
         encoding="utf-8",
     )
 
-    result = grep_path_contents(symbol, path_input=str(workspace), workspace_path=str(workspace), limit=20)
+    result = grep_path_contents(
+        symbol, path_input=str(workspace), workspace_path=str(workspace), limit=20
+    )
 
     assert result["matches"]
     assert result["matches"][0]["relative_path"] == "packages/ai/session_plan.py"
     assert all(not str(item["relative_path"]).startswith("tmp/") for item in result["matches"])
 
 
-def test_grep_path_contents_treats_wildcard_include_as_unscoped_identifier_lookup(tmp_path: Path) -> None:
+def test_grep_path_contents_treats_wildcard_include_as_unscoped_identifier_lookup(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "repo"
     impl_dir = workspace / "packages" / "ai"
     scripts_dir = workspace / "scripts"
@@ -306,7 +387,9 @@ def test_grep_path_contents_treats_wildcard_include_as_unscoped_identifier_looku
     assert all(not str(item["relative_path"]).startswith("tmp/") for item in result["matches"])
 
 
-def test_grep_path_contents_treats_star_dot_star_as_unscoped_identifier_lookup(tmp_path: Path) -> None:
+def test_grep_path_contents_treats_star_dot_star_as_unscoped_identifier_lookup(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "repo"
     impl_dir = workspace / "packages" / "ai"
     tmp_dir = workspace / "tmp"
@@ -359,14 +442,16 @@ def test_read_path_file_supports_line_offset_and_limit_windows(tmp_path: Path) -
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell 7 wrapper behavior is Windows-specific")
-def test_run_workspace_command_handles_multiline_python_without_outer_command_quoting_breakage(tmp_path: Path) -> None:
+def test_run_workspace_command_handles_multiline_python_without_outer_command_quoting_breakage(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
 
     command = (
         "@'\n"
         "from pathlib import Path\n"
-        "print(\"hello from python\")\n"
+        'print("hello from python")\n'
         "print(Path.cwd().name)\n"
         "'@ | python -"
     )

@@ -46,7 +46,9 @@ class PendingResumeState:
             "assistant_message_id": self.assistant_message_id,
             "step_index": int(self.step_index or 0),
             "step_snapshot": self.step_snapshot,
-            "step_usage": copy.deepcopy(self.step_usage) if isinstance(self.step_usage, dict) else self.step_usage,
+            "step_usage": copy.deepcopy(self.step_usage)
+            if isinstance(self.step_usage, dict)
+            else self.step_usage,
         }
 
 
@@ -134,9 +136,7 @@ def pending_action_from_state(
             payload.get("permission_request")
             if isinstance(payload.get("permission_request"), dict)
             else None,
-            payload.get("continuation")
-            if isinstance(payload.get("continuation"), dict)
-            else None,
+            payload.get("continuation") if isinstance(payload.get("continuation"), dict) else None,
             payload.get("kind"),
         ),
     )
@@ -154,18 +154,22 @@ def store_pending_action(
         or "global"
     )
     continuation_payload = (
-        copy.deepcopy(state.continuation)
-        if isinstance(state.continuation, dict)
-        else None
+        copy.deepcopy(state.continuation) if isinstance(state.continuation, dict) else None
     )
-    if continuation_payload is None and pending_action_kind(state) not in {"", "confirm", "native_prompt"}:
+    if continuation_payload is None and pending_action_kind(state) not in {
+        "",
+        "confirm",
+        "native_prompt",
+    }:
         continuation_payload = {"kind": pending_action_kind(state)}
     persist_pending_action_state(
         action_id=state.action_id,
         session_id=state.options.session_id,
         project_id=project_id,
         action_type="permission" if state.permission_request else "confirm",
-        permission_request=copy.deepcopy(state.permission_request) if state.permission_request else None,
+        permission_request=copy.deepcopy(state.permission_request)
+        if state.permission_request
+        else None,
         options_payload=state.options.to_payload(),
         continuation=continuation_payload,
     )
@@ -209,7 +213,9 @@ def get_pending_action(
     hydrate_options,
     options_cls: type[Any] | None = None,
 ) -> PendingAction | None:
-    return hydrate_pending_action(action_id, hydrate_options=hydrate_options, options_cls=options_cls)
+    return hydrate_pending_action(
+        action_id, hydrate_options=hydrate_options, options_cls=options_cls
+    )
 
 
 def pending_permission_tool(pending: PendingAction) -> dict[str, Any]:
@@ -292,9 +298,7 @@ def native_pending_resume_state(
     step_usage = None
     if isinstance(message, dict) and message:
         info = message.get("info") if isinstance(message.get("info"), dict) else {}
-        request_message_id = (
-            str(info.get("parentID") or info.get("parentId") or "").strip() or None
-        )
+        request_message_id = str(info.get("parentID") or info.get("parentId") or "").strip() or None
         if step_usage is None:
             step_usage = tokens_to_usage_payload(
                 info.get("tokens") if isinstance(info.get("tokens"), dict) else None
@@ -359,12 +363,16 @@ def native_pending_tool_calls(
         if persisted_calls:
             return persisted_calls
     request = pending.permission_request if isinstance(pending.permission_request, dict) else {}
-    metadata = dict(request.get("metadata") or {}) if isinstance(request.get("metadata"), dict) else {}
+    metadata = (
+        dict(request.get("metadata") or {}) if isinstance(request.get("metadata"), dict) else {}
+    )
     tool = pending_permission_tool(pending)
     tool_name = str(metadata.get("tool") or "").strip()
     if not tool_name:
         return []
-    arguments = dict(metadata.get("arguments") or {}) if isinstance(metadata.get("arguments"), dict) else {}
+    arguments = (
+        dict(metadata.get("arguments") or {}) if isinstance(metadata.get("arguments"), dict) else {}
+    )
     return [
         fill_workspace_defaults(
             make_tool_call(
@@ -402,4 +410,3 @@ def native_pending_persistence(
         ),
         assistant_message_id=str(pending_resume.assistant_message_id or "").strip() or None,
     )
-

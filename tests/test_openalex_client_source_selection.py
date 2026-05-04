@@ -38,7 +38,9 @@ def test_work_to_search_result_prefers_conference_location_over_arxiv_primary_lo
     assert item["venue_type"] == "conference"
 
 
-def test_work_to_search_result_falls_back_to_primary_location_when_no_better_source_exists() -> None:
+def test_work_to_search_result_falls_back_to_primary_location_when_no_better_source_exists() -> (
+    None
+):
     work = {
         "id": "https://openalex.org/W2",
         "title": "A Preprint Only Work",

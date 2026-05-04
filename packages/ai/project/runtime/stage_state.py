@@ -70,4 +70,3 @@ __all__ = [
     "record_stage_output",
     "set_stage_state",
 ]
-

@@ -14,6 +14,15 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from packages.agent.runtime.agent_backends import (
+    DEFAULT_AGENT_BACKEND_ID,
+    normalize_agent_backend_id,
+)
+from packages.agent.workspace.workspace_executor import (
+    DEFAULT_IGNORES,
+    run_workspace_command,
+    write_workspace_file,
+)
 from packages.agent.workspace.workspace_remote import (
     build_remote_overview,
     clean_text,
@@ -21,8 +30,8 @@ from packages.agent.workspace.workspace_remote import (
     remote_capture_screen_session,
     remote_is_dir,
     remote_list_screen_sessions,
-    remote_probe_gpus,
     remote_make_dirs,
+    remote_probe_gpus,
     remote_read_file,
     remote_stat,
     remote_terminal_result,
@@ -30,42 +39,13 @@ from packages.agent.workspace.workspace_remote import (
     resolve_remote_workspace_path,
 )
 from packages.agent.workspace.workspace_server_registry import get_workspace_server_entry
-from packages.agent.runtime.agent_backends import DEFAULT_AGENT_BACKEND_ID, normalize_agent_backend_id
 from packages.ai.project.amadeus_compat import (
     workflow_assistant_skill_id,
     workflow_is_workspace_skill,
     workflow_runner_preamble,
 )
 from packages.ai.project.checkpoint_service import checkpoint_resume_stage
-from packages.ai.project.runtime.artifacts import (
-    collect_run_artifacts as _collect_run_artifacts,
-    write_run_artifact as _write_run_artifact,
-    write_run_json_artifact as _write_run_json_artifact,
-    write_run_log as _write_run_log,
-)
-from packages.ai.project.runtime.context import ProgressCallback, WorkflowContext
-from packages.ai.project.runtime.gpu import list_active_gpu_leases, reconcile_gpu_leases
-from packages.ai.project.runtime.llm_roles import (
-    resolve_role_profile as _resolve_role_profile,
-    resolve_stage_model_target as _resolve_stage_model_target,
-)
-from packages.ai.project.runtime.stage_state import (
-    cancel_active_stage as _cancel_active_stage,
-    emit_progress as _emit_progress,
-    ensure_run_orchestration as _ensure_run_orchestration,
-    fail_active_stage as _fail_active_stage,
-    iso_now as _iso_now,
-    maybe_pause_after_stage as _maybe_pause_after_stage,
-    patch_run as _patch_run,
-    record_stage_output as _record_stage_output,
-    set_stage_state as _set_stage_state,
-)
-from packages.ai.project.runtime.workspace import (
-    command_result_preview as _command_result_preview,
-    format_command_log as _format_command_log,
-    inspect_workspace_payload as _inspect_workspace_payload,
-    run_workspace_command_for_context as _run_workspace_command_for_context,
-)
+from packages.ai.project.output_sanitizer import sanitize_project_markdown
 from packages.ai.project.paper_artifacts import (
     build_figure_bundle,
     build_paper_compile_bundle,
@@ -75,8 +55,66 @@ from packages.ai.project.paper_artifacts import (
     parse_review_text,
     resolve_paper_venue,
 )
-from packages.ai.project.output_sanitizer import sanitize_project_markdown
 from packages.ai.project.paper_context import format_ref_index_for_prompt
+from packages.ai.project.runtime.artifacts import (
+    collect_run_artifacts as _collect_run_artifacts,
+)
+from packages.ai.project.runtime.artifacts import (
+    write_run_artifact as _write_run_artifact,
+)
+from packages.ai.project.runtime.artifacts import (
+    write_run_json_artifact as _write_run_json_artifact,
+)
+from packages.ai.project.runtime.artifacts import (
+    write_run_log as _write_run_log,
+)
+from packages.ai.project.runtime.context import ProgressCallback, WorkflowContext
+from packages.ai.project.runtime.gpu import list_active_gpu_leases, reconcile_gpu_leases
+from packages.ai.project.runtime.llm_roles import (
+    resolve_role_profile as _resolve_role_profile,
+)
+from packages.ai.project.runtime.llm_roles import (
+    resolve_stage_model_target as _resolve_stage_model_target,
+)
+from packages.ai.project.runtime.stage_state import (
+    cancel_active_stage as _cancel_active_stage,
+)
+from packages.ai.project.runtime.stage_state import (
+    emit_progress as _emit_progress,
+)
+from packages.ai.project.runtime.stage_state import (
+    ensure_run_orchestration as _ensure_run_orchestration,
+)
+from packages.ai.project.runtime.stage_state import (
+    fail_active_stage as _fail_active_stage,
+)
+from packages.ai.project.runtime.stage_state import (
+    iso_now as _iso_now,
+)
+from packages.ai.project.runtime.stage_state import (
+    maybe_pause_after_stage as _maybe_pause_after_stage,
+)
+from packages.ai.project.runtime.stage_state import (
+    patch_run as _patch_run,
+)
+from packages.ai.project.runtime.stage_state import (
+    record_stage_output as _record_stage_output,
+)
+from packages.ai.project.runtime.stage_state import (
+    set_stage_state as _set_stage_state,
+)
+from packages.ai.project.runtime.workspace import (
+    command_result_preview as _command_result_preview,
+)
+from packages.ai.project.runtime.workspace import (
+    format_command_log as _format_command_log,
+)
+from packages.ai.project.runtime.workspace import (
+    inspect_workspace_payload as _inspect_workspace_payload,
+)
+from packages.ai.project.runtime.workspace import (
+    run_workspace_command_for_context as _run_workspace_command_for_context,
+)
 from packages.ai.project.workflow_catalog import (
     build_run_orchestration,
     build_stage_trace,
@@ -84,21 +122,37 @@ from packages.ai.project.workflow_catalog import (
 )
 from packages.ai.project.workflows.shared import (
     build_experiment_audit_prompt as _build_experiment_audit_prompt,
+)
+from packages.ai.project.workflows.shared import (
     collect_experiment_audit_bundle as _collect_experiment_audit_bundle,
+)
+from packages.ai.project.workflows.shared import (
     load_context as _load_context,
+)
+from packages.ai.project.workflows.shared import (
     markdown_excerpt as _markdown_excerpt,
+)
+from packages.ai.project.workflows.shared import (
     render_experiment_audit_report as _render_experiment_audit_report,
+)
+from packages.ai.project.workflows.shared import (
     resolve_execution_command as _resolve_execution_command,
+)
+from packages.ai.project.workflows.shared import (
     resolve_execution_timeout as _resolve_execution_timeout,
+)
+from packages.ai.project.workflows.shared import (
     resolve_experiment_audit_payload as _resolve_experiment_audit_payload,
+)
+from packages.ai.project.workflows.shared import (
     resolve_idea_payloads as _resolve_idea_payloads,
+)
+from packages.ai.project.workflows.shared import (
     resolve_literature_markdown as _resolve_literature_markdown,
 )
-from packages.agent.workspace.workspace_executor import DEFAULT_IGNORES, run_workspace_command, write_workspace_file
 from packages.domain.enums import ProjectRunStatus
 from packages.domain.task_tracker import TaskCancelledError, TaskPausedError, global_tracker
-from packages.integrations.llm_client import LLMClient
-from packages.integrations.llm_client import LLMResult
+from packages.integrations.llm_client import LLMClient, LLMResult
 from packages.storage.db import session_scope
 from packages.storage.repositories import GeneratedContentRepository, ProjectRepository
 
@@ -208,7 +262,9 @@ def supports_multi_agent_project_workflow(workflow_type) -> bool:
     return get_project_workflow_preset(workflow_type) is not None
 
 
-def submit_multi_agent_project_run(run_id: str, *, resume_stage_id: str | None = None) -> str | None:
+def submit_multi_agent_project_run(
+    run_id: str, *, resume_stage_id: str | None = None
+) -> str | None:
     tracker_metadata: dict[str, Any] | None = None
     retry_metadata: dict[str, Any] | None = None
     retry_run_id = run_id
@@ -222,7 +278,9 @@ def submit_multi_agent_project_run(run_id: str, *, resume_stage_id: str | None =
 
         task_id = run.task_id or f"project_multi_run_{run.id.replace('-', '')[:12]}"
         metadata = dict(run.metadata_json or {})
-        resolved_resume_stage_id = str(resume_stage_id or checkpoint_resume_stage(metadata) or "").strip() or None
+        resolved_resume_stage_id = (
+            str(resume_stage_id or checkpoint_resume_stage(metadata) or "").strip() or None
+        )
         orchestration = build_run_orchestration(
             run.workflow_type,
             metadata.get("orchestration"),
@@ -384,7 +442,9 @@ def _execute_multi_agent_workflow(
     progress_callback: ProgressCallback | None,
 ) -> dict[str, Any]:
     run_state = _load_run_state(context.run.id)
-    resume_stage_id = str(checkpoint_resume_stage(run_state.get("metadata") or {}) or "").strip() or None
+    resume_stage_id = (
+        str(checkpoint_resume_stage(run_state.get("metadata") or {}) or "").strip() or None
+    )
     orchestration = build_run_orchestration(
         context.run.workflow_type,
         run_state.get("metadata", {}).get("orchestration"),
@@ -406,7 +466,10 @@ def _execute_multi_agent_workflow(
                 continue
             resume_started = True
         stage_label = str(stage.get("label") or stage_id)
-        agent_id = str(stage.get("selected_agent_id") or stage.get("default_agent_id") or "").strip() or _DEFAULT_AGENT_ID
+        agent_id = (
+            str(stage.get("selected_agent_id") or stage.get("default_agent_id") or "").strip()
+            or _DEFAULT_AGENT_ID
+        )
         agent_role = _resolve_agent_role(agent_id)
 
         workspace_server_id, workspace_path = _resolve_stage_workspace(run_state, context, stage)
@@ -552,7 +615,9 @@ def _finalize_multi_agent_workflow(
         stage_outputs,
         fallback_markdown=workflow_markdown,
     )
-    workflow_markdown = str(materialized.get("workflow_output_markdown") or workflow_markdown).strip()
+    workflow_markdown = str(
+        materialized.get("workflow_output_markdown") or workflow_markdown
+    ).strip()
     workflow_markdown = sanitize_project_markdown(workflow_markdown)
     artifact_refs.extend(materialized.get("artifact_refs") or [])
     summary = _markdown_excerpt(workflow_markdown)
@@ -580,7 +645,9 @@ def _finalize_multi_agent_workflow(
         result["artifact_refs"] = artifact_refs
 
     if context.run.workflow_type.value == "literature_review":
-        final_text = str(stage_outputs.get("deliver_review", {}).get("content") or workflow_markdown)
+        final_text = str(
+            stage_outputs.get("deliver_review", {}).get("content") or workflow_markdown
+        )
         markdown = _resolve_literature_markdown(context, LLMResult(content=final_text))
         metadata_updates["workflow_output_markdown"] = markdown
         metadata_updates["workflow_output_excerpt"] = _markdown_excerpt(markdown)
@@ -769,23 +836,23 @@ def _build_local_init_repo_files(
                 "",
                 "",
                 "def main() -> None:",
-                f'    project_name = {project_name!r}',
+                f"    project_name = {project_name!r}",
                 "    root = Path(__file__).resolve().parents[1]",
-                '    print(f\"{project_name} scaffold is ready.\")',
-                '    print(f\"Workspace: {root}\")',
-                '    print(\"Next step: replace this placeholder with your experiment pipeline.\")',
+                '    print(f"{project_name} scaffold is ready.")',
+                '    print(f"Workspace: {root}")',
+                '    print("Next step: replace this placeholder with your experiment pipeline.")',
                 "",
                 "",
-                'if __name__ == \"__main__\":',
+                'if __name__ == "__main__":',
                 "    main()",
                 "",
             ]
         ),
         "scripts/run_smoke.ps1": "\n".join(
             [
-                '$root = Split-Path -Parent $PSScriptRoot',
-                'Set-Location $root',
-                'python ./src/main.py',
+                "$root = Split-Path -Parent $PSScriptRoot",
+                "Set-Location $root",
+                "python ./src/main.py",
                 "",
             ]
         ),
@@ -948,7 +1015,10 @@ def _maybe_execute_local_init_repo_scaffold(
 
 def _build_autoresearch_bootstrap_files(context: WorkflowContext) -> dict[str, str]:
     project_name = context.project.name.strip() or "Research Project"
-    goal = context.run.prompt.strip() or "Define first baseline and iterate with measurable improvements."
+    goal = (
+        context.run.prompt.strip()
+        or "Define first baseline and iterate with measurable improvements."
+    )
     session_payload = {
         "framework": "autoresearch-claude-code",
         "project_name": project_name,
@@ -977,7 +1047,8 @@ def _build_autoresearch_bootstrap_files(context: WorkflowContext) -> dict[str, s
                 "",
             ]
         ),
-        "autoresearch/session.json": json.dumps(session_payload, ensure_ascii=False, indent=2) + "\n",
+        "autoresearch/session.json": json.dumps(session_payload, ensure_ascii=False, indent=2)
+        + "\n",
         "scripts/autoresearch_baseline.py": "\n".join(
             [
                 '"""Deterministic baseline script for ResearchOS AutoResearch workflow."""',
@@ -1271,7 +1342,9 @@ def _write_workflow_report_artifact(
     if workflow_type not in _REPORT_ARTIFACT_WORKFLOWS:
         return None
     relative_path = f"reports/{workflow_type.replace('_', '-')}.md"
-    return _write_run_artifact(context, relative_path, workflow_markdown.rstrip() + "\n", kind="report")
+    return _write_run_artifact(
+        context, relative_path, workflow_markdown.rstrip() + "\n", kind="report"
+    )
 
 
 def _materialize_workflow_artifacts(
@@ -1289,7 +1362,9 @@ def _materialize_workflow_artifacts(
             project_name=context.project.name,
             project_description=context.project.description or "",
             prompt=context.run.prompt,
-            stage_markdown=_paper_stage_markdown(stage_outputs, "outline_manuscript", "collect_materials"),
+            stage_markdown=_paper_stage_markdown(
+                stage_outputs, "outline_manuscript", "collect_materials"
+            ),
             paper_summaries=paper_summaries,
             venue=venue,
             template_name=template_name,
@@ -1308,7 +1383,9 @@ def _materialize_workflow_artifacts(
         bundle = build_figure_bundle(
             project_name=context.project.name,
             prompt=context.run.prompt,
-            stage_markdown=_paper_stage_markdown(stage_outputs, "design_figures", "collect_results"),
+            stage_markdown=_paper_stage_markdown(
+                stage_outputs, "design_figures", "collect_results"
+            ),
             venue=venue,
         )
         refs = _write_bundle_artifacts(context, bundle)
@@ -1326,7 +1403,9 @@ def _materialize_workflow_artifacts(
             project_name=context.project.name,
             project_description=context.project.description or "",
             prompt=context.run.prompt,
-            stage_markdown=_paper_stage_markdown(stage_outputs, "draft_sections", "gather_materials"),
+            stage_markdown=_paper_stage_markdown(
+                stage_outputs, "draft_sections", "gather_materials"
+            ),
             venue=venue,
             template_name=template_name,
             paper_titles=paper_summaries,
@@ -1343,7 +1422,8 @@ def _materialize_workflow_artifacts(
                 "- `paper/references.bib`",
                 "",
                 "## Draft Source",
-                _paper_stage_markdown(stage_outputs, "draft_sections", "gather_materials") or fallback_markdown,
+                _paper_stage_markdown(stage_outputs, "draft_sections", "gather_materials")
+                or fallback_markdown,
                 "",
             ]
         )
@@ -1367,7 +1447,9 @@ def _materialize_workflow_artifacts(
         bundle = build_paper_compile_bundle(
             project_name=context.project.name,
             compile_command=command,
-            exit_code=int(compile_stage.get("exit_code")) if str(compile_stage.get("exit_code") or "").strip() else None,
+            exit_code=int(compile_stage.get("exit_code"))
+            if str(compile_stage.get("exit_code") or "").strip()
+            else None,
             pdf_paths=pdf_paths,
             stdout_text=stdout_text,
             stderr_text=stderr_text,
@@ -1412,7 +1494,8 @@ def _materialize_workflow_artifacts(
         )
         refs = _write_bundle_artifacts(context, bundle)
         return {
-            "workflow_output_markdown": bundle.get("reports/paper-score-progression.md") or fallback_markdown,
+            "workflow_output_markdown": bundle.get("reports/paper-score-progression.md")
+            or fallback_markdown,
             "artifact_refs": refs,
             "metadata_updates": {
                 "paper_improvement_scores": {
@@ -1434,7 +1517,11 @@ def _materialize_workflow_artifacts(
         collect_stage = dict(stage_outputs.get("collect_artifacts") or {})
         review_stage = dict(stage_outputs.get("review_integrity") or {})
         report_stage = dict(stage_outputs.get("issue_audit_report") or {})
-        workspace_path = clean_text(collect_stage.get("workspace_path")) or clean_text(context.run.workdir) or clean_text(context.run.remote_workdir)
+        workspace_path = (
+            clean_text(collect_stage.get("workspace_path"))
+            or clean_text(context.run.workdir)
+            or clean_text(context.run.remote_workdir)
+        )
         audit_payload = _extract_stage_json(str(review_stage.get("content") or ""))
         if not audit_payload:
             audit_payload = {}
@@ -1601,9 +1688,15 @@ def _maybe_execute_sync_workspace_stage(
         return None
 
     stage_id = str(stage.get("id") or "").strip()
-    source_workspace = str(context.metadata.get("project_workspace_path") or "").strip() or workspace_path
-    target_workspace = str(context.metadata.get("target_workspace_path") or "").strip() or workspace_path
-    source_workspace_server_id = _normalize_server_id(context.metadata.get("project_workspace_server_id"))
+    source_workspace = (
+        str(context.metadata.get("project_workspace_path") or "").strip() or workspace_path
+    )
+    target_workspace = (
+        str(context.metadata.get("target_workspace_path") or "").strip() or workspace_path
+    )
+    source_workspace_server_id = _normalize_server_id(
+        context.metadata.get("project_workspace_server_id")
+    )
     target_workspace_server_id = _normalize_server_id(
         context.metadata.get("target_workspace_server_id") or workspace_server_id
     )
@@ -1645,7 +1738,9 @@ def _maybe_execute_sync_workspace_stage(
         )
         report_markdown = _build_sync_result_markdown(sync_result)
         artifact_refs: list[dict[str, Any]] = []
-        report_artifact = _write_run_artifact(context, "reports/sync-report.md", report_markdown, kind="report")
+        report_artifact = _write_run_artifact(
+            context, "reports/sync-report.md", report_markdown, kind="report"
+        )
         if report_artifact:
             artifact_refs.append(report_artifact)
         manifest_artifact = _write_run_artifact(
@@ -1740,7 +1835,9 @@ def _build_sync_preview_markdown(
     if source_workspace_server_id:
         try:
             server_entry = get_workspace_server_entry(source_workspace_server_id)
-            overview = build_remote_overview(server_entry, source_workspace, depth=2, max_entries=60)
+            overview = build_remote_overview(
+                server_entry, source_workspace, depth=2, max_entries=60
+            )
             lines.extend(
                 [
                     "",
@@ -1766,7 +1863,9 @@ def _build_sync_preview_markdown(
     if target_workspace_server_id:
         try:
             server_entry = get_workspace_server_entry(target_workspace_server_id)
-            overview = build_remote_overview(server_entry, target_workspace, depth=2, max_entries=60)
+            overview = build_remote_overview(
+                server_entry, target_workspace, depth=2, max_entries=60
+            )
             lines.extend(
                 [
                     "",
@@ -1862,7 +1961,9 @@ def _normalize_server_id(value: Any) -> str | None:
     return normalized or None
 
 
-def _collect_sync_files(source_workspace: str, workspace_server_id: str | None) -> list[dict[str, Any]]:
+def _collect_sync_files(
+    source_workspace: str, workspace_server_id: str | None
+) -> list[dict[str, Any]]:
     if workspace_server_id:
         return _collect_remote_sync_files(source_workspace, workspace_server_id)
     return _collect_local_sync_files(source_workspace)
@@ -2006,8 +2107,12 @@ def _sync_remote_to_remote(
 
     if source_workspace_server_id == target_workspace_server_id:
         with open_ssh_session(source_server_entry) as session:
-            source_root = resolve_remote_workspace_path(source_server_entry, source_workspace, session)
-            target_root = resolve_remote_workspace_path(target_server_entry, target_workspace, session)
+            source_root = resolve_remote_workspace_path(
+                source_server_entry, source_workspace, session
+            )
+            target_root = resolve_remote_workspace_path(
+                target_server_entry, target_workspace, session
+            )
             source_attr = remote_stat(session.sftp, source_root)
             if source_attr is None or not remote_is_dir(source_attr):
                 return {
@@ -2049,7 +2154,9 @@ def _sync_remote_to_remote(
             target_workspace = target_root
     else:
         with open_ssh_session(source_server_entry) as source_session:
-            source_root = resolve_remote_workspace_path(source_server_entry, source_workspace, source_session)
+            source_root = resolve_remote_workspace_path(
+                source_server_entry, source_workspace, source_session
+            )
             source_attr = remote_stat(source_session.sftp, source_root)
             if source_attr is None or not remote_is_dir(source_attr):
                 return {
@@ -2064,7 +2171,9 @@ def _sync_remote_to_remote(
                     "skipped_files": 0,
                 }
             with open_ssh_session(target_server_entry) as target_session:
-                target_root = resolve_remote_workspace_path(target_server_entry, target_workspace, target_session)
+                target_root = resolve_remote_workspace_path(
+                    target_server_entry, target_workspace, target_session
+                )
                 _ensure_remote_directory(target_session.sftp, target_root)
                 for item in files:
                     relative_path = str(item["relative_path"])
@@ -2138,7 +2247,9 @@ def _collect_local_sync_files(source_workspace: str) -> list[dict[str, Any]]:
     return items[:400]
 
 
-def _collect_remote_sync_files(source_workspace: str, workspace_server_id: str) -> list[dict[str, Any]]:
+def _collect_remote_sync_files(
+    source_workspace: str, workspace_server_id: str
+) -> list[dict[str, Any]]:
     server_entry = get_workspace_server_entry(workspace_server_id)
     items: list[dict[str, Any]] = []
     with open_ssh_session(server_entry) as session:
@@ -2150,13 +2261,18 @@ def _collect_remote_sync_files(source_workspace: str, workspace_server_id: str) 
         def _walk(current_dir: str, relative_prefix: str = "") -> None:
             if len(items) >= 400:
                 return
-            entries = sorted(session.sftp.listdir_attr(current_dir), key=lambda current: str(getattr(current, "filename", "")))
+            entries = sorted(
+                session.sftp.listdir_attr(current_dir),
+                key=lambda current: str(getattr(current, "filename", "")),
+            )
             for entry in entries:
                 name = str(getattr(entry, "filename", "") or "").strip()
                 if not name or name in {".", ".."}:
                     continue
                 relative_path = f"{relative_prefix}/{name}" if relative_prefix else name
-                parts = tuple(part for part in PurePosixPath(relative_path).parts if part not in {"", "."})
+                parts = tuple(
+                    part for part in PurePosixPath(relative_path).parts if part not in {"", "."}
+                )
                 if any(part in DEFAULT_IGNORES or part in _SYNC_SKIP_DIRS for part in parts):
                     continue
                 full_path = posixpath.join(current_dir, name)
@@ -2221,7 +2337,9 @@ def _build_sync_validation_markdown(
     if workspace_server_id:
         try:
             server_entry = get_workspace_server_entry(workspace_server_id)
-            overview = build_remote_overview(server_entry, target_workspace, depth=2, max_entries=80)
+            overview = build_remote_overview(
+                server_entry, target_workspace, depth=2, max_entries=80
+            )
             lines.extend(
                 [
                     f"- Exists: {bool(overview.get('exists'))}",
@@ -2407,7 +2525,9 @@ def _maybe_execute_monitor_stage(
             _collect_remote_gpu_state(
                 workspace_server_id,
                 workspace_path=workspace_path,
-                active_session_names=active_session_names if not screen_state.get("error") else None,
+                active_session_names=active_session_names
+                if not screen_state.get("error")
+                else None,
             )
             if workspace_server_id
             else {
@@ -2556,7 +2676,9 @@ def _collect_local_monitor_signals(context: WorkflowContext, workspace_path: str
         metadata=context.metadata,
         log_excerpt=log_excerpt,
         screen_captures=[],
-        text_reader=lambda relative_path, max_chars: _read_local_monitor_file(root / Path(relative_path), max_chars=max_chars),
+        text_reader=lambda relative_path, max_chars: _read_local_monitor_file(
+            root / Path(relative_path), max_chars=max_chars
+        ),
     )
     return {
         **summary,
@@ -2586,7 +2708,11 @@ def _collect_remote_monitor_signals(
         workspace_server_id,
         workspace_path=workspace_path,
         active_session_names=(
-            [str(item.get("name") or "").strip() for item in (screen_state.get("sessions") or []) if str(item.get("name") or "").strip()]
+            [
+                str(item.get("name") or "").strip()
+                for item in (screen_state.get("sessions") or [])
+                if str(item.get("name") or "").strip()
+            ]
             if not screen_state.get("error")
             else None
         ),
@@ -2627,7 +2753,11 @@ def _collect_remote_monitor_signals(
         log_excerpt=log_excerpt,
         screen_captures=screen_state.get("captures") or [],
         text_reader=(
-            (lambda relative_path, max_chars: _read_remote_monitor_file(server_entry, workspace_path, relative_path, max_chars=max_chars))
+            (
+                lambda relative_path, max_chars: _read_remote_monitor_file(
+                    server_entry, workspace_path, relative_path, max_chars=max_chars
+                )
+            )
             if server_entry is not None
             else None
         ),
@@ -2648,7 +2778,11 @@ def _collect_remote_monitor_signals(
 
 
 def _build_monitor_signals_markdown(signals: dict[str, Any]) -> str:
-    tracked_session_names = [str(item).strip() for item in (signals.get("tracked_session_names") or []) if str(item).strip()]
+    tracked_session_names = [
+        str(item).strip()
+        for item in (signals.get("tracked_session_names") or [])
+        if str(item).strip()
+    ]
     lines = [
         "# MONITOR_SIGNALS",
         "",
@@ -2657,10 +2791,14 @@ def _build_monitor_signals_markdown(signals: dict[str, Any]) -> str:
         f"- Tracked Session: `{signals.get('tracked_session_name') or 'N/A'}`",
     ]
     if tracked_session_names:
-        lines.extend(["", "## Tracked Sessions", *[f"- `{item}`" for item in tracked_session_names[:12]]])
+        lines.extend(
+            ["", "## Tracked Sessions", *[f"- `{item}`" for item in tracked_session_names[:12]]]
+        )
     alerts = list(signals.get("alerts") or [])
     if alerts:
-        lines.extend(["", "## Alerts", *[f"- {item.get('message') or item}" for item in alerts[:12]]])
+        lines.extend(
+            ["", "## Alerts", *[f"- {item.get('message') or item}" for item in alerts[:12]]]
+        )
     gpu_state = signals.get("gpu_state") or {}
     gpu_items = list(gpu_state.get("gpus") or [])
     if gpu_items:
@@ -2706,10 +2844,7 @@ def _build_monitor_signals_markdown(signals: dict[str, Any]) -> str:
             [
                 "",
                 "## Screen Sessions",
-                *[
-                    f"- `{item.get('name')}` ({item.get('state')})"
-                    for item in screen_sessions[:10]
-                ],
+                *[f"- `{item.get('name')}` ({item.get('state')})" for item in screen_sessions[:10]],
             ]
         )
     screen_error = str(signals.get("screen_error") or "").strip()
@@ -2739,7 +2874,10 @@ def _build_monitor_signals_markdown(signals: dict[str, Any]) -> str:
         lines.extend(["", "## Result Summaries"])
         for item in result_summaries[:8]:
             metrics = list((item.get("metrics") or {}).items())[:5]
-            metric_summary = ", ".join(f"{key}={_format_monitor_metric_value(value)}" for key, value in metrics) or "无结构化指标"
+            metric_summary = (
+                ", ".join(f"{key}={_format_monitor_metric_value(value)}" for key, value in metrics)
+                or "无结构化指标"
+            )
             lines.append(
                 f"- `{item.get('label') or item.get('relative_path')}` | status={item.get('status') or 'N/A'} | {metric_summary}"
             )
@@ -2748,7 +2886,10 @@ def _build_monitor_signals_markdown(signals: dict[str, Any]) -> str:
         lines.extend(["", "## Weights & Biases"])
         for item in wandb_summaries[:6]:
             metrics = list((item.get("metrics") or {}).items())[:4]
-            metric_summary = ", ".join(f"{key}={_format_monitor_metric_value(value)}" for key, value in metrics) or "无 summary 指标"
+            metric_summary = (
+                ", ".join(f"{key}={_format_monitor_metric_value(value)}" for key, value in metrics)
+                or "无 summary 指标"
+            )
             lines.append(f"- `{item.get('relative_path')}` | {metric_summary}")
     tensorboard_files = list(signals.get("tensorboard_files") or [])
     if tensorboard_files:
@@ -2758,7 +2899,16 @@ def _build_monitor_signals_markdown(signals: dict[str, Any]) -> str:
         lines.extend(["", "## Checkpoints", *[f"- `{item}`" for item in checkpoint_files[:12]]])
     parse_errors = list(signals.get("parse_errors") or [])
     if parse_errors:
-        lines.extend(["", "## Parse Notes", *[f"- `{item.get('relative_path')}`: {item.get('error')}" for item in parse_errors[:8]]])
+        lines.extend(
+            [
+                "",
+                "## Parse Notes",
+                *[
+                    f"- `{item.get('relative_path')}`: {item.get('error')}"
+                    for item in parse_errors[:8]
+                ],
+            ]
+        )
     lines.extend(["", "## Candidate Files"])
     files = list(signals.get("candidate_files") or [])
     if files:
@@ -2825,7 +2975,10 @@ def _is_tensorboard_artifact(relative_path: str) -> bool:
 def _is_checkpoint_artifact(relative_path: str) -> bool:
     lower = str(relative_path or "").lower()
     parts = tuple(part for part in PurePosixPath(lower).parts if part not in {"", "."})
-    return any(part.startswith("checkpoint") for part in parts) or Path(lower).suffix.lower() in _MONITOR_CHECKPOINT_SUFFIXES
+    return (
+        any(part.startswith("checkpoint") for part in parts)
+        or Path(lower).suffix.lower() in _MONITOR_CHECKPOINT_SUFFIXES
+    )
 
 
 def _should_parse_structured_monitor_file(relative_path: str) -> bool:
@@ -3048,7 +3201,11 @@ def _build_monitor_comparison(result_summaries: list[dict[str, Any]]) -> dict[st
     if not metric:
         return None
     baseline_index = next(
-        (index for index, item in enumerate(rows) if "baseline" in str(item.get("label") or item.get("relative_path") or "").lower()),
+        (
+            index
+            for index, item in enumerate(rows)
+            if "baseline" in str(item.get("label") or item.get("relative_path") or "").lower()
+        ),
         0,
     )
     baseline_item = rows[baseline_index]
@@ -3093,7 +3250,9 @@ def _select_monitor_metric(result_summaries: list[dict[str, Any]]) -> str | None
 
 def _monitor_metric_higher_is_better(metric: str) -> bool:
     lower = str(metric or "").lower()
-    return not any(token in lower for token in ("loss", "error", "wer", "cer", "rmse", "mae", "mse"))
+    return not any(
+        token in lower for token in ("loss", "error", "wer", "cer", "rmse", "mae", "mse")
+    )
 
 
 def _collect_monitor_alerts(
@@ -3116,7 +3275,9 @@ def _collect_monitor_alerts(
     text_blocks: list[tuple[str, str]] = [("日志摘录", str(log_excerpt or ""))]
     for capture in screen_captures[:6]:
         session_name = clean_text(capture.get("session_name")) or "screen"
-        text_blocks.append((f"Screen `{session_name}`", str(capture.get("stdout") or capture.get("stderr") or "")))
+        text_blocks.append(
+            (f"Screen `{session_name}`", str(capture.get("stdout") or capture.get("stderr") or ""))
+        )
     for source_name, text in text_blocks:
         for kind, pattern in _MONITOR_ALERT_PATTERNS:
             if text and pattern.search(text):
@@ -3127,7 +3288,10 @@ def _collect_monitor_alerts(
             _add("status", f"{item.get('label') or item.get('relative_path')} 状态异常：{status}")
         for key, value in (item.get("metrics") or {}).items():
             if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-                _add("metric", f"{item.get('label') or item.get('relative_path')} 的 `{key}` 为无效数值")
+                _add(
+                    "metric",
+                    f"{item.get('label') or item.get('relative_path')} 的 `{key}` 为无效数值",
+                )
     for item in parse_errors[:6]:
         _add("parse", f"{item.get('relative_path')} 解析失败：{item.get('error')}")
     return alerts[:12]
@@ -3177,7 +3341,13 @@ def _local_tree_preview(root: Path) -> str:
 
 def _resolve_paper_compile_command(context: WorkflowContext) -> str:
     metadata = context.metadata
-    for key in ("paper_compile_command", "compile_command", "execution_command", "command", "run_command"):
+    for key in (
+        "paper_compile_command",
+        "compile_command",
+        "execution_command",
+        "command",
+        "run_command",
+    ):
         value = str(metadata.get(key) or "").strip()
         if value:
             return value
@@ -3197,7 +3367,9 @@ def _maybe_execute_paper_compile_stage(
     if stage_id == "prepare_compile":
         inspection = _inspect_workspace_payload(context)
         compile_command = _resolve_paper_compile_command(context)
-        tree = str(inspection.get("tree") or inspection.get("message") or workspace_path or "").strip()
+        tree = str(
+            inspection.get("tree") or inspection.get("message") or workspace_path or ""
+        ).strip()
         content = "\n".join(
             [
                 "## workspace",
@@ -3269,7 +3441,9 @@ def _maybe_execute_paper_compile_stage(
     return {
         "agent_type": "researchos_paper_compile_run",
         "label": "ResearchOS Paper Compile Run",
-        "provider": "workspace_executor_remote" if context.run.workspace_server_id else "workspace_executor_local",
+        "provider": "workspace_executor_remote"
+        if context.run.workspace_server_id
+        else "workspace_executor_local",
         "base_url": None,
         "default_model": None,
         "model": None,
@@ -3422,7 +3596,9 @@ def _stage_output_contract(context: WorkflowContext, stage: dict[str, Any]) -> s
                 "请给出 3 条以内、务实可落地的研究想法。"
             )
         if stage_id == "verify_novelty":
-            return "输出 Markdown 深度查新报告，按 idea 汇总 closest prior work、overlap risk、delta。"
+            return (
+                "输出 Markdown 深度查新报告，按 idea 汇总 closest prior work、overlap risk、delta。"
+            )
         if stage_id == "external_review":
             return "输出 Markdown reviewer feedback，包含 score、主要 objections、最小修复建议。"
         if stage_id == "rank_and_persist":
@@ -3490,18 +3666,14 @@ def _stage_output_contract(context: WorkflowContext, stage: dict[str, Any]) -> s
                 "是否达到下一轮投稿前要求。"
             )
     if workflow_type == "monitor_experiment":
-        return (
-            "输出 Markdown 监控简报，至少包含：运行状态、关键日志/指标、异常提示、"
-            "下一步动作。"
-        )
+        return "输出 Markdown 监控简报，至少包含：运行状态、关键日志/指标、异常提示、下一步动作。"
     if workflow_type == "sync_workspace":
         return (
             "输出 Markdown 同步结果，至少包含：源路径、目标路径、同步模式、文件数量、"
             "跳过项、校验结论。"
         )
     return (
-        "输出一份 Markdown 阶段结果，至少包含：阶段目标、关键操作、关键发现、阶段产出、"
-        "下一步建议。"
+        "输出一份 Markdown 阶段结果，至少包含：阶段目标、关键操作、关键发现、阶段产出、下一步建议。"
     )
 
 
@@ -3509,7 +3681,10 @@ def _build_workflow_output_markdown(
     context: WorkflowContext,
     stage_outputs: dict[str, Any],
 ) -> str:
-    parts = [f"# {context.project.name} · {context.run.title or context.run.workflow_type.value}", ""]
+    parts = [
+        f"# {context.project.name} · {context.run.title or context.run.workflow_type.value}",
+        "",
+    ]
     for key, item in stage_outputs.items():
         if not isinstance(item, dict):
             continue
@@ -3559,7 +3734,9 @@ def _execute_native_stage(
     llm = LLMClient()
     target = _resolve_stage_model_target(context, stage_id, role_profile, llm)
     model_override = target["model_override"]
-    variant_override = str(target.get("variant_override") or role_profile.get("variant") or "medium")
+    variant_override = str(
+        target.get("variant_override") or role_profile.get("variant") or "medium"
+    )
     if context.run.workflow_type.value == "idea_discovery" and stage_id == "expand_directions":
         result = llm.complete_json(
             prompt,
@@ -3598,7 +3775,9 @@ def _execute_native_stage(
     return {
         "agent_type": agent_id,
         "label": agent_role["label"],
-        "provider": target.get("provider") or getattr(llm, "provider", None) or "native_multi_agent",
+        "provider": target.get("provider")
+        or getattr(llm, "provider", None)
+        or "native_multi_agent",
         "base_url": None,
         "default_model": target.get("display_model") or model_override,
         "model": target.get("display_model") or model_override,
@@ -3627,7 +3806,9 @@ def _maybe_execute_experiment_audit_stage(
     if context.run.workflow_type.value != "experiment_audit":
         return None
     stage_id = str(stage.get("id") or "").strip()
-    resolved_workspace = str(workspace_path or context.run.remote_workdir or context.run.workdir or "").strip()
+    resolved_workspace = str(
+        workspace_path or context.run.remote_workdir or context.run.workdir or ""
+    ).strip()
     if not resolved_workspace:
         raise RuntimeError("当前运行缺少工作区路径，无法执行 experiment_audit")
 
@@ -3643,7 +3824,10 @@ def _maybe_execute_experiment_audit_stage(
         }
 
     if stage_id == "review_integrity":
-        agent_id = str(stage.get("selected_agent_id") or stage.get("default_agent_id") or "").strip() or _DEFAULT_AGENT_ID
+        agent_id = (
+            str(stage.get("selected_agent_id") or stage.get("default_agent_id") or "").strip()
+            or _DEFAULT_AGENT_ID
+        )
         role_profile = _resolve_role_profile(agent_id)
         llm = LLMClient()
         target = _resolve_stage_model_target(context, stage_id, role_profile, llm)
@@ -3652,17 +3836,23 @@ def _maybe_execute_experiment_audit_stage(
             _build_experiment_audit_prompt(context, bundle),
             stage="project_experiment_audit_review",
             model_override=target["model_override"],
-            variant_override=str(target.get("variant_override") or role_profile.get("variant") or "medium"),
+            variant_override=str(
+                target.get("variant_override") or role_profile.get("variant") or "medium"
+            ),
             max_tokens=2600,
             max_retries=1,
             request_timeout=240,
         )
         audit_payload = _resolve_experiment_audit_payload(bundle, result)
         return {
-            "provider": target.get("provider") or getattr(llm, "provider", None) or "native_multi_agent",
+            "provider": target.get("provider")
+            or getattr(llm, "provider", None)
+            or "native_multi_agent",
             "model": target.get("display_model") or target["model_override"],
             "default_model": target.get("display_model") or target["model_override"],
-            "variant": str(target.get("variant_override") or role_profile.get("variant") or "medium"),
+            "variant": str(
+                target.get("variant_override") or role_profile.get("variant") or "medium"
+            ),
             "content": json.dumps(audit_payload, ensure_ascii=False, indent=2),
             "parsed": audit_payload,
             "stdout": "",
@@ -3675,7 +3865,9 @@ def _maybe_execute_experiment_audit_stage(
 
     if stage_id == "issue_audit_report":
         bundle = _collect_experiment_audit_bundle(context, workspace_path=resolved_workspace)
-        review_content = str((stage_outputs.get("review_integrity") or {}).get("content") or "").strip()
+        review_content = str(
+            (stage_outputs.get("review_integrity") or {}).get("content") or ""
+        ).strip()
         audit_payload = _resolve_experiment_audit_payload(
             bundle,
             LLMResult(content=review_content, parsed_json=_extract_stage_json(review_content)),
@@ -3695,4 +3887,3 @@ def _maybe_execute_experiment_audit_stage(
         }
 
     return None
-

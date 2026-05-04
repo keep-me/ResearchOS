@@ -10,7 +10,6 @@ from typing import Any
 
 from packages.config import get_settings
 
-
 _IGNORED_FOLDERS = {
     "node_modules",
     "bower_components",
@@ -212,9 +211,7 @@ def patch(workspace_root: str | None, snapshot_hash: str) -> dict[str, Any]:
     if result.returncode != 0:
         return {"hash": snapshot_hash, "files": []}
     files = [
-        str((root / line.strip()).resolve())
-        for line in result.stdout.splitlines()
-        if line.strip()
+        str((root / line.strip()).resolve()) for line in result.stdout.splitlines() if line.strip()
     ]
     return {"hash": snapshot_hash, "files": _filter_snapshot_files(root, files)}
 
@@ -442,7 +439,9 @@ def diff_full(workspace_root: str | None, from_hash: str, to_hash: str) -> list[
             continue
         if _snapshot_path_is_ignored(root, root / file_name):
             continue
-        kinds[file_name] = "added" if code.startswith("A") else "deleted" if code.startswith("D") else "modified"
+        kinds[file_name] = (
+            "added" if code.startswith("A") else "deleted" if code.startswith("D") else "modified"
+        )
 
     numstat = _run_git(
         repo_dir,

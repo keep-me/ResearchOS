@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import inspect
-
 
 # revision identifiers, used by Alembic.
 revision: str = "20260414_0012_schema_reconciliation"
@@ -70,23 +69,47 @@ def upgrade() -> None:
     )
 
     for column in (
-        sa.Column("kind", sa.String(length=20), nullable=False, server_default=sa.text("'subscription'")),
-        sa.Column("sort_by", sa.String(length=32), nullable=False, server_default=sa.text("'submittedDate'")),
-        sa.Column("source", sa.String(length=32), nullable=False, server_default=sa.text("'arxiv'")),
-        sa.Column("search_field", sa.String(length=32), nullable=False, server_default=sa.text("'all'")),
-        sa.Column("priority_mode", sa.String(length=32), nullable=False, server_default=sa.text("'time'")),
-        sa.Column("venue_tier", sa.String(length=32), nullable=False, server_default=sa.text("'all'")),
-        sa.Column("venue_type", sa.String(length=32), nullable=False, server_default=sa.text("'all'")),
+        sa.Column(
+            "kind", sa.String(length=20), nullable=False, server_default=sa.text("'subscription'")
+        ),
+        sa.Column(
+            "sort_by",
+            sa.String(length=32),
+            nullable=False,
+            server_default=sa.text("'submittedDate'"),
+        ),
+        sa.Column(
+            "source", sa.String(length=32), nullable=False, server_default=sa.text("'arxiv'")
+        ),
+        sa.Column(
+            "search_field", sa.String(length=32), nullable=False, server_default=sa.text("'all'")
+        ),
+        sa.Column(
+            "priority_mode", sa.String(length=32), nullable=False, server_default=sa.text("'time'")
+        ),
+        sa.Column(
+            "venue_tier", sa.String(length=32), nullable=False, server_default=sa.text("'all'")
+        ),
+        sa.Column(
+            "venue_type", sa.String(length=32), nullable=False, server_default=sa.text("'all'")
+        ),
         sa.Column("venue_names", sa.JSON(), nullable=False, server_default=sa.text("'[]'")),
         sa.Column("from_year", sa.Integer(), nullable=True),
         sa.Column("default_folder_id", sa.String(length=36), nullable=True),
-        sa.Column("schedule_frequency", sa.String(length=20), nullable=False, server_default=sa.text("'daily'")),
+        sa.Column(
+            "schedule_frequency",
+            sa.String(length=20),
+            nullable=False,
+            server_default=sa.text("'daily'"),
+        ),
         sa.Column("schedule_time_utc", sa.Integer(), nullable=False, server_default=sa.text("21")),
         sa.Column("enable_date_filter", sa.Boolean(), nullable=False, server_default=sa.text("0")),
         sa.Column("date_filter_days", sa.Integer(), nullable=False, server_default=sa.text("7")),
         sa.Column("date_filter_start", sa.Date(), nullable=True),
         sa.Column("date_filter_end", sa.Date(), nullable=True),
-        sa.Column("max_results_per_run", sa.Integer(), nullable=False, server_default=sa.text("20")),
+        sa.Column(
+            "max_results_per_run", sa.Integer(), nullable=False, server_default=sa.text("20")
+        ),
         sa.Column("retry_limit", sa.Integer(), nullable=False, server_default=sa.text("2")),
     ):
         _add_column_if_missing("topic_subscriptions", column)
@@ -101,27 +124,60 @@ def upgrade() -> None:
     _add_column_if_missing("pipeline_runs", sa.Column("decision_note", sa.Text(), nullable=True))
 
     for column in (
-        sa.Column("embedding_provider", sa.String(length=32), nullable=False, server_default=sa.text("''")),
-        sa.Column("embedding_api_key", sa.String(length=512), nullable=False, server_default=sa.text("''")),
-        sa.Column("embedding_api_base_url", sa.String(length=512), nullable=False, server_default=sa.text("''")),
-        sa.Column("image_provider", sa.String(length=32), nullable=False, server_default=sa.text("''")),
-        sa.Column("image_api_key", sa.String(length=512), nullable=False, server_default=sa.text("''")),
-        sa.Column("image_api_base_url", sa.String(length=512), nullable=False, server_default=sa.text("''")),
-        sa.Column("model_image", sa.String(length=128), nullable=False, server_default=sa.text("''")),
+        sa.Column(
+            "embedding_provider", sa.String(length=32), nullable=False, server_default=sa.text("''")
+        ),
+        sa.Column(
+            "embedding_api_key", sa.String(length=512), nullable=False, server_default=sa.text("''")
+        ),
+        sa.Column(
+            "embedding_api_base_url",
+            sa.String(length=512),
+            nullable=False,
+            server_default=sa.text("''"),
+        ),
+        sa.Column(
+            "image_provider", sa.String(length=32), nullable=False, server_default=sa.text("''")
+        ),
+        sa.Column(
+            "image_api_key", sa.String(length=512), nullable=False, server_default=sa.text("''")
+        ),
+        sa.Column(
+            "image_api_base_url",
+            sa.String(length=512),
+            nullable=False,
+            server_default=sa.text("''"),
+        ),
+        sa.Column(
+            "model_image", sa.String(length=128), nullable=False, server_default=sa.text("''")
+        ),
     ):
         _add_column_if_missing("llm_provider_configs", column)
 
     _add_column_if_missing(
         "feishu_configs",
-        sa.Column("timeout_action", sa.String(length=20), nullable=False, server_default=sa.text("'approve'")),
+        sa.Column(
+            "timeout_action",
+            sa.String(length=20),
+            nullable=False,
+            server_default=sa.text("'approve'"),
+        ),
     )
     _add_column_if_missing(
         "agent_sessions",
-        sa.Column("backend_id", sa.String(length=64), nullable=False, server_default=sa.text("'native'")),
+        sa.Column(
+            "backend_id", sa.String(length=64), nullable=False, server_default=sa.text("'native'")
+        ),
     )
-    _add_column_if_missing("image_analyses", sa.Column("image_path", sa.String(length=512), nullable=True))
-    _add_column_if_missing("project_runs", sa.Column("executor_model", sa.String(length=128), nullable=True))
-    _add_column_if_missing("project_runs", sa.Column("reviewer_model", sa.String(length=128), nullable=True))
+    _add_column_if_missing(
+        "image_analyses", sa.Column("image_path", sa.String(length=512), nullable=True)
+    )
+    _add_column_if_missing(
+        "project_runs", sa.Column("executor_model", sa.String(length=128), nullable=True)
+    )
+    _add_column_if_missing(
+        "project_runs", sa.Column("reviewer_model", sa.String(length=128), nullable=True)
+    )
 
     _create_index_if_missing("papers", "ix_papers_created_at", ["created_at"])
     _create_index_if_missing("papers", "ix_papers_read_status", ["read_status"])

@@ -11,7 +11,11 @@ from typing import Any
 from packages.agent.runtime.agent_runtime_state import normalize_mode
 from packages.agent.session.session_plan import PLAN_MODE_ALLOWED_TOOLS
 from packages.agent.tools.tool_catalog import TOOL_REGISTRY
-from packages.agent.tools.tool_exposure import function_tool_name, is_official_openai_target, prefer_apply_patch_tool
+from packages.agent.tools.tool_exposure import (
+    function_tool_name,
+    is_official_openai_target,
+    prefer_apply_patch_tool,
+)
 from packages.agent.tools.tool_schema import ToolDef, ToolSpec
 
 _LOCK = threading.RLock()
@@ -115,9 +119,7 @@ def _resolve_builtin_handler(name: str) -> Callable[..., Any] | None:
     _ensure_initialized()
     with _LOCK:
         cached = _CATALOG_HANDLERS.get(name)
-        definition = copy.deepcopy(
-            _CATALOG_DEFS.get(name) or _COMPAT_TOOL_DEFS.get(name)
-        )
+        definition = copy.deepcopy(_CATALOG_DEFS.get(name) or _COMPAT_TOOL_DEFS.get(name))
     if callable(cached):
         return cached
     if not isinstance(definition, ToolDef):
@@ -236,11 +238,7 @@ def enabled_tool_names_for_workspace(
     if not enabled_tools:
         return set()
     remote = is_remote_workspace_server(workspace_server_id)
-    enabled = {
-        str(name or "").strip()
-        for name in enabled_tools
-        if str(name or "").strip()
-    }
+    enabled = {str(name or "").strip() for name in enabled_tools if str(name or "").strip()}
     enabled &= tool_registry_names()
     out: set[str] = set()
     for name in enabled:
@@ -341,13 +339,8 @@ def build_turn_tools(
         return tools
 
     provider_defined_tools = _provider_defined_tools_for_names(
-        {
-        function_tool_name(tool)
-        for tool in tools
-        if function_tool_name(tool)
-        }
+        {function_tool_name(tool) for tool in tools if function_tool_name(tool)}
     )
     for entry in provider_defined_tools:
         append_provider_defined_tool_once(tools, entry)
     return tools
-

@@ -79,7 +79,9 @@ def test_provider_embed_openai_compatible_or_raise_returns_vector(monkeypatch) -
     monkeypatch.setattr(
         client,
         "trace_result",
-        lambda result, *, stage, provider, model, prompt_digest: traced.append((stage, provider, model)),
+        lambda result, *, stage, provider, model, prompt_digest: traced.append(
+            (stage, provider, model)
+        ),
     )
 
     vector, used_model, used_base_url = llm_provider_embedding.embed_openai_compatible_or_raise(

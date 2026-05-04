@@ -4,9 +4,18 @@ import logging
 from pathlib import Path
 from uuid import uuid4
 
-from packages.agent.runtime.agent_runtime_state import ensure_session, get_todos, normalize_mode, update_todos
+from packages.agent.runtime.agent_runtime_state import (
+    ensure_session,
+    get_todos,
+    normalize_mode,
+    update_todos,
+)
 from packages.agent.session.session_plan import plan_exit_followup_text, resolve_session_plan_info
-from packages.agent.session.session_runtime import append_session_message, build_user_message_meta, ensure_session_record
+from packages.agent.session.session_runtime import (
+    append_session_message,
+    build_user_message_meta,
+    ensure_session_record,
+)
 from packages.agent.tools.tool_context import context_session_id, context_workspace
 from packages.agent.tools.tool_runtime import AgentToolContext, ToolResult
 from packages.integrations.llm_client import LLMClient
@@ -24,7 +33,12 @@ def _todo_read(*, context: AgentToolContext | None = None) -> ToolResult:
     open_count = sum(1 for item in todos if str(item.get("status") or "") != "completed")
     return ToolResult(
         success=True,
-        data={"session_id": state.session_id, "todos": todos, "count": len(todos), "open_count": open_count},
+        data={
+            "session_id": state.session_id,
+            "todos": todos,
+            "count": len(todos),
+            "open_count": open_count,
+        },
         summary=f"当前有 {open_count} 个未完成待办",
     )
 
@@ -39,7 +53,12 @@ def _todo_write(todos: list[dict], *, context: AgentToolContext | None = None) -
     open_count = sum(1 for item in updated if str(item.get("status") or "") != "completed")
     return ToolResult(
         success=True,
-        data={"session_id": state.session_id, "todos": updated, "count": len(updated), "open_count": open_count},
+        data={
+            "session_id": state.session_id,
+            "todos": updated,
+            "count": len(updated),
+            "open_count": open_count,
+        },
         summary=f"已更新待办列表，剩余 {open_count} 个未完成项",
     )
 
@@ -111,7 +130,9 @@ def _plan_exit(*, context: AgentToolContext | None = None) -> ToolResult:
     session_payload = ensure_session_record(session_id)
     plan_info = resolve_session_plan_info(session_payload)
     if plan_info is None:
-        return ToolResult(success=False, summary="当前 session 缺少计划文件上下文，无法退出 plan 模式")
+        return ToolResult(
+            success=False, summary="当前 session 缺少计划文件上下文，无法退出 plan 模式"
+        )
 
     if plan_info.storage == "local":
         try:
@@ -163,4 +184,3 @@ def _question(*, context: AgentToolContext | None = None, **_kwargs) -> ToolResu
         success=False,
         summary="question 工具应先暂停并等待用户回答，不应直接执行到本地 handler",
     )
-

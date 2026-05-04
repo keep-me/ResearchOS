@@ -2,6 +2,7 @@
 推理链深度分析服务
 引导 LLM 进行分步推理，提供方法论推导链、实验验证链、创新性评估
 """
+
 from __future__ import annotations
 
 import logging
@@ -75,8 +76,12 @@ class ReasoningService:
         if normalized_evidence_mode == "full":
             profile_pages = 0
             profile_excerpt_chars = 0
-            profile_max_tokens = max(profile_max_tokens, 4096 if normalized_detail == "high" else 3072)
-            profile_timeout_seconds = max(profile_timeout_seconds, 240 if normalized_detail == "high" else 180)
+            profile_max_tokens = max(
+                profile_max_tokens, 4096 if normalized_detail == "high" else 3072
+            )
+            profile_timeout_seconds = max(
+                profile_timeout_seconds, 240 if normalized_detail == "high" else 180
+            )
         else:
             profile_pages = max(2, min(profile_pages, 6))
             profile_excerpt_chars = max(2600, min(profile_excerpt_chars, 4200))
@@ -158,7 +163,9 @@ class ReasoningService:
                 evidence_mode=normalized_evidence_mode,
                 pdf_extractor=self.pdf_extractor,
                 pdf_text_pages=profile_pages,
-                pdf_text_chars=0 if normalized_evidence_mode == "full" else profile_excerpt_chars * 2,
+                pdf_text_chars=0
+                if normalized_evidence_mode == "full"
+                else profile_excerpt_chars * 2,
             )
             effective_content_source = resolve_effective_paper_content_source(
                 content_source,
@@ -400,15 +407,9 @@ class ReasoningService:
                 "problem_definition": cls._as_text(
                     method_chain.get("problem_definition"), "", 2000
                 ),
-                "core_hypothesis": cls._as_text(
-                    method_chain.get("core_hypothesis"), "", 2000
-                ),
-                "method_derivation": cls._as_text(
-                    method_chain.get("method_derivation"), "", 3000
-                ),
-                "theoretical_basis": cls._as_text(
-                    method_chain.get("theoretical_basis"), "", 3000
-                ),
+                "core_hypothesis": cls._as_text(method_chain.get("core_hypothesis"), "", 2000),
+                "method_derivation": cls._as_text(method_chain.get("method_derivation"), "", 3000),
+                "theoretical_basis": cls._as_text(method_chain.get("theoretical_basis"), "", 3000),
                 "innovation_analysis": cls._as_text(
                     method_chain.get("innovation_analysis"), "", 3000
                 ),
@@ -437,14 +438,10 @@ class ReasoningService:
                 "novelty_score": cls._as_score(impact.get("novelty_score")),
                 "rigor_score": cls._as_score(impact.get("rigor_score")),
                 "impact_score": cls._as_score(impact.get("impact_score")),
-                "overall_assessment": cls._as_text(
-                    impact.get("overall_assessment"), "", 3000
-                ),
+                "overall_assessment": cls._as_text(impact.get("overall_assessment"), "", 3000),
                 "strengths": cls._as_str_list(impact.get("strengths"), 8, 500),
                 "weaknesses": cls._as_str_list(impact.get("weaknesses"), 8, 500),
-                "future_suggestions": cls._as_str_list(
-                    impact.get("future_suggestions"), 8, 500
-                ),
+                "future_suggestions": cls._as_str_list(impact.get("future_suggestions"), 8, 500),
             }
         else:
             out["impact_assessment"] = cls._estimate_impact_assessment(out)
@@ -530,14 +527,22 @@ class ReasoningService:
 
         method = normalized.get("method_chain") if isinstance(normalized, dict) else {}
         experiment = normalized.get("experiment_chain") if isinstance(normalized, dict) else {}
-        method_len = sum(len(str(v or "")) for v in method.values()) if isinstance(method, dict) else 0
-        experiment_len = sum(len(str(v or "")) for v in experiment.values()) if isinstance(experiment, dict) else 0
+        method_len = (
+            sum(len(str(v or "")) for v in method.values()) if isinstance(method, dict) else 0
+        )
+        experiment_len = (
+            sum(len(str(v or "")) for v in experiment.values())
+            if isinstance(experiment, dict)
+            else 0
+        )
         step_len = 0
         if isinstance(steps, list):
             for step in steps:
                 if not isinstance(step, dict):
                     continue
-                step_len += len(str(step.get("thinking") or "")) + len(str(step.get("conclusion") or ""))
+                step_len += len(str(step.get("thinking") or "")) + len(
+                    str(step.get("conclusion") or "")
+                )
 
         total_len = method_len + experiment_len + step_len
         if total_len < 120:

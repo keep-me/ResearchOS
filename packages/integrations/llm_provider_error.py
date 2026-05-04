@@ -87,7 +87,9 @@ def _transport_kind(transport: str | None) -> str | None:
 
 
 def _error_class_name(error: Any) -> str:
-    return str(getattr(error.__class__, "__name__", "") or getattr(error, "__name__", "") or "").strip()
+    return str(
+        getattr(error.__class__, "__name__", "") or getattr(error, "__name__", "") or ""
+    ).strip()
 
 
 def _message_from_error(error: Any) -> str:
@@ -154,7 +156,9 @@ def _response_body_from_error(error: Any) -> str | None:
 def _response_headers_from_error(error: Any) -> dict[str, str] | None:
     headers: Any = None
     if isinstance(error, dict):
-        headers = error.get("responseHeaders") or error.get("response_headers") or error.get("headers")
+        headers = (
+            error.get("responseHeaders") or error.get("response_headers") or error.get("headers")
+        )
     else:
         response = getattr(error, "response", None)
         headers = (
@@ -186,14 +190,34 @@ def _metadata_from_error(error: Any) -> dict[str, Any] | None:
         metadata = error.get("metadata")
         if isinstance(metadata, dict) and metadata:
             return {str(key): value for key, value in metadata.items()}
-        fields = ("code", "syscall", "errno", "type", "param", "url", "transport", "provider", "gateway", "bucket")
+        fields = (
+            "code",
+            "syscall",
+            "errno",
+            "type",
+            "param",
+            "url",
+            "transport",
+            "provider",
+            "gateway",
+            "bucket",
+        )
         payload = {
-            str(field): error.get(field)
-            for field in fields
-            if error.get(field) not in (None, "")
+            str(field): error.get(field) for field in fields if error.get(field) not in (None, "")
         }
         return payload or None
-    fields = ("code", "syscall", "errno", "type", "param", "url", "transport", "provider", "gateway", "bucket")
+    fields = (
+        "code",
+        "syscall",
+        "errno",
+        "type",
+        "param",
+        "url",
+        "transport",
+        "provider",
+        "gateway",
+        "bucket",
+    )
     payload = {
         str(field): getattr(error, field)
         for field in fields
@@ -236,9 +260,7 @@ def _provider_error_candidates(error: Any, response_body: str | None) -> list[di
 
 def _normalized_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
     normalized = {
-        str(key): value
-        for key, value in (metadata or {}).items()
-        if value not in (None, "")
+        str(key): value for key, value in (metadata or {}).items() if value not in (None, "")
     }
     return normalized or None
 
@@ -246,7 +268,9 @@ def _normalized_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | No
 def _provider_error_details(error: Any, response_body: str | None) -> dict[str, Any] | None:
     details: dict[str, Any] = {}
     for candidate in _provider_error_candidates(error, response_body):
-        error_payload = candidate.get("error") if isinstance(candidate.get("error"), dict) else candidate
+        error_payload = (
+            candidate.get("error") if isinstance(candidate.get("error"), dict) else candidate
+        )
         if not isinstance(error_payload, dict):
             continue
         message = str(error_payload.get("message") or candidate.get("message") or "").strip()
@@ -303,7 +327,9 @@ def extract_response_error_message(body: str | None, fallback: str) -> str:
     return str(payload.get("message") or fallback).strip()
 
 
-def _friendly_gateway_message(message: str, status_code: int | None, response_body: str | None) -> str:
+def _friendly_gateway_message(
+    message: str, status_code: int | None, response_body: str | None
+) -> str:
     if not isinstance(response_body, str) or not _HTML_RESPONSE_RE.search(response_body):
         return message
     if status_code == 401:
@@ -352,7 +378,9 @@ def _compose_error_message(
     ):
         text = str(provider_details["message"]).strip()
 
-    if not response_body or (status_code is not None and text != (_status_message(status_code) or "")):
+    if not response_body or (
+        status_code is not None and text != (_status_message(status_code) or "")
+    ):
         return _friendly_gateway_message(text, status_code, response_body)
 
     extracted = extract_response_error_message(response_body, "")
@@ -443,14 +471,18 @@ def _provider_error_payload_like(value: Any) -> bool:
 
 
 def _session_error_payload_like(value: Any) -> bool:
-    return isinstance(value, dict) and str(value.get("message") or "").strip() != "" and (
-        isinstance(value.get("isRetryable"), bool)
-        or str(value.get("name") or "").strip()
-        in {"APIError", "AuthError", "ContextOverflowError", "UnknownError"}
-        or isinstance(value.get("providerID"), str)
-        or isinstance(value.get("transport"), str)
-        or value.get("auth") is not None
-        or isinstance(value.get("attempts"), list)
+    return (
+        isinstance(value, dict)
+        and str(value.get("message") or "").strip() != ""
+        and (
+            isinstance(value.get("isRetryable"), bool)
+            or str(value.get("name") or "").strip()
+            in {"APIError", "AuthError", "ContextOverflowError", "UnknownError"}
+            or isinstance(value.get("providerID"), str)
+            or isinstance(value.get("transport"), str)
+            or value.get("auth") is not None
+            or isinstance(value.get("attempts"), list)
+        )
     )
 
 
@@ -490,7 +522,11 @@ def _normalize_session_error_payload(
     except (TypeError, ValueError):
         result.pop("statusCode", None)
     response_body = str(result.get("responseBody") or "").strip() or None
-    auth = bool(result.get("auth")) if result.get("auth") is not None else _is_auth_error(message, status_code, None)
+    auth = (
+        bool(result.get("auth"))
+        if result.get("auth") is not None
+        else _is_auth_error(message, status_code, None)
+    )
     overflow = _is_overflow(message, status_code, response_body, None)
     if not str(result.get("name") or "").strip():
         if overflow:
@@ -502,12 +538,16 @@ def _normalize_session_error_payload(
     if result.get("auth") is None:
         result["auth"] = auth
     if not isinstance(result.get("isRetryable"), bool):
-        result["isRetryable"] = False if (overflow or auth) else _is_retryable_provider_error(
-            resolved_provider,
-            result,
-            message=message,
-            status_code=status_code,
-            details=None,
+        result["isRetryable"] = (
+            False
+            if (overflow or auth)
+            else _is_retryable_provider_error(
+                resolved_provider,
+                result,
+                message=message,
+                status_code=status_code,
+                details=None,
+            )
         )
     return result
 
@@ -585,7 +625,11 @@ def to_session_error_payload(
 ) -> dict[str, Any]:
     if _session_error_payload_like(error):
         return _normalize_session_error_payload(error, provider_id=provider_id)
-    parsed = error if _provider_error_payload_like(error) else normalize_provider_error(error, provider_id=provider_id)
+    parsed = (
+        error
+        if _provider_error_payload_like(error)
+        else normalize_provider_error(error, provider_id=provider_id)
+    )
     if not isinstance(parsed, dict):
         context = extract_error_context(error)
         metadata = dict(context.get("metadata") or {})
@@ -818,7 +862,9 @@ def _merge_parsed_error(
     return merged
 
 
-def _is_overflow(message: str, status_code: int | None, response_body: str | None, details: dict[str, Any] | None) -> bool:
+def _is_overflow(
+    message: str, status_code: int | None, response_body: str | None, details: dict[str, Any] | None
+) -> bool:
     haystack = "\n".join(
         item
         for item in (
@@ -919,7 +965,9 @@ def _is_retryable_provider_error(
         "gateway timeout",
         "connection reset",
     )
-    return status_code in {408, 409, 429, 500, 502, 503, 504} or any(marker in haystack for marker in markers)
+    return status_code in {408, 409, 429, 500, 502, 503, 504} or any(
+        marker in haystack for marker in markers
+    )
 
 
 def parse_stream_error(input_value: Any) -> dict[str, Any] | None:
@@ -1111,7 +1159,8 @@ def parse_transport_error(error: Any) -> dict[str, Any] | None:
         )
 
     if class_name in _TIMEOUT_ERROR_CLASS_NAMES or (
-        status_code is None and any(marker in lowered_message for marker in ("timed out", "timeout"))
+        status_code is None
+        and any(marker in lowered_message for marker in ("timed out", "timeout"))
     ):
         timeout_metadata = dict(normalized_metadata or {})
         timeout_metadata.setdefault("code", "TIMEOUT")
@@ -1131,7 +1180,12 @@ def parse_transport_error(error: Any) -> dict[str, Any] | None:
         class_name in _NETWORK_ERROR_CLASS_NAMES
         or class_name.endswith("connecterror")
         or class_name.endswith("networkerror")
-        or (status_code is None and any(marker in lowered_message for marker in ("network unreachable", "connection failed")))
+        or (
+            status_code is None
+            and any(
+                marker in lowered_message for marker in ("network unreachable", "connection failed")
+            )
+        )
     ):
         network_metadata = dict(normalized_metadata or {})
         network_metadata.setdefault("code", "NETWORK_ERROR")
@@ -1174,7 +1228,8 @@ def parse_transport_error(error: Any) -> dict[str, Any] | None:
                 details=provider_details,
             )
         ),
-        auth=class_name in _AUTH_ERROR_CLASS_NAMES or _is_auth_error(message, status_code, provider_details),
+        auth=class_name in _AUTH_ERROR_CLASS_NAMES
+        or _is_auth_error(message, status_code, provider_details),
         status_code=status_code,
         response_headers=response_headers,
         response_body=response_body,
@@ -1183,7 +1238,9 @@ def parse_transport_error(error: Any) -> dict[str, Any] | None:
     )
 
 
-def normalize_provider_error(error: Any, *, provider_id: str | None = None) -> dict[str, Any] | None:
+def normalize_provider_error(
+    error: Any, *, provider_id: str | None = None
+) -> dict[str, Any] | None:
     explicit_provider = str(provider_id or "").strip() or None
     context = extract_error_context(error)
     resolved_provider = explicit_provider or str(context.get("provider_id") or "").strip() or None

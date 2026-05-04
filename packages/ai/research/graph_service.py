@@ -1,6 +1,7 @@
 """
 图谱分析服务 - 引用树、时间线、质量评估、演化分析、综述生成
 """
+
 from __future__ import annotations
 
 import json
@@ -90,7 +91,9 @@ class GraphService:
             except (TypeError, ValueError):
                 normalized_year = None
             try:
-                normalized_citation_count = int(citation_count) if citation_count is not None else None
+                normalized_citation_count = (
+                    int(citation_count) if citation_count is not None else None
+                )
             except (TypeError, ValueError):
                 normalized_citation_count = None
             restored.append(
@@ -180,7 +183,9 @@ class GraphService:
             if cached is not None:
                 return cached
 
-        stale_cached = None if force_refresh else self._read_cached_rich_citations(paper_id, allow_stale=True)
+        stale_cached = (
+            None if force_refresh else self._read_cached_rich_citations(paper_id, allow_stale=True)
+        )
         try:
             rich_list = self.scholar.fetch_rich_citations(
                 source_title,
@@ -261,7 +266,9 @@ class GraphService:
                 if not title_zh:
                     continue
                 translated[source_title] = title_zh[:300]
-                _CITATION_TITLE_ZH_CACHE[self._normalize_title_cache_key(source_title)] = title_zh[:300]
+                _CITATION_TITLE_ZH_CACHE[self._normalize_title_cache_key(source_title)] = title_zh[
+                    :300
+                ]
 
         return translated
 
@@ -353,11 +360,7 @@ class GraphService:
             if isinstance(value, str):
                 return value.strip()
             if isinstance(value, list):
-                return "；".join(
-                    str(item).strip()
-                    for item in value
-                    if str(item).strip()
-                )
+                return "；".join(str(item).strip() for item in value if str(item).strip())
             return ""
 
         trend = _to_text(parsed.get("trend_summary")) or default["trend_summary"]
@@ -497,10 +500,7 @@ class GraphService:
 
         for method in cleaned_methods:
             method["name"] = _tr(method["name"])
-            method["scores"] = {
-                _tr(str(k)): _tr(str(v))
-                for k, v in method["scores"].items()
-            }
+            method["scores"] = {_tr(str(k)): _tr(str(v)) for k, v in method["scores"].items()}
 
         return {
             "research_gaps": research_gaps,
@@ -541,20 +541,23 @@ class GraphService:
             return False
 
         research_gaps = parsed.get("research_gaps", [])
-        valid_gaps = [
-            g for g in research_gaps
-            if isinstance(g, dict)
-            and (
-                str(g.get("gap_title", "") or "").strip()
-                or str(g.get("description", "") or "").strip()
-            )
-        ] if isinstance(research_gaps, list) else []
+        valid_gaps = (
+            [
+                g
+                for g in research_gaps
+                if isinstance(g, dict)
+                and (
+                    str(g.get("gap_title", "") or "").strip()
+                    or str(g.get("description", "") or "").strip()
+                )
+            ]
+            if isinstance(research_gaps, list)
+            else []
+        )
 
         method_comparison = parsed.get("method_comparison", {})
         methods = (
-            method_comparison.get("methods", [])
-            if isinstance(method_comparison, dict)
-            else []
+            method_comparison.get("methods", []) if isinstance(method_comparison, dict) else []
         )
         methods_count = len(methods) if isinstance(methods, list) else 0
 
@@ -562,8 +565,7 @@ class GraphService:
         has_trend = False
         if isinstance(trend_analysis, dict):
             has_trend = any(
-                isinstance(trend_analysis.get(key), list)
-                and len(trend_analysis.get(key) or []) > 0
+                isinstance(trend_analysis.get(key), list) and len(trend_analysis.get(key) or []) > 0
                 for key in (
                     "hot_directions",
                     "declining_areas",
@@ -630,22 +632,23 @@ class GraphService:
         connected_ratio = _safe_float(network_stats.get("connected_ratio", 0.0))
 
         isolated_papers = [
-            p for p in papers_data
+            p
+            for p in papers_data
             if _safe_int(p.get("indegree", 0)) == 0 and _safe_int(p.get("outdegree", 0)) == 0
         ]
         low_connected_papers = [
-            p for p in papers_data
+            p
+            for p in papers_data
             if (_safe_int(p.get("indegree", 0)) + _safe_int(p.get("outdegree", 0))) <= 1
         ]
 
         years = [
-            _safe_int(p.get("year", 0))
-            for p in papers_data
-            if _safe_int(p.get("year", 0)) > 1900
+            _safe_int(p.get("year", 0)) for p in papers_data if _safe_int(p.get("year", 0)) > 1900
         ]
         latest_year = max(years) if years else None
         recent_papers = [
-            p for p in papers_data
+            p
+            for p in papers_data
             if latest_year is not None and _safe_int(p.get("year", 0)) >= latest_year - 1
         ]
 
@@ -733,9 +736,7 @@ class GraphService:
                     "description": (
                         "若干仅出现一次的细分关键词尚未形成连续研究线索，可能代表潜在高价值但低关注方向。"
                     ),
-                    "evidence": (
-                        f"长尾关键词占比较高，代表性主题包括：{rare_text}。"
-                    ),
+                    "evidence": (f"长尾关键词占比较高，代表性主题包括：{rare_text}。"),
                     "potential_impact": "系统探索长尾主题可发现新的性能瓶颈与应用场景。",
                     "suggested_approach": "以长尾主题为中心补充小规模基准集，并与主流方法做迁移对比。",
                     "difficulty": "easy",
@@ -791,10 +792,11 @@ class GraphService:
             if not related:
                 continue
 
-            avg_indegree = sum(_safe_int(p.get("indegree", 0)) for p in related) / max(len(related), 1)
+            avg_indegree = sum(_safe_int(p.get("indegree", 0)) for p in related) / max(
+                len(related), 1
+            )
             avg_link = sum(
-                _safe_int(p.get("indegree", 0)) + _safe_int(p.get("outdegree", 0))
-                for p in related
+                _safe_int(p.get("indegree", 0)) + _safe_int(p.get("outdegree", 0)) for p in related
             ) / max(len(related), 1)
             if latest_year is not None:
                 recent_share = sum(
@@ -827,7 +829,9 @@ class GraphService:
                 {
                     "name": "核心方向样本",
                     "scores": {
-                        "学术影响": _score_level(edge_count / max(total_papers, 1), high=2.0, medium=0.8),
+                        "学术影响": _score_level(
+                            edge_count / max(total_papers, 1), high=2.0, medium=0.8
+                        ),
                         "网络连通": _score_level(connected_ratio * 4, high=2.4, medium=1.2),
                         "研究成熟度": "中",
                     },
@@ -911,16 +915,12 @@ class GraphService:
             "overall_summary": overall_summary,
         }
 
-    def sync_citations_for_paper(
-        self, paper_id: str, limit: int = 8
-    ) -> dict:
+    def sync_citations_for_paper(self, paper_id: str, limit: int = 8) -> dict:
         with session_scope() as session:
             paper_repo = PaperRepository(session)
             cit_repo = CitationRepository(session)
             source = paper_repo.get_by_id(paper_id)
-            lib_by_title = self._build_library_title_map(
-                paper_repo.list_all(limit=50000)
-            )
+            lib_by_title = self._build_library_title_map(paper_repo.list_all(limit=50000))
             edges = self.scholar.fetch_edges_by_title(
                 source.title,
                 limit=limit,
@@ -938,9 +938,7 @@ class GraphService:
                     edge.target_title,
                     lib_by_title,
                 )
-                cit_repo.upsert_edge(
-                    src.id, dst.id, context=edge.context
-                )
+                cit_repo.upsert_edge(src.id, dst.id, context=edge.context)
                 inserted += 1
             return {
                 "paper_id": paper_id,
@@ -959,14 +957,10 @@ class GraphService:
             topic = TopicRepository(session).get_by_id(topic_id)
             if topic is None:
                 raise ValueError(f"topic {topic_id} not found")
-            papers = PaperRepository(session).list_by_topic(
-                topic_id, limit=paper_limit
-            )
+            papers = PaperRepository(session).list_by_topic(topic_id, limit=paper_limit)
             paper_ids = [p.id for p in papers]
         for pid in paper_ids:
-            result = self.sync_citations_for_paper(
-                pid, limit=edge_limit_per_paper
-            )
+            result = self.sync_citations_for_paper(pid, limit=edge_limit_per_paper)
             total_edges += int(result.get("edges_inserted", 0))
             paper_count += 1
         return {
@@ -1021,11 +1015,15 @@ class GraphService:
                             continue
                         if info.direction == "reference":
                             cit_repo.upsert_edge(
-                                pid, target_id, context="auto-ingest",
+                                pid,
+                                target_id,
+                                context="auto-ingest",
                             )
                         else:
                             cit_repo.upsert_edge(
-                                target_id, pid, context="auto-ingest",
+                                target_id,
+                                pid,
+                                context="auto-ingest",
                             )
                         linked += 1
             except Exception as exc:
@@ -1049,9 +1047,9 @@ class GraphService:
 
             paper_ids = {p.id for p in papers}
             valid_edges = [
-                e for e in edges
-                if e.source_paper_id in paper_ids
-                and e.target_paper_id in paper_ids
+                e
+                for e in edges
+                if e.source_paper_id in paper_ids and e.target_paper_id in paper_ids
             ]
 
             in_deg: dict[str, int] = defaultdict(int)
@@ -1063,6 +1061,7 @@ class GraphService:
             pagerank = self._pagerank(list(paper_ids), valid_edges)
 
             from sqlalchemy import select as sa_select
+
             pt_rows = (
                 session.execute(
                     sa_select(PaperTopic)
@@ -1079,25 +1078,23 @@ class GraphService:
 
             nodes = []
             for p in papers:
-                yr = (
-                    p.publication_date.year
-                    if isinstance(p.publication_date, date) else None
+                yr = p.publication_date.year if isinstance(p.publication_date, date) else None
+                nodes.append(
+                    {
+                        "id": p.id,
+                        "title": p.title,
+                        "arxiv_id": p.arxiv_id,
+                        "year": yr,
+                        "in_degree": in_deg.get(p.id, 0),
+                        "out_degree": out_deg.get(p.id, 0),
+                        "pagerank": round(pagerank.get(p.id, 0), 6),
+                        "topics": paper_topics.get(p.id, []),
+                        "read_status": p.read_status.value if p.read_status else "unread",
+                    }
                 )
-                nodes.append({
-                    "id": p.id,
-                    "title": p.title,
-                    "arxiv_id": p.arxiv_id,
-                    "year": yr,
-                    "in_degree": in_deg.get(p.id, 0),
-                    "out_degree": out_deg.get(p.id, 0),
-                    "pagerank": round(pagerank.get(p.id, 0), 6),
-                    "topics": paper_topics.get(p.id, []),
-                    "read_status": p.read_status.value if p.read_status else "unread",
-                })
 
             edge_list = [
-                {"source": e.source_paper_id, "target": e.target_paper_id}
-                for e in valid_edges
+                {"source": e.source_paper_id, "target": e.target_paper_id} for e in valid_edges
             ]
 
             pr_sorted = sorted(nodes, key=lambda n: n["pagerank"], reverse=True)
@@ -1134,6 +1131,7 @@ class GraphService:
             topic_map = {t.id: t.name for t in topics}
 
             from sqlalchemy import select as sa_select
+
             pt_rows = (
                 session.execute(
                     sa_select(PaperTopic)
@@ -1165,19 +1163,18 @@ class GraphService:
                     p = paper_map.get(pid)
                     if not p:
                         continue
-                    bridges.append({
-                        "id": pid,
-                        "title": p.title,
-                        "arxiv_id": p.arxiv_id,
-                        "topics_citing": [
-                            topic_map.get(t, t) for t in tids
-                        ],
-                        "cross_topic_count": len(tids),
-                        "own_topics": [
-                            topic_map.get(t, t)
-                            for t in paper_topic.get(pid, set())
-                        ],
-                    })
+                    bridges.append(
+                        {
+                            "id": pid,
+                            "title": p.title,
+                            "arxiv_id": p.arxiv_id,
+                            "topics_citing": [topic_map.get(t, t) for t in tids],
+                            "cross_topic_count": len(tids),
+                            "own_topics": [
+                                topic_map.get(t, t) for t in paper_topic.get(pid, set())
+                            ],
+                        }
+                    )
 
             bridges.sort(key=lambda b: b["cross_topic_count"], reverse=True)
 
@@ -1186,6 +1183,7 @@ class GraphService:
     def research_frontier(self, days: int = 90) -> dict:
         """研究前沿检测 — 近期高被引 + 引用速度快的论文"""
         from datetime import timedelta
+
         cutoff = date.today() - timedelta(days=days)
 
         with session_scope() as session:
@@ -1202,9 +1200,9 @@ class GraphService:
                     in_deg[e.target_paper_id] += 1
 
             recent = [
-                p for p in papers
-                if isinstance(p.publication_date, date)
-                and p.publication_date >= cutoff
+                p
+                for p in papers
+                if isinstance(p.publication_date, date) and p.publication_date >= cutoff
             ]
 
             frontier = []
@@ -1212,16 +1210,18 @@ class GraphService:
                 age_days = max((date.today() - p.publication_date).days, 1)
                 citations = in_deg.get(p.id, 0)
                 velocity = round(citations / age_days * 30, 2)
-                frontier.append({
-                    "id": p.id,
-                    "title": p.title,
-                    "arxiv_id": p.arxiv_id,
-                    "year": p.publication_date.year,
-                    "publication_date": p.publication_date.isoformat(),
-                    "citations_in_library": citations,
-                    "citation_velocity": velocity,
-                    "read_status": p.read_status.value if p.read_status else "unread",
-                })
+                frontier.append(
+                    {
+                        "id": p.id,
+                        "title": p.title,
+                        "arxiv_id": p.arxiv_id,
+                        "year": p.publication_date.year,
+                        "publication_date": p.publication_date.isoformat(),
+                        "citations_in_library": citations,
+                        "citation_velocity": velocity,
+                        "read_status": p.read_status.value if p.read_status else "unread",
+                    }
+                )
 
             frontier.sort(key=lambda f: f["citation_velocity"], reverse=True)
 
@@ -1244,10 +1244,7 @@ class GraphService:
 
             cited_by_map: dict[str, set[str]] = defaultdict(set)
             for e in edges:
-                if (
-                    e.source_paper_id in paper_ids
-                    and e.target_paper_id in paper_ids
-                ):
+                if e.source_paper_id in paper_ids and e.target_paper_id in paper_ids:
                     cited_by_map[e.target_paper_id].add(e.source_paper_id)
 
             target_ids = list(cited_by_map.keys())
@@ -1255,7 +1252,7 @@ class GraphService:
 
             for i, a in enumerate(target_ids):
                 citers_a = cited_by_map[a]
-                for b in target_ids[i + 1:]:
+                for b in target_ids[i + 1 :]:
                     citers_b = cited_by_map[b]
                     overlap = len(citers_a & citers_b)
                     if overlap >= min_cocite:
@@ -1264,7 +1261,9 @@ class GraphService:
             clusters: list[set[str]] = []
             assigned: set[str] = set()
             sorted_pairs = sorted(
-                cocite_pairs.items(), key=lambda x: x[1], reverse=True,
+                cocite_pairs.items(),
+                key=lambda x: x[1],
+                reverse=True,
             )
             for (a, b), strength in sorted_pairs:
                 found = None
@@ -1287,16 +1286,20 @@ class GraphService:
                     p = paper_map.get(pid)
                     if not p:
                         continue
-                    members.append({
-                        "id": pid,
-                        "title": p.title,
-                        "arxiv_id": p.arxiv_id,
-                    })
+                    members.append(
+                        {
+                            "id": pid,
+                            "title": p.title,
+                            "arxiv_id": p.arxiv_id,
+                        }
+                    )
                 if len(members) >= 2:
-                    result_clusters.append({
-                        "size": len(members),
-                        "papers": members,
-                    })
+                    result_clusters.append(
+                        {
+                            "size": len(members),
+                            "papers": members,
+                        }
+                    )
 
             result_clusters.sort(key=lambda c: c["size"], reverse=True)
 
@@ -1312,25 +1315,19 @@ class GraphService:
         edge_limit_per_paper: int = 6,
     ) -> dict:
         with session_scope() as session:
-            papers = PaperRepository(session).list_latest(
-                limit=paper_limit * 3
-            )
+            papers = PaperRepository(session).list_latest(limit=paper_limit * 3)
             edges = CitationRepository(session).list_all()
             touched = set()
             for e in edges:
                 touched.add(e.source_paper_id)
                 touched.add(e.target_paper_id)
             # 在 session 内提取 id，避免 DetachedInstanceError
-            target_ids = [
-                p.id for p in papers if p.id not in touched
-            ][:paper_limit]
+            target_ids = [p.id for p in papers if p.id not in touched][:paper_limit]
         processed = 0
         inserted = 0
         for pid in target_ids:
             try:
-                out = self.sync_citations_for_paper(
-                    pid, limit=edge_limit_per_paper
-                )
+                out = self.sync_citations_for_paper(pid, limit=edge_limit_per_paper)
                 processed += 1
                 inserted += int(out.get("edges_inserted", 0))
             except Exception as exc:
@@ -1342,7 +1339,9 @@ class GraphService:
         }
 
     def similarity_map(
-        self, topic_id: str | None = None, limit: int = 200,
+        self,
+        topic_id: str | None = None,
+        limit: int = 200,
     ) -> dict:
         """用 UMAP 将论文 embedding 降维到 2D，返回散点图数据"""
         import numpy as np
@@ -1372,61 +1371,52 @@ class GraphService:
             # UMAP 降维
             try:
                 from umap import UMAP
+
                 n_neighbors = min(15, len(valid_papers) - 1)
-                reducer = UMAP(n_components=2, random_state=42, n_neighbors=n_neighbors, min_dist=0.1)
+                reducer = UMAP(
+                    n_components=2, random_state=42, n_neighbors=n_neighbors, min_dist=0.1
+                )
                 coords = reducer.fit_transform(mat)
             except Exception as exc:
                 logger.warning("UMAP failed: %s, falling back to PCA", exc)
                 from sklearn.decomposition import PCA
+
                 coords = PCA(n_components=2, random_state=42).fit_transform(mat)
 
             points = []
             for i, p in enumerate(valid_papers):
                 meta = p.metadata_json or {}
                 topics = topic_map.get(str(p.id), [])
-                points.append({
-                    "id": str(p.id),
-                    "title": p.title,
-                    "x": float(coords[i][0]),
-                    "y": float(coords[i][1]),
-                    "year": p.publication_date.year if p.publication_date else None,
-                    "read_status": p.read_status.value if p.read_status else "unread",
-                    "topics": topics,
-                    "topic": topics[0] if topics else "未分类",
-                    "arxiv_id": p.arxiv_id,
-                    "title_zh": meta.get("title_zh", ""),
-                })
+                points.append(
+                    {
+                        "id": str(p.id),
+                        "title": p.title,
+                        "x": float(coords[i][0]),
+                        "y": float(coords[i][1]),
+                        "year": p.publication_date.year if p.publication_date else None,
+                        "read_status": p.read_status.value if p.read_status else "unread",
+                        "topics": topics,
+                        "topic": topics[0] if topics else "未分类",
+                        "arxiv_id": p.arxiv_id,
+                        "title_zh": meta.get("title_zh", ""),
+                    }
+                )
 
         return {"points": points, "total": len(points)}
 
-    def citation_tree(
-        self, root_paper_id: str, depth: int = 2
-    ) -> dict:
+    def citation_tree(self, root_paper_id: str, depth: int = 2) -> dict:
         with session_scope() as session:
-            papers = {
-                p.id: p
-                for p in PaperRepository(session).list_all(
-                    limit=10000
-                )
-            }
+            papers = {p.id: p for p in PaperRepository(session).list_all(limit=10000)}
             edges = CitationRepository(session).list_all()
             out_edges: dict[str, list[str]] = defaultdict(list)
             in_edges: dict[str, list[str]] = defaultdict(list)
             for e in edges:
-                out_edges[e.source_paper_id].append(
-                    e.target_paper_id
-                )
-                in_edges[e.target_paper_id].append(
-                    e.source_paper_id
-                )
+                out_edges[e.source_paper_id].append(e.target_paper_id)
+                in_edges[e.target_paper_id].append(e.source_paper_id)
 
-            def bfs(
-                start: str, graph: dict[str, list[str]]
-            ) -> list[dict]:
+            def bfs(start: str, graph: dict[str, list[str]]) -> list[dict]:
                 visited = {start}
-                q: deque[tuple[str, int]] = deque(
-                    [(start, 0)]
-                )
+                q: deque[tuple[str, int]] = deque([(start, 0)])
                 result: list[dict] = []
                 while q:
                     node, d = q.popleft()
@@ -1454,11 +1444,7 @@ class GraphService:
             nodes = [
                 {
                     "id": pid,
-                    "title": (
-                        papers[pid].title
-                        if pid in papers
-                        else None
-                    ),
+                    "title": (papers[pid].title if pid in papers else None),
                     "year": (
                         papers[pid].publication_date.year
                         if pid in papers
@@ -1472,9 +1458,7 @@ class GraphService:
                 for pid in all_node_ids
             ]
             root_paper = papers.get(root_paper_id)
-            root_title = (
-                root_paper.title if root_paper else None
-            )
+            root_title = root_paper.title if root_paper else None
         return {
             "root": root_paper_id,
             "root_title": root_title,
@@ -1491,11 +1475,15 @@ class GraphService:
             source = paper_repo.get_by_id(paper_id)
             if source is None:
                 return {
-                    "paper_id": paper_id, "paper_title": "",
-                    "references": [], "cited_by": [],
+                    "paper_id": paper_id,
+                    "paper_title": "",
+                    "references": [],
+                    "cited_by": [],
                     "stats": {
-                        "total_references": 0, "total_cited_by": 0,
-                        "in_library_references": 0, "in_library_cited_by": 0,
+                        "total_references": 0,
+                        "total_cited_by": 0,
+                        "in_library_references": 0,
+                        "in_library_cited_by": 0,
                     },
                 }
             source_title = source.title
@@ -1512,10 +1500,7 @@ class GraphService:
             paper_repo = PaperRepository(session)
             cit_repo = CitationRepository(session)
             norm = self._normalize_arxiv_id
-            ext_normed = {
-                norm(r.arxiv_id): r.arxiv_id
-                for r in rich_list if r.arxiv_id
-            }
+            ext_normed = {norm(r.arxiv_id): r.arxiv_id for r in rich_list if r.arxiv_id}
             lib_norm_map: dict[str, str] = {}
             lib_title_map: dict[str, str] = {}
             lib_title_zh_map: dict[str, str] = {}
@@ -1557,14 +1542,16 @@ class GraphService:
                     references.append(entry)
                     if in_library and library_paper_id:
                         cit_repo.upsert_edge(
-                            paper_id, library_paper_id,
+                            paper_id,
+                            library_paper_id,
                             context="reference",
                         )
                 else:
                     cited_by.append(entry)
                     if in_library and library_paper_id:
                         cit_repo.upsert_edge(
-                            library_paper_id, paper_id,
+                            library_paper_id,
+                            paper_id,
                             context="citation",
                         )
 
@@ -1591,12 +1578,8 @@ class GraphService:
             "stats": {
                 "total_references": len(references),
                 "total_cited_by": len(cited_by),
-                "in_library_references": sum(
-                    1 for r in references if r["in_library"]
-                ),
-                "in_library_cited_by": sum(
-                    1 for c in cited_by if c["in_library"]
-                ),
+                "in_library_references": sum(1 for r in references if r["in_library"]),
+                "in_library_cited_by": sum(1 for c in cited_by if c["in_library"]),
             },
         }
 
@@ -1617,9 +1600,9 @@ class GraphService:
 
             all_edges = cit_repo.list_for_paper_ids(list(paper_ids))
             internal_edges = [
-                e for e in all_edges
-                if e.source_paper_id in paper_ids
-                and e.target_paper_id in paper_ids
+                e
+                for e in all_edges
+                if e.source_paper_id in paper_ids and e.target_paper_id in paper_ids
             ]
 
             in_degree: dict[str, int] = defaultdict(int)
@@ -1628,9 +1611,7 @@ class GraphService:
                 out_degree[e.source_paper_id] += 1
                 in_degree[e.target_paper_id] += 1
 
-            degrees = [
-                in_degree.get(pid, 0) for pid in paper_ids
-            ]
+            degrees = [in_degree.get(pid, 0) for pid in paper_ids]
             median_deg = sorted(degrees)[len(degrees) // 2] if degrees else 0
             hub_threshold = max(median_deg * 2, 2)
 
@@ -1638,20 +1619,22 @@ class GraphService:
             for p in papers:
                 ind = in_degree.get(p.id, 0)
                 outd = out_degree.get(p.id, 0)
-                nodes.append({
-                    "id": p.id,
-                    "title": p.title,
-                    "year": (
-                        p.publication_date.year
-                        if isinstance(p.publication_date, date)
-                        else None
-                    ),
-                    "arxiv_id": p.arxiv_id,
-                    "in_degree": ind,
-                    "out_degree": outd,
-                    "is_hub": ind >= hub_threshold,
-                    "is_external": False,
-                })
+                nodes.append(
+                    {
+                        "id": p.id,
+                        "title": p.title,
+                        "year": (
+                            p.publication_date.year
+                            if isinstance(p.publication_date, date)
+                            else None
+                        ),
+                        "arxiv_id": p.arxiv_id,
+                        "in_degree": ind,
+                        "out_degree": outd,
+                        "is_hub": ind >= hub_threshold,
+                        "is_external": False,
+                    }
+                )
 
             edges = [
                 {
@@ -1683,7 +1666,8 @@ class GraphService:
         """对主题内论文执行深度溯源，拉取外部引用并进行共引分析"""
         with session_scope() as session:
             papers = PaperRepository(session).list_by_topic(
-                topic_id, limit=500,
+                topic_id,
+                limit=500,
             )
             paper_ids = [p.id for p in papers]
             topic = TopicRepository(session).get_by_id(topic_id)
@@ -1693,16 +1677,12 @@ class GraphService:
 
         synced = 0
         with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
-            futures = {
-                pool.submit(self.citation_detail, pid): pid
-                for pid in paper_ids
-            }
+            futures = {pool.submit(self.citation_detail, pid): pid for pid in paper_ids}
             for fut in as_completed(futures):
                 try:
                     result = fut.result()
                     synced += (
-                        result["stats"]["total_references"]
-                        + result["stats"]["total_cited_by"]
+                        result["stats"]["total_references"] + result["stats"]["total_cited_by"]
                     )
                 except Exception as exc:
                     logger.warning("deep-trace sync error: %s", exc)
@@ -1737,10 +1717,7 @@ class GraphService:
                 reverse=True,
             )[:30]
             co_cited_ids = [pid for pid, _ in co_cited]
-            co_cited_papers = {
-                p.id: p
-                for p in paper_repo.list_by_ids(co_cited_ids)
-            }
+            co_cited_papers = {p.id: p for p in paper_repo.list_by_ids(co_cited_ids)}
 
             in_degree: dict[str, int] = defaultdict(int)
             out_degree: dict[str, int] = defaultdict(int)
@@ -1752,53 +1729,55 @@ class GraphService:
 
             nodes = []
             for p in topic_papers:
-                nodes.append({
-                    "id": p.id,
-                    "title": p.title,
-                    "year": (
-                        p.publication_date.year
-                        if isinstance(p.publication_date, date)
-                        else None
-                    ),
-                    "arxiv_id": p.arxiv_id,
-                    "in_degree": in_degree.get(p.id, 0),
-                    "out_degree": out_degree.get(p.id, 0),
-                    "is_hub": in_degree.get(p.id, 0) >= 2,
-                    "is_external": False,
-                })
+                nodes.append(
+                    {
+                        "id": p.id,
+                        "title": p.title,
+                        "year": (
+                            p.publication_date.year
+                            if isinstance(p.publication_date, date)
+                            else None
+                        ),
+                        "arxiv_id": p.arxiv_id,
+                        "in_degree": in_degree.get(p.id, 0),
+                        "out_degree": out_degree.get(p.id, 0),
+                        "is_hub": in_degree.get(p.id, 0) >= 2,
+                        "is_external": False,
+                    }
+                )
 
             for pid, count in co_cited:
                 p = co_cited_papers.get(pid)
-                nodes.append({
-                    "id": pid,
-                    "title": p.title if p else f"external-{pid[:8]}",
-                    "year": (
-                        p.publication_date.year
-                        if p and isinstance(p.publication_date, date)
-                        else None
-                    ),
-                    "arxiv_id": p.arxiv_id if p else None,
-                    "in_degree": 0,
-                    "out_degree": 0,
-                    "is_hub": False,
-                    "is_external": True,
-                    "co_citation_count": count,
-                })
+                nodes.append(
+                    {
+                        "id": pid,
+                        "title": p.title if p else f"external-{pid[:8]}",
+                        "year": (
+                            p.publication_date.year
+                            if p and isinstance(p.publication_date, date)
+                            else None
+                        ),
+                        "arxiv_id": p.arxiv_id if p else None,
+                        "in_degree": 0,
+                        "out_degree": 0,
+                        "is_hub": False,
+                        "is_external": True,
+                        "co_citation_count": count,
+                    }
+                )
                 all_node_ids.add(pid)
 
             edges = [
-                {"source": e.source_paper_id, "target": e.target_paper_id}
-                for e in internal_edges
+                {"source": e.source_paper_id, "target": e.target_paper_id} for e in internal_edges
             ]
             for e in external_edges:
-                if (
-                    e.source_paper_id in all_node_ids
-                    and e.target_paper_id in all_node_ids
-                ):
-                    edges.append({
-                        "source": e.source_paper_id,
-                        "target": e.target_paper_id,
-                    })
+                if e.source_paper_id in all_node_ids and e.target_paper_id in all_node_ids:
+                    edges.append(
+                        {
+                            "source": e.source_paper_id,
+                            "target": e.target_paper_id,
+                        }
+                    )
 
             n_papers = len(nodes)
             max_edges = n_papers * (n_papers - 1) if n_papers > 1 else 1
@@ -1836,34 +1815,19 @@ class GraphService:
 
     def timeline(self, keyword: str, limit: int = 100) -> dict:
         with session_scope() as session:
-            papers = PaperRepository(
-                session
-            ).full_text_candidates(keyword, limit=limit)
+            papers = PaperRepository(session).full_text_candidates(keyword, limit=limit)
             edges = CitationRepository(session).list_all()
             nodes = {p.id: p for p in papers}
-            indegree: dict[str, int] = {
-                p.id: 0 for p in papers
-            }
-            outdegree: dict[str, int] = {
-                p.id: 0 for p in papers
-            }
+            indegree: dict[str, int] = {p.id: 0 for p in papers}
+            outdegree: dict[str, int] = {p.id: 0 for p in papers}
             for e in edges:
-                if (
-                    e.target_paper_id in nodes
-                    and e.source_paper_id in nodes
-                ):
+                if e.target_paper_id in nodes and e.source_paper_id in nodes:
                     indegree[e.target_paper_id] += 1
                     outdegree[e.source_paper_id] += 1
-            pagerank = self._pagerank(
-                nodes=list(nodes.keys()), edges=edges
-            )
+            pagerank = self._pagerank(nodes=list(nodes.keys()), edges=edges)
             items = []
             for p in papers:
-                year = (
-                    p.publication_date.year
-                    if isinstance(p.publication_date, date)
-                    else 1900
-                )
+                year = p.publication_date.year if isinstance(p.publication_date, date) else 1900
                 pr = pagerank.get(p.id, 0.0)
                 ind = indegree.get(p.id, 0)
                 score = 0.65 * ind + 0.35 * pr * 100.0
@@ -1873,16 +1837,10 @@ class GraphService:
                         "title": p.title,
                         "year": year,
                         "indegree": ind,
-                        "outdegree": outdegree.get(
-                            p.id, 0
-                        ),
+                        "outdegree": outdegree.get(p.id, 0),
                         "pagerank": pr,
                         "seminal_score": score,
-                        "why_seminal": (
-                            f"库内被引 {ind}，"
-                            f"PageRank {pr:.4f}，"
-                            f"综合得分 {score:.3f}"
-                        ),
+                        "why_seminal": (f"库内被引 {ind}，PageRank {pr:.4f}，综合得分 {score:.3f}"),
                     }
                 )
         title_zh_map = self._translate_citation_titles(
@@ -1910,33 +1868,20 @@ class GraphService:
             "milestones": milestones,
         }
 
-    def quality_metrics(
-        self, keyword: str, limit: int = 120
-    ) -> dict:
+    def quality_metrics(self, keyword: str, limit: int = 120) -> dict:
         with session_scope() as session:
-            papers = PaperRepository(
-                session
-            ).full_text_candidates(keyword, limit=limit)
+            papers = PaperRepository(session).full_text_candidates(keyword, limit=limit)
             paper_ids = [p.id for p in papers]
-            edges = CitationRepository(
-                session
-            ).list_for_paper_ids(paper_ids)
+            edges = CitationRepository(session).list_for_paper_ids(paper_ids)
             node_set = set(paper_ids)
             internal_edges = [
-                e
-                for e in edges
-                if e.source_paper_id in node_set
-                and e.target_paper_id in node_set
+                e for e in edges if e.source_paper_id in node_set and e.target_paper_id in node_set
             ]
             connected_nodes: set[str] = set()
             for e in internal_edges:
                 connected_nodes.add(e.source_paper_id)
                 connected_nodes.add(e.target_paper_id)
-            with_pub = sum(
-                1
-                for p in papers
-                if p.publication_date is not None
-            )
+            with_pub = sum(1 for p in papers if p.publication_date is not None)
         n = max(len(paper_ids), 1)
         ie = len(internal_edges)
         return {
@@ -1944,15 +1889,11 @@ class GraphService:
             "node_count": len(paper_ids),
             "edge_count": ie,
             "density": ie / max(n * max(n - 1, 1), 1),
-            "connected_node_ratio": (
-                len(connected_nodes) / n
-            ),
+            "connected_node_ratio": (len(connected_nodes) / n),
             "publication_date_coverage": with_pub / n,
         }
 
-    def weekly_evolution(
-        self, keyword: str, limit: int = 160
-    ) -> dict:
+    def weekly_evolution(self, keyword: str, limit: int = 160) -> dict:
         tl = self.timeline(keyword=keyword, limit=limit)
         by_year: dict[int, list[dict]] = defaultdict(list)
         for item in tl["timeline"]:
@@ -1960,20 +1901,10 @@ class GraphService:
         year_buckets = []
         for year in sorted(by_year.keys())[-6:]:
             group = by_year[year]
-            avg = sum(x["seminal_score"] for x in group) / max(
-                len(group), 1
-            )
-            top_group = sorted(
-                group, key=lambda t: -t["seminal_score"]
-            )[:3]
-            top_titles = [
-                x["title"]
-                for x in top_group
-            ]
-            top_titles_zh = [
-                str(x.get("title_zh", "") or "")
-                for x in top_group
-            ]
+            avg = sum(x["seminal_score"] for x in group) / max(len(group), 1)
+            top_group = sorted(group, key=lambda t: -t["seminal_score"])[:3]
+            top_titles = [x["title"] for x in top_group]
+            top_titles_zh = [str(x.get("title_zh", "") or "") for x in top_group]
             year_buckets.append(
                 {
                     "year": year,
@@ -1983,15 +1914,15 @@ class GraphService:
                     "top_titles_zh": top_titles_zh,
                 }
             )
-        prompt = build_evolution_prompt(
-            keyword=keyword, year_buckets=year_buckets
-        )
+        prompt = build_evolution_prompt(keyword=keyword, year_buckets=year_buckets)
         llm_result = self.llm.complete_json(
             prompt,
             stage="rag",
             model_override=self._active_skim_model(),
         )
-        self.llm.trace_result(llm_result, stage="graph_evolution", prompt_digest=f"evolution:{keyword}")
+        self.llm.trace_result(
+            llm_result, stage="graph_evolution", prompt_digest=f"evolution:{keyword}"
+        )
         summary = self._normalize_evolution_summary(llm_result.parsed_json)
         return {
             "keyword": keyword,
@@ -2001,9 +1932,7 @@ class GraphService:
 
     def survey(self, keyword: str, limit: int = 120) -> dict:
         base = self.timeline(keyword=keyword, limit=limit)
-        prompt = build_survey_prompt(
-            keyword, base["milestones"], base["seminal"]
-        )
+        prompt = build_survey_prompt(keyword, base["milestones"], base["seminal"])
         result = self.llm.complete_json(
             prompt,
             stage="rag",
@@ -2013,9 +1942,7 @@ class GraphService:
         survey_obj = result.parsed_json or {
             "overview": "当前样本不足以生成高质量综述。",
             "stages": [],
-            "reading_list": [
-                x["title"] for x in base["seminal"][:5]
-            ],
+            "reading_list": [x["title"] for x in base["seminal"][:5]],
             "open_questions": [],
         }
         return {
@@ -2026,7 +1953,9 @@ class GraphService:
         }
 
     def detect_research_gaps(
-        self, keyword: str, limit: int = 120,
+        self,
+        keyword: str,
+        limit: int = 120,
     ) -> dict:
         """分析引用网络的稀疏区域，识别研究空白"""
         tl = self.timeline(keyword=keyword, limit=limit)
@@ -2035,15 +1964,17 @@ class GraphService:
         # 构造论文数据（含 indegree/outdegree/keywords）
         papers_data = []
         for item in tl["timeline"]:
-            papers_data.append({
-                "title": item["title"],
-                "year": item["year"],
-                "indegree": item["indegree"],
-                "outdegree": item["outdegree"],
-                "seminal_score": item["seminal_score"],
-                "keywords": [],
-                "abstract": "",
-            })
+            papers_data.append(
+                {
+                    "title": item["title"],
+                    "year": item["year"],
+                    "indegree": item["indegree"],
+                    "outdegree": item["outdegree"],
+                    "seminal_score": item["seminal_score"],
+                    "keywords": [],
+                    "abstract": "",
+                }
+            )
 
         # 补充 abstract 和 keywords
         with session_scope() as session:
@@ -2058,8 +1989,7 @@ class GraphService:
 
         # 计算孤立论文数（入度+出度=0）
         isolated = sum(
-            1 for item in tl["timeline"]
-            if item["indegree"] == 0 and item["outdegree"] == 0
+            1 for item in tl["timeline"] if item["indegree"] == 0 and item["outdegree"] == 0
         )
 
         network_stats = {
@@ -2083,7 +2013,9 @@ class GraphService:
                 model_override=self._active_deep_model(),
                 max_tokens=8192,
             )
-            self.llm.trace_result(result, stage="graph_research_gaps", prompt_digest=f"gaps:{keyword}")
+            self.llm.trace_result(
+                result, stage="graph_research_gaps", prompt_digest=f"gaps:{keyword}"
+            )
             parsed = self._normalize_research_gap_analysis(result.parsed_json)
         except Exception as exc:
             logger.warning("research gaps llm failed, fallback enabled: %s", exc)
@@ -2103,9 +2035,7 @@ class GraphService:
         }
 
     def paper_wiki(self, paper_id: str) -> dict:
-        tree = self.citation_tree(
-            root_paper_id=paper_id, depth=2
-        )
+        tree = self.citation_tree(root_paper_id=paper_id, depth=2)
 
         # 1. 富化上下文收集（向量搜索 + 引用上下文 + PDF）
         ctx = self.context_gatherer.gather_paper_context(paper_id)
@@ -2118,9 +2048,7 @@ class GraphService:
         scholar_meta: list[dict] = []
         try:
             all_titles = [p_title] + ctx.get("ancestor_titles", [])[:5]
-            scholar_meta = self.scholar.fetch_batch_metadata(
-                all_titles, max_papers=6
-            )
+            scholar_meta = self.scholar.fetch_batch_metadata(all_titles, max_papers=6)
         except Exception as exc:
             logger.warning("Scholar metadata fetch failed: %s", exc)
 
@@ -2147,7 +2075,12 @@ class GraphService:
             model_override=self._active_deep_model(),
             max_tokens=8192,
         )
-        self.llm.trace_result(result, stage="wiki_paper", paper_id=paper_id, prompt_digest=f"paper_wiki:{p_title[:60]}")
+        self.llm.trace_result(
+            result,
+            stage="wiki_paper",
+            paper_id=paper_id,
+            prompt_digest=f"paper_wiki:{p_title[:60]}",
+        )
         wiki_content = result.parsed_json or {
             "summary": analysis or "暂无分析。",
             "contributions": [],
@@ -2159,9 +2092,7 @@ class GraphService:
         }
 
         # 注入额外元数据供前端展示
-        wiki_content["citation_contexts"] = ctx.get(
-            "citation_contexts", []
-        )[:20]
+        wiki_content["citation_contexts"] = ctx.get("citation_contexts", [])[:20]
         wiki_content["pdf_excerpts"] = (
             [{"title": p_title, "excerpt": ctx.get("pdf_excerpt", "")[:2000]}]
             if ctx.get("pdf_excerpt")
@@ -2176,13 +2107,9 @@ class GraphService:
             f"\n## 摘要\n\n{wiki_content.get('summary', '')}",
         ]
         if wiki_content.get("methodology"):
-            md_parts.append(
-                f"\n## 方法论\n\n{wiki_content['methodology']}"
-            )
+            md_parts.append(f"\n## 方法论\n\n{wiki_content['methodology']}")
         if wiki_content.get("significance"):
-            md_parts.append(
-                f"\n## 学术意义\n\n{wiki_content['significance']}"
-            )
+            md_parts.append(f"\n## 学术意义\n\n{wiki_content['significance']}")
         markdown = "\n".join(md_parts)
 
         return {
@@ -2210,9 +2137,7 @@ class GraphService:
 
         _progress(0.15, "收集论文上下文和引用关系...")
         # Phase 1: 富化上下文（向量搜索 + 引用上下文 + PDF）
-        ctx = self.context_gatherer.gather_topic_context(
-            keyword, limit=limit
-        )
+        ctx = self.context_gatherer.gather_topic_context(keyword, limit=limit)
         paper_contexts = ctx.get("paper_contexts", [])[:25]
         citation_contexts = ctx.get("citation_contexts", [])[:30]
         pdf_excerpts = ctx.get("pdf_excerpts", [])[:5]
@@ -2220,14 +2145,8 @@ class GraphService:
         # Phase 2: Semantic Scholar 元数据增强
         scholar_meta: list[dict] = []
         try:
-            top_titles = [
-                s["title"]
-                for s in tl.get("seminal", [])[:8]
-                if s.get("title")
-            ]
-            scholar_meta = self.scholar.fetch_batch_metadata(
-                top_titles, max_papers=8
-            )
+            top_titles = [s["title"] for s in tl.get("seminal", [])[:8] if s.get("title")]
+            scholar_meta = self.scholar.fetch_batch_metadata(top_titles, max_papers=8)
         except Exception as exc:
             logger.warning("Scholar metadata fetch failed: %s", exc)
 
@@ -2246,7 +2165,9 @@ class GraphService:
             model_override=self._active_deep_model(),
             max_tokens=8192,
         )
-        self.llm.trace_result(outline_result, stage="wiki_outline", prompt_digest=f"outline:{keyword}")
+        self.llm.trace_result(
+            outline_result, stage="wiki_outline", prompt_digest=f"outline:{keyword}"
+        )
         outline = outline_result.parsed_json or {
             "title": keyword,
             "outline": [],
@@ -2263,18 +2184,16 @@ class GraphService:
         sec_plans = outline.get("outline", [])[:5]
         _progress(0.35, f"并行生成 {len(sec_plans)} 个章节...")
         sections = self._generate_sections_parallel(
-            keyword, sec_plans, all_sources_text,
+            keyword,
+            sec_plans,
+            all_sources_text,
         )
 
         _progress(0.75, "生成概述和总结...")
         # Phase 5: 生成概述（直接输出文本）+ 结构化汇总（JSON）
         # 5a: 文本概述
-        section_titles = ", ".join(
-            s.get("title", "") for s in sections
-        )
-        survey_overview = (
-            survey_data.get("summary", {}).get("overview", "")[:600]
-        )
+        section_titles = ", ".join(s.get("title", "") for s in sections)
+        survey_overview = survey_data.get("summary", {}).get("overview", "")[:600]
         overview_prompt = (
             "你是世界顶级学术综述作者。"
             f"请为「{keyword}」主题撰写一段 300-500 字的概述，"
@@ -2290,14 +2209,13 @@ class GraphService:
             max_tokens=2048,
         )
         self.llm.trace_result(
-            overview_result, stage="wiki_overview",
+            overview_result,
+            stage="wiki_overview",
             prompt_digest=f"overview:{keyword}",
         )
         overview_text = (overview_result.content or "").strip()
-        overview_text = re.sub(
-            r'^```(?:markdown)?\s*\n?', '', overview_text
-        )
-        overview_text = re.sub(r'\n?```\s*$', '', overview_text)
+        overview_text = re.sub(r"^```(?:markdown)?\s*\n?", "", overview_text)
+        overview_text = re.sub(r"\n?```\s*$", "", overview_text)
 
         # 5b: 结构化汇总（key_findings + future_directions）
         summary_prompt = (
@@ -2317,7 +2235,8 @@ class GraphService:
             max_tokens=2048,
         )
         self.llm.trace_result(
-            summary_result, stage="wiki_summary",
+            summary_result,
+            stage="wiki_summary",
             prompt_digest=f"summary:{keyword}",
         )
         summary_data = summary_result.parsed_json or {}
@@ -2328,9 +2247,7 @@ class GraphService:
             "sections": sections,
             "key_findings": summary_data.get("key_findings", []),
             "methodology_evolution": "",
-            "future_directions": summary_data.get(
-                "future_directions", []
-            ),
+            "future_directions": summary_data.get("future_directions", []),
             "reading_list": summary_data.get("reading_list", []),
             "citation_contexts": citation_contexts[:20],
             "pdf_excerpts": pdf_excerpts,
@@ -2338,19 +2255,11 @@ class GraphService:
         }
 
         # 备用 markdown
-        md_parts = [
-            f"# {keyword}\n\n{wiki_content.get('overview', '')}"
-        ]
+        md_parts = [f"# {keyword}\n\n{wiki_content.get('overview', '')}"]
         for sec in sections:
-            md_parts.append(
-                f"\n## {sec.get('title', '')}\n\n"
-                f"{sec.get('content', '')}"
-            )
+            md_parts.append(f"\n## {sec.get('title', '')}\n\n{sec.get('content', '')}")
         if wiki_content.get("methodology_evolution"):
-            md_parts.append(
-                f"\n## 方法论演化\n\n"
-                f"{wiki_content['methodology_evolution']}"
-            )
+            md_parts.append(f"\n## 方法论演化\n\n{wiki_content['methodology_evolution']}")
         markdown = "\n".join(md_parts)
 
         _progress(1.0, "Wiki 生成完成")
@@ -2376,10 +2285,7 @@ class GraphService:
             for i, c in enumerate(citation_contexts[:15], 1):
                 parts.append(f"[C{i}] {c}")
         if pdf_excerpt:
-            parts.append(
-                f"\n## PDF 全文摘录（前 2000 字）:\n"
-                f"{pdf_excerpt[:2000]}"
-            )
+            parts.append(f"\n## PDF 全文摘录（前 2000 字）:\n{pdf_excerpt[:2000]}")
         if scholar_metadata:
             parts.append("\n## Semantic Scholar 外部元数据:")
             for i, s in enumerate(scholar_metadata[:6], 1):
@@ -2394,7 +2300,10 @@ class GraphService:
         return "\n".join(parts)
 
     def _generate_one_section(
-        self, keyword: str, sec_plan: dict, all_sources_text: str,
+        self,
+        keyword: str,
+        sec_plan: dict,
+        all_sources_text: str,
     ) -> dict:
         """生成单个 wiki 章节"""
         sec_title = sec_plan.get("section_title", "")
@@ -2412,14 +2321,13 @@ class GraphService:
             max_tokens=4096,
         )
         self.llm.trace_result(
-            sec_result, stage="wiki_section",
+            sec_result,
+            stage="wiki_section",
             prompt_digest=f"section:{sec_title[:60]}",
         )
         content = sec_result.content or ""
-        content = re.sub(
-            r'^```(?:markdown)?\s*\n?', '', content.strip()
-        )
-        content = re.sub(r'\n?```\s*$', '', content.strip())
+        content = re.sub(r"^```(?:markdown)?\s*\n?", "", content.strip())
+        content = re.sub(r"\n?```\s*$", "", content.strip())
         return {
             "title": sec_title,
             "content": content,
@@ -2441,7 +2349,9 @@ class GraphService:
             future_to_idx = {
                 pool.submit(
                     self._generate_one_section,
-                    keyword, plan, all_sources_text,
+                    keyword,
+                    plan,
+                    all_sources_text,
                 ): idx
                 for idx, plan in enumerate(sec_plans)
             }
@@ -2451,7 +2361,8 @@ class GraphService:
                     sections[idx] = future.result()
                     logger.info(
                         "wiki section %d/%d 完成: %s",
-                        idx + 1, len(sec_plans),
+                        idx + 1,
+                        len(sec_plans),
                         sections[idx].get("title", "")[:40],
                     )
                 except Exception as exc:
@@ -2492,8 +2403,7 @@ class GraphService:
             parts.append(line)
         for i, ex in enumerate(pdf_excerpts[:5], 1):
             parts.append(
-                f"[PDF{i}] {ex.get('title', 'N/A')}\n"
-                f"Excerpt: {ex.get('excerpt', '')[:500]}"
+                f"[PDF{i}] {ex.get('title', 'N/A')}\nExcerpt: {ex.get('excerpt', '')[:500]}"
             )
         return "\n\n".join(parts)
 
@@ -2569,34 +2479,23 @@ class GraphService:
 
     @staticmethod
     def _title_to_id(title: str) -> str:
-        normalized = "".join(
-            ch.lower() if ch.isalnum() else "-" for ch in title
-        ).strip("-")
+        normalized = "".join(ch.lower() if ch.isalnum() else "-" for ch in title).strip("-")
         return f"ss-{normalized[:48]}"
 
     @staticmethod
-    def _pagerank(
-        nodes: list[str], edges: list
-    ) -> dict[str, float]:
+    def _pagerank(nodes: list[str], edges: list) -> dict[str, float]:
         if not nodes:
             return {}
         node_set = set(nodes)
         outgoing: dict[str, list[str]] = defaultdict(list)
         for e in edges:
-            if (
-                e.source_paper_id in node_set
-                and e.target_paper_id in node_set
-            ):
-                outgoing[e.source_paper_id].append(
-                    e.target_paper_id
-                )
+            if e.source_paper_id in node_set and e.target_paper_id in node_set:
+                outgoing[e.source_paper_id].append(e.target_paper_id)
         n = len(nodes)
         rank = {node: 1.0 / n for node in nodes}
         damping = 0.85
         for _ in range(20):
-            next_rank = {
-                node: (1.0 - damping) / n for node in nodes
-            }
+            next_rank = {node: (1.0 - damping) / n for node in nodes}
             for node in nodes:
                 refs = outgoing.get(node, [])
                 if not refs:
@@ -2616,10 +2515,7 @@ class GraphService:
             year = x["year"]
             if (
                 year not in best_per_year
-                or x["seminal_score"]
-                > best_per_year[year]["seminal_score"]
+                or x["seminal_score"] > best_per_year[year]["seminal_score"]
             ):
                 best_per_year[year] = x
-        return [
-            best_per_year[y] for y in sorted(best_per_year.keys())
-        ]
+        return [best_per_year[y] for y in sorted(best_per_year.keys())]

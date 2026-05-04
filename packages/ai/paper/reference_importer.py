@@ -1,4 +1,3 @@
-
 """Reference import pipeline helpers extracted from `pipelines.py`."""
 
 from __future__ import annotations
@@ -189,7 +188,9 @@ class ReferenceImporter:
         raw_publication_date = work.get("publication_date")
         if isinstance(raw_publication_date, str) and raw_publication_date.strip():
             try:
-                publication_date = datetime.strptime(raw_publication_date.strip(), "%Y-%m-%d").date()
+                publication_date = datetime.strptime(
+                    raw_publication_date.strip(), "%Y-%m-%d"
+                ).date()
             except ValueError:
                 publication_date = None
         if publication_date is None and work.get("publication_year"):
@@ -267,9 +268,8 @@ class ReferenceImporter:
         elif status == "failed":
             message = str(task.get("error") or "导入失败")
         else:
-            message = (
-                f"正在导入 {completed}/{total}"
-                + (f" · {current_title[:40]}" if current_title else "")
+            message = f"正在导入 {completed}/{total}" + (
+                f" · {current_title[:40]}" if current_title else ""
             )
         global_tracker.update(task_id, completed, message, total=total)
 
@@ -330,7 +330,7 @@ class ReferenceImporter:
                     if n:
                         existing_norms.add(n)
 
-        # 2) 鎶?entries 鍒嗘垚涓ょ粍锛氭湁 arxiv_id / 鏃?arxiv_id
+            # 2) 鎶?entries 鍒嗘垚涓ょ粍锛氭湁 arxiv_id / 鏃?arxiv_id
             arxiv_entries: list[dict] = []
             ss_only_entries: list[dict] = []
             skip_entries: list[dict] = []
@@ -357,7 +357,7 @@ class ReferenceImporter:
                 )
             self._sync_import_task_to_tracker(task)
 
-        # 3) 鎵归噺閫氳繃 arXiv API 鎷夊彇鏈?arxiv_id 鐨勮鏂?
+            # 3) 鎵归噺閫氳繃 arXiv API 鎷夊彇鏈?arxiv_id 鐨勮鏂?
             if arxiv_entries:
                 self._import_arxiv_batch(
                     task,
@@ -378,7 +378,7 @@ class ReferenceImporter:
                     inserted_ids,
                 )
 
-        # 5) 璁板綍 CollectionAction
+            # 5) 璁板綍 CollectionAction
             if inserted_ids:
                 with session_scope() as session:
                     action_repo = ActionRepository(session)
@@ -389,7 +389,7 @@ class ReferenceImporter:
                         query=source_paper_id,
                     )
 
-        # 6) 鍚庡彴瑙﹀彂绮楄 + 鍚戦噺鍖?
+            # 6) 鍚庡彴瑙﹀彂绮楄 + 鍚戦噺鍖?
             if inserted_ids:
                 threading.Thread(
                     target=self._bg_skim_and_embed,
@@ -456,7 +456,7 @@ class ReferenceImporter:
             arxiv_paper = arxiv_papers_map.get(norm) if norm else None
 
             if arxiv_paper:
-        # 鐢?arXiv 鐨勫畬鏁存暟鎹?+ SS 鐨勯澶栦俊鎭悎骞?
+                # 鐢?arXiv 鐨勫畬鏁存暟鎹?+ SS 鐨勯澶栦俊鎭悎骞?
                 meta = dict(arxiv_paper.metadata or {})
                 meta["source"] = "reference_import"
                 meta["source_paper_id"] = source_paper_id
@@ -476,7 +476,7 @@ class ReferenceImporter:
                 if self._is_real_arxiv_id(arxiv_id):
                     paper_data.arxiv_id = arxiv_id
             else:
-        # arXiv API 娌℃壘鍒帮紙鍙兘鏄棫璁烘枃锛夛紝鐢?SS 鏁版嵁鍒涘缓
+                # arXiv API 娌℃壘鍒帮紙鍙兘鏄棫璁烘枃锛夛紝鐢?SS 鏁版嵁鍒涘缓
                 paper_data = self._build_paper_from_entry(
                     entry,
                     source_paper_id,
@@ -581,7 +581,7 @@ class ReferenceImporter:
                     if not entry.get("year") and paper_data.publication_date:
                         entry["year"] = paper_data.publication_date.year
             else:
-        # 灏濊瘯浠?SS 鑾峰彇鏇翠赴瀵岀殑淇℃伅
+                # 灏濊瘯浠?SS 鑾峰彇鏇翠赴瀵岀殑淇℃伅
                 detail = None
                 if scholar_id:
                     try:
@@ -712,7 +712,9 @@ class ReferenceImporter:
                 "source_url": source_url,
                 "venue": entry.get("venue"),
                 "citation_count": entry.get("citation_count"),
-                "import_source": "openalex" if source_url and "openalex.org" in source_url else "semantic_scholar",
+                "import_source": "openalex"
+                if source_url and "openalex.org" in source_url
+                else "semantic_scholar",
             },
         )
 
@@ -754,7 +756,9 @@ class ReferenceImporter:
                 "venue": detail.get("venue"),
                 "citation_count": detail.get("citation_count"),
                 "fields_of_study": detail.get("fields_of_study", []),
-                "import_source": "openalex" if source_url and "openalex.org" in source_url else "semantic_scholar",
+                "import_source": "openalex"
+                if source_url and "openalex.org" in source_url
+                else "semantic_scholar",
             },
         )
 
@@ -772,5 +776,3 @@ class ReferenceImporter:
                 pipeline.skim(UUID(pid))
             except Exception as exc:
                 logger.warning("Skim failed for %s: %s", pid, exc)
-
-

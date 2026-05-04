@@ -90,8 +90,7 @@ RESEARCHOS_MANUAL_MCP_TOOL_NAMES: tuple[str, ...] = (
 
 def normalize_mcp_name(value: str) -> str:
     return "".join(
-        char if char.isalnum() or char in {"_", "-"} else "_"
-        for char in str(value or "")
+        char if char.isalnum() or char in {"_", "-"} else "_" for char in str(value or "")
     )
 
 
@@ -128,7 +127,9 @@ def bridge_tool_names(
 ) -> list[str]:
     existing = {str(item).strip() for item in (existing_names or set()) if str(item).strip()}
     names = [item for item in RESEARCHOS_MANUAL_MCP_TOOL_NAMES if item and item not in existing]
-    names.extend(tool.name for tool in iter_dynamic_bridge_tool_defs(existing_names=existing | set(names)))
+    names.extend(
+        tool.name for tool in iter_dynamic_bridge_tool_defs(existing_names=existing | set(names))
+    )
     return names
 
 
@@ -158,4 +159,3 @@ CLAW_REMOTE_GENERIC_TOOL_NAMES = RESEARCHOS_REMOTE_GENERIC_TOOL_NAMES
 CLAW_DYNAMIC_TOOL_EXCLUDES = RESEARCHOS_DYNAMIC_TOOL_EXCLUDES
 CLAW_LEGACY_MCP_TOOL_NAMES = RESEARCHOS_LEGACY_MCP_TOOL_NAMES
 CLAW_MANUAL_MCP_TOOL_NAMES = RESEARCHOS_MANUAL_MCP_TOOL_NAMES
-

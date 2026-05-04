@@ -73,4 +73,3 @@ def test_task_repository_writes_versioned_sidecar_log_rows() -> None:
         assert len(logs) == 1
         assert logs[0].level == "info"
         assert logs[0].message == "hello"
-

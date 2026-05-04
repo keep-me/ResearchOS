@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from packages.integrations.llm_provider_schema import (
+    SUPPORTED_MODEL_PROVIDERS,
     ParsedModelTarget,
     ResolvedEmbeddingConfig,
     ResolvedModelTarget,
-    SUPPORTED_MODEL_PROVIDERS,
     infer_provider_from_base_url,
     normalize_model_variant,
     normalize_provider_name,
@@ -77,7 +77,10 @@ def runtime_config_from_payload(payload: dict[str, Any] | None) -> ProviderRunti
         model_skim=str(runtime.get("model_skim") or ""),
         model_deep=str(runtime.get("model_deep") or ""),
         model_vision=clean_optional_text(runtime.get("model_vision")),
-        embedding_provider=normalize_provider_name(clean_optional_text(runtime.get("embedding_provider"))) or None,
+        embedding_provider=normalize_provider_name(
+            clean_optional_text(runtime.get("embedding_provider"))
+        )
+        or None,
         embedding_api_key=clean_optional_text(runtime.get("embedding_api_key")),
         embedding_api_base_url=clean_optional_text(runtime.get("embedding_api_base_url")),
         model_embedding=str(runtime.get("model_embedding") or ""),
@@ -129,7 +132,9 @@ def resolve_embedding_provider(cfg: RuntimeConfigLike) -> str:
     explicit_provider = normalize_provider_name(clean_optional_text(cfg.embedding_provider))
     if explicit_provider:
         return explicit_provider
-    inferred_provider = infer_provider_from_base_url(clean_optional_text(cfg.embedding_api_base_url))
+    inferred_provider = infer_provider_from_base_url(
+        clean_optional_text(cfg.embedding_api_base_url)
+    )
     if inferred_provider:
         return inferred_provider
     return normalize_provider_name(cfg.provider)
@@ -258,9 +263,17 @@ def resolve_model_target(
             engine_profile = None
         if engine_profile is not None:
             engine_cfg = runtime_config_from_payload(engine_profile.get("runtime_config"))
-            provider = normalize_provider_name(str(engine_profile.get("provider") or engine_cfg.provider or "none"))
-            model = str(engine_profile.get("model") or "").strip() or stage_model_string(stage, engine_cfg) or engine_cfg.model_fallback
-            variant = normalize_model_variant(variant_override) or normalize_model_variant(str(engine_profile.get("default_variant") or ""))
+            provider = normalize_provider_name(
+                str(engine_profile.get("provider") or engine_cfg.provider or "none")
+            )
+            model = (
+                str(engine_profile.get("model") or "").strip()
+                or stage_model_string(stage, engine_cfg)
+                or engine_cfg.model_fallback
+            )
+            variant = normalize_model_variant(variant_override) or normalize_model_variant(
+                str(engine_profile.get("default_variant") or "")
+            )
             return ResolvedModelTarget(
                 provider=provider,
                 api_key=engine_cfg.api_key,

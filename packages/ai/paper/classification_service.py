@@ -16,7 +16,6 @@ from packages.storage.db import session_scope
 from packages.storage.models import Citation, Paper, PaperTopic, TopicSubscription
 from packages.storage.repositories import PaperRepository, TopicRepository
 
-
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._+\-]{1,}")
 _PHRASE_RE = re.compile(r'"([^"]+)"')
 _QUERY_TOKEN_RE = re.compile(
@@ -199,8 +198,7 @@ def _match_query_term(
 
     if field == "cat":
         matched = any(
-            normalized == cat.lower() or cat.lower().startswith(normalized)
-            for cat in categories
+            normalized == cat.lower() or cat.lower().startswith(normalized) for cat in categories
         )
     elif field == "ti":
         matched = normalized in title_text_norm
@@ -244,7 +242,9 @@ def _match_query_expression(
                 stack.append(
                     QueryMatchResult(
                         matched=left.matched and right.matched,
-                        score=(left.score + right.score) if (left.matched and right.matched) else 0.0,
+                        score=(left.score + right.score)
+                        if (left.matched and right.matched)
+                        else 0.0,
                     )
                 )
             elif upper == "OR":
@@ -319,9 +319,7 @@ class PaperClassificationService:
 
             target_ids = [str(p.id) for p in target_papers]
             existing_topic_map = self._load_existing_topic_links(session, target_ids)
-            graph_votes = (
-                self._build_graph_votes(session, target_ids) if req.use_graph else {}
-            )
+            graph_votes = self._build_graph_votes(session, target_ids) if req.use_graph else {}
 
             items: list[dict[str, Any]] = []
             classified_papers = 0
@@ -569,7 +567,11 @@ class PaperClassificationService:
                 scores[topic_id] += min(2.2, len(title_overlap) * 0.65)
 
             normalized_name = " ".join(_normalize_text(topic.name_lc).split())
-            if normalized_name and len(normalized_name.split()) >= 2 and normalized_name in full_text_norm:
+            if (
+                normalized_name
+                and len(normalized_name.split()) >= 2
+                and normalized_name in full_text_norm
+            ):
                 scores[topic_id] += 2.0
 
             for cat in categories:

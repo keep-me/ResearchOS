@@ -33,4 +33,3 @@ def test_get_system_status_serializes_latest_runs_inside_session() -> None:
     assert result.data["pipeline_run_count"] == 1
     assert result.data["latest_runs"][0]["pipeline_name"] == "daily_brief"
     assert result.data["latest_runs"][0]["created_at"]
-

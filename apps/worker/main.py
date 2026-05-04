@@ -9,10 +9,11 @@ import logging
 import os
 import signal
 import time
-from datetime import datetime, time as datetime_time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import UTC, datetime, timedelta
+from datetime import time as datetime_time
 from threading import Event, current_thread, main_thread
 from typing import TextIO
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -148,15 +149,15 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _latest_due_slot(freq: str, time_utc: int, now: datetime) -> datetime | None:
     """Return the latest scheduled slot that is due at or before now."""
     normalized_freq = str(freq or "daily").strip().lower()
     normalized_hour = max(0, min(23, int(time_utc)))
-    now_utc = _as_utc(now) or datetime.now(timezone.utc)
+    now_utc = _as_utc(now) or datetime.now(UTC)
     lookback_days = 14 if normalized_freq == "weekly" else 7
     candidates: list[datetime] = []
 
@@ -179,7 +180,7 @@ def _latest_due_slot(freq: str, time_utc: int, now: datetime) -> datetime | None
             continue
 
         for hour in hours:
-            slot = datetime.combine(current_day, datetime_time(hour), tzinfo=timezone.utc)
+            slot = datetime.combine(current_day, datetime_time(hour), tzinfo=UTC)
             if slot <= now_utc:
                 candidates.append(slot)
 
@@ -209,7 +210,7 @@ def _cron_display(expr: str, *, user_timezone: str) -> str:
     minute, hour, _day, _month, weekday = parts
     if not minute.isdigit() or not hour.isdigit():
         return f"UTC {expr}，{user_timezone} 计算中"
-    utc_dt = datetime(2026, 1, 4, int(hour), int(minute), tzinfo=timezone.utc)
+    utc_dt = datetime(2026, 1, 4, int(hour), int(minute), tzinfo=UTC)
     try:
         local_dt = utc_dt.astimezone(ZoneInfo(user_timezone))
     except Exception:
@@ -223,7 +224,7 @@ def _cron_display(expr: str, *, user_timezone: str) -> str:
 
 def topic_dispatch_job() -> None:
     """每小时执行：检查哪些主题需要在当前小时触发"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     hour = now.hour
     weekday = now.weekday()  # 0=Monday
 
@@ -380,7 +381,9 @@ def run_worker() -> None:
         id="weekly_graph",
         replace_existing=True,
     )
-    logger.info("✅ 已添加：每周图谱维护任务（%s）", _cron_display(weekly_cron, user_timezone=user_timezone))
+    logger.info(
+        "✅ 已添加：每周图谱维护任务（%s）", _cron_display(weekly_cron, user_timezone=user_timezone)
+    )
 
     # 优雅关闭
     def _graceful_stop(*_: object) -> None:
@@ -410,7 +413,9 @@ def run_worker() -> None:
     logger.info("调度时间表（UTC → %s）:", user_timezone)
     logger.info("  • 主题抓取：每小时整点 → 每小时整点")
     if dashboard_trend_cron:
-        logger.info("  • 首页趋势：%s", _cron_display(dashboard_trend_cron, user_timezone=user_timezone))
+        logger.info(
+            "  • 首页趋势：%s", _cron_display(dashboard_trend_cron, user_timezone=user_timezone)
+        )
     logger.info("  • 每日简报：%s", _cron_display(daily_cron, user_timezone=user_timezone))
     logger.info("  • 每周图谱：%s", _cron_display(weekly_cron, user_timezone=user_timezone))
     logger.info("  • 闲时处理：全天自动检测 → 全天自动检测")

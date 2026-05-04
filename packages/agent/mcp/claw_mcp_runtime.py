@@ -13,7 +13,6 @@ from typing import Any
 
 import mcp.types as mcp_types
 
-from packages.agent.tools.apply_patch_runtime import derive_new_contents_from_chunks, parse_patch
 from packages.agent.mcp.claw_mcp_registry import (
     CLAW_CONTEXT_MODE_ENV,
     CLAW_CONTEXT_SESSION_ID_ENV,
@@ -22,7 +21,13 @@ from packages.agent.mcp.claw_mcp_registry import (
     CLAW_REMOTE_GENERIC_TOOL_NAMES,
     iter_dynamic_bridge_tool_defs,
 )
-from packages.agent.tools.tool_runtime import AgentToolContext, ToolProgress, ToolResult, execute_tool_stream
+from packages.agent.tools.apply_patch_runtime import derive_new_contents_from_chunks, parse_patch
+from packages.agent.tools.tool_runtime import (
+    AgentToolContext,
+    ToolProgress,
+    ToolResult,
+    execute_tool_stream,
+)
 
 _REMOTE_DEFAULT_IGNORES = {
     ".git",
@@ -56,7 +61,9 @@ def bridge_tool_context(*, env: dict[str, str] | None = None) -> AgentToolContex
 
 
 def tool_annotations(definition: Any) -> mcp_types.ToolAnnotations:
-    permission = str(getattr(getattr(definition, "spec", None), "permission", "") or "").strip().lower()
+    permission = (
+        str(getattr(getattr(definition, "spec", None), "permission", "") or "").strip().lower()
+    )
     requires_confirm = bool(getattr(definition, "requires_confirm", False))
     read_only = not requires_confirm and permission not in {"bash", "edit", "todowrite", "task"}
     destructive = requires_confirm or permission in {"edit", "bash"}
@@ -91,9 +98,7 @@ def build_dynamic_bridge_function(tool_name: str, parameters: dict[str, Any]) ->
     schema = parameters if isinstance(parameters, dict) else {}
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     required_names = {
-        str(item).strip()
-        for item in (schema.get("required") or [])
-        if str(item).strip()
+        str(item).strip() for item in (schema.get("required") or []) if str(item).strip()
     }
     for raw_name in properties:
         name = str(raw_name)
@@ -129,7 +134,9 @@ def build_dynamic_bridge_function(tool_name: str, parameters: dict[str, Any]) ->
         return execute_bridge_tool(tool_name, kwargs)
 
     _bridge_tool.__name__ = f"bridge_{tool_name}"
-    _bridge_tool.__signature__ = Signature(parameters=signature_params, return_annotation=dict[str, Any])
+    _bridge_tool.__signature__ = Signature(
+        parameters=signature_params, return_annotation=dict[str, Any]
+    )
     _bridge_tool.__annotations__ = {param.name: Any for param in signature_params}
     _bridge_tool.__annotations__["return"] = dict[str, Any]
     return _bridge_tool
@@ -196,7 +203,10 @@ def resolve_remote_workspace_root(
     context: AgentToolContext,
     workspace_value: str | None = None,
 ) -> tuple[dict[str, Any], str]:
-    from packages.agent.workspace.workspace_remote import open_ssh_session, resolve_remote_workspace_path
+    from packages.agent.workspace.workspace_remote import (
+        open_ssh_session,
+        resolve_remote_workspace_path,
+    )
 
     server_entry = remote_server_entry(context)
     requested_workspace = str(context.workspace_path or "").strip()
@@ -209,7 +219,9 @@ def resolve_remote_workspace_root(
             target_workspace = posixpath.normpath(posixpath.join(workspace_root, raw_workspace))
         else:
             target_workspace = workspace_root
-    if target_workspace != workspace_root and not target_workspace.startswith(workspace_root.rstrip("/") + "/"):
+    if target_workspace != workspace_root and not target_workspace.startswith(
+        workspace_root.rstrip("/") + "/"
+    ):
         raise ValueError("远端路径必须位于当前工作区内")
     return server_entry, target_workspace
 
@@ -218,7 +230,10 @@ def resolve_remote_path_ref(
     context: AgentToolContext,
     path_value: str | None,
 ) -> tuple[dict[str, Any], RemotePathRef]:
-    from packages.agent.workspace.workspace_remote import open_ssh_session, resolve_remote_workspace_path
+    from packages.agent.workspace.workspace_remote import (
+        open_ssh_session,
+        resolve_remote_workspace_path,
+    )
 
     server_entry, workspace_root = resolve_remote_workspace_root(context)
     with open_ssh_session(server_entry) as session:
@@ -229,9 +244,13 @@ def resolve_remote_path_ref(
             target_path = resolve_remote_workspace_path(server_entry, raw_path, session)
         else:
             target_path = posixpath.normpath(posixpath.join(workspace_root, raw_path))
-    if target_path != workspace_root and not target_path.startswith(workspace_root.rstrip("/") + "/"):
+    if target_path != workspace_root and not target_path.startswith(
+        workspace_root.rstrip("/") + "/"
+    ):
         raise ValueError("远端路径必须位于当前工作区内")
-    relative_path = None if target_path == workspace_root else posixpath.relpath(target_path, workspace_root)
+    relative_path = (
+        None if target_path == workspace_root else posixpath.relpath(target_path, workspace_root)
+    )
     return server_entry, RemotePathRef(
         workspace_root=workspace_root,
         target_path=target_path,
@@ -281,7 +300,11 @@ def remote_walk_entries(
 
 
 def remote_read_full_text(server_entry: dict[str, Any], path_ref: RemotePathRef) -> tuple[str, int]:
-    from packages.agent.workspace.workspace_remote import open_ssh_session, remote_is_dir, remote_stat
+    from packages.agent.workspace.workspace_remote import (
+        open_ssh_session,
+        remote_is_dir,
+        remote_stat,
+    )
 
     with open_ssh_session(server_entry) as session:
         target_attr = remote_stat(session.sftp, path_ref.target_path)
@@ -295,8 +318,13 @@ def remote_read_full_text(server_entry: dict[str, Any], path_ref: RemotePathRef)
 
 
 def remote_list_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
-    from packages.agent.workspace.workspace_remote import open_ssh_session, remote_is_dir, remote_stat
     import stat
+
+    from packages.agent.workspace.workspace_remote import (
+        open_ssh_session,
+        remote_is_dir,
+        remote_stat,
+    )
 
     try:
         server_entry, path_ref = resolve_remote_path_ref(context, str(arguments.get("path") or ""))
@@ -344,11 +372,18 @@ def remote_list_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
 
 
 def remote_read_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
-    from packages.agent.workspace.workspace_remote import open_ssh_session, remote_is_dir, remote_stat
     import stat
 
+    from packages.agent.workspace.workspace_remote import (
+        open_ssh_session,
+        remote_is_dir,
+        remote_stat,
+    )
+
     try:
-        server_entry, path_ref = resolve_remote_path_ref(context, str(arguments.get("file_path") or ""))
+        server_entry, path_ref = resolve_remote_path_ref(
+            context, str(arguments.get("file_path") or "")
+        )
         max_chars = max(1000, min(int(arguments.get("max_chars") or 12000), 50000))
         offset = arguments.get("offset")
         limit = arguments.get("limit")
@@ -375,7 +410,9 @@ def remote_read_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
                         {
                             **remote_path_display(path_ref.workspace_root, child_path),
                             "is_dir": is_dir,
-                            "size_bytes": None if is_dir else int(getattr(child_attr, "st_size", 0) or 0),
+                            "size_bytes": None
+                            if is_dir
+                            else int(getattr(child_attr, "st_size", 0) or 0),
                         }
                     )
                 payload = {
@@ -386,7 +423,9 @@ def remote_read_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
                     "total_entries": len(entries),
                     "truncated": len(entries) >= 200,
                 }
-                return ToolResult(success=True, data=payload, summary=f"已读取目录 {path_ref.target_path}")
+                return ToolResult(
+                    success=True, data=payload, summary=f"已读取目录 {path_ref.target_path}"
+                )
         content, size_bytes = remote_read_full_text(server_entry, path_ref)
         payload = {
             **remote_path_display(path_ref.workspace_root, path_ref.target_path),
@@ -401,7 +440,9 @@ def remote_read_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
                 raise ValueError("limit 必须大于等于 1")
             lines = content.splitlines()
             total_lines = len(lines)
-            if total_lines < normalized_offset and not (total_lines == 0 and normalized_offset == 1):
+            if total_lines < normalized_offset and not (
+                total_lines == 0 and normalized_offset == 1
+            ):
                 raise ValueError(f"offset 超出文件范围: {normalized_offset} > {total_lines}")
             start_index = max(normalized_offset - 1, 0)
             sliced_lines = lines[start_index : start_index + normalized_limit]
@@ -409,7 +450,9 @@ def remote_read_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
                 f"{line_number}: {text}"
                 for line_number, text in enumerate(sliced_lines, start=normalized_offset)
             ]
-            line_end = normalized_offset + len(sliced_lines) - 1 if sliced_lines else normalized_offset - 1
+            line_end = (
+                normalized_offset + len(sliced_lines) - 1 if sliced_lines else normalized_offset - 1
+            )
             truncated = start_index + len(sliced_lines) < total_lines
             payload.update(
                 {
@@ -435,7 +478,9 @@ def remote_write_tool(arguments: dict[str, Any], context: AgentToolContext) -> T
     from packages.agent.workspace.workspace_remote import remote_write_file
 
     try:
-        server_entry, path_ref = resolve_remote_path_ref(context, str(arguments.get("file_path") or ""))
+        server_entry, path_ref = resolve_remote_path_ref(
+            context, str(arguments.get("file_path") or "")
+        )
         if not path_ref.relative_path:
             raise ValueError("远端写入必须指定工作区内文件路径")
         result = remote_write_file(
@@ -480,7 +525,11 @@ def remote_edit_impl(
             raise ValueError(
                 f"匹配到 {matched_occurrences} 处内容，替换存在歧义。请提供更精确的 old_string，或显式设置 replace_all=true"
             )
-        updated = original.replace(old_string, new_string) if replace_all else original.replace(old_string, new_string, 1)
+        updated = (
+            original.replace(old_string, new_string)
+            if replace_all
+            else original.replace(old_string, new_string, 1)
+        )
         replaced_occurrences = matched_occurrences if replace_all else 1
     result = remote_write_file(
         server_entry,
@@ -506,7 +555,11 @@ def remote_edit_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
             replace_all=bool(arguments.get("replace_all")),
             context=context,
         )
-        return ToolResult(success=True, data=result, summary=f"已编辑 {result.get('relative_path') or result.get('path') or ''}")
+        return ToolResult(
+            success=True,
+            data=result,
+            summary=f"已编辑 {result.get('relative_path') or result.get('path') or ''}",
+        )
     except Exception as exc:
         return ToolResult(success=False, summary=str(exc))
 
@@ -557,8 +610,13 @@ def remote_multiedit_tool(arguments: dict[str, Any], context: AgentToolContext) 
 
 
 def remote_glob_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
-    from packages.agent.workspace.workspace_remote import open_ssh_session, remote_is_dir, remote_stat
     import stat
+
+    from packages.agent.workspace.workspace_remote import (
+        open_ssh_session,
+        remote_is_dir,
+        remote_stat,
+    )
 
     try:
         pattern = str(arguments.get("pattern") or "").strip()
@@ -609,8 +667,13 @@ def remote_glob_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
 
 
 def remote_grep_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
-    from packages.agent.workspace.workspace_remote import open_ssh_session, remote_is_dir, remote_stat
     import stat
+
+    from packages.agent.workspace.workspace_remote import (
+        open_ssh_session,
+        remote_is_dir,
+        remote_stat,
+    )
 
     try:
         pattern = str(arguments.get("pattern") or "").strip()
@@ -738,7 +801,10 @@ def remote_apply_patch_tool(arguments: dict[str, Any], context: AgentToolContext
                 temp_path = Path(handle.name)
             try:
                 updated_content = str(
-                    derive_new_contents_from_chunks(str(temp_path), list(hunk.get("chunks") or [])).get("content") or ""
+                    derive_new_contents_from_chunks(
+                        str(temp_path), list(hunk.get("chunks") or [])
+                    ).get("content")
+                    or ""
                 )
             finally:
                 temp_path.unlink(missing_ok=True)
@@ -792,7 +858,9 @@ def remote_bash_tool(arguments: dict[str, Any], context: AgentToolContext) -> To
         return ToolResult(success=False, summary=str(exc))
 
 
-def remote_inspect_workspace_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
+def remote_inspect_workspace_tool(
+    arguments: dict[str, Any], context: AgentToolContext
+) -> ToolResult:
     from packages.agent.workspace.workspace_remote import build_remote_overview
 
     try:
@@ -806,12 +874,16 @@ def remote_inspect_workspace_tool(arguments: dict[str, Any], context: AgentToolC
             depth=max(1, min(int(arguments.get("max_depth") or 2), 8)),
             max_entries=max(20, min(int(arguments.get("max_entries") or 120), 400)),
         )
-        return ToolResult(success=True, data=payload, summary=f"已检查工作区 {payload.get('workspace_path')}")
+        return ToolResult(
+            success=True, data=payload, summary=f"已检查工作区 {payload.get('workspace_path')}"
+        )
     except Exception as exc:
         return ToolResult(success=False, summary=str(exc))
 
 
-def remote_read_workspace_file_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
+def remote_read_workspace_file_tool(
+    arguments: dict[str, Any], context: AgentToolContext
+) -> ToolResult:
     from packages.agent.workspace.workspace_remote import remote_read_file
 
     try:
@@ -825,12 +897,16 @@ def remote_read_workspace_file_tool(arguments: dict[str, Any], context: AgentToo
             str(arguments.get("relative_path") or ""),
             max_chars=max(1000, min(int(arguments.get("max_chars") or 12000), 50000)),
         )
-        return ToolResult(success=True, data=payload, summary=f"已读取 {payload.get('relative_path') or ''}")
+        return ToolResult(
+            success=True, data=payload, summary=f"已读取 {payload.get('relative_path') or ''}"
+        )
     except Exception as exc:
         return ToolResult(success=False, summary=str(exc))
 
 
-def remote_write_workspace_file_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
+def remote_write_workspace_file_tool(
+    arguments: dict[str, Any], context: AgentToolContext
+) -> ToolResult:
     from packages.agent.workspace.workspace_remote import remote_write_file
 
     try:
@@ -846,12 +922,16 @@ def remote_write_workspace_file_tool(arguments: dict[str, Any], context: AgentTo
             create_dirs=bool(arguments.get("create_dirs", True)),
             overwrite=bool(arguments.get("overwrite", True)),
         )
-        return ToolResult(success=True, data=payload, summary=f"已写入 {payload.get('relative_path') or ''}")
+        return ToolResult(
+            success=True, data=payload, summary=f"已写入 {payload.get('relative_path') or ''}"
+        )
     except Exception as exc:
         return ToolResult(success=False, summary=str(exc))
 
 
-def remote_replace_workspace_text_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
+def remote_replace_workspace_text_tool(
+    arguments: dict[str, Any], context: AgentToolContext
+) -> ToolResult:
     try:
         _server_entry, workspace_root = resolve_remote_workspace_root(
             context,
@@ -877,12 +957,16 @@ def remote_replace_workspace_text_tool(arguments: dict[str, Any], context: Agent
             "replaced_occurrences": int(result.get("replaced_occurrences") or 0),
             "size_bytes": int(result.get("size_bytes") or 0),
         }
-        return ToolResult(success=True, data=payload, summary=f"已编辑 {payload.get('relative_path') or ''}")
+        return ToolResult(
+            success=True, data=payload, summary=f"已编辑 {payload.get('relative_path') or ''}"
+        )
     except Exception as exc:
         return ToolResult(success=False, summary=str(exc))
 
 
-def remote_run_workspace_command_tool(arguments: dict[str, Any], context: AgentToolContext) -> ToolResult:
+def remote_run_workspace_command_tool(
+    arguments: dict[str, Any], context: AgentToolContext
+) -> ToolResult:
     from packages.agent.workspace.workspace_remote import remote_terminal_result
 
     try:
@@ -907,9 +991,14 @@ def remote_run_workspace_command_tool(arguments: dict[str, Any], context: AgentT
         return ToolResult(success=False, summary=str(exc))
 
 
-def execute_bridge_tool(tool_name: str, arguments: dict[str, Any], *, env: dict[str, str] | None = None) -> dict[str, Any]:
+def execute_bridge_tool(
+    tool_name: str, arguments: dict[str, Any], *, env: dict[str, str] | None = None
+) -> dict[str, Any]:
     context = bridge_tool_context(env=env or os.environ)
-    remote = bool(str(context.workspace_server_id or "").strip() and str(context.workspace_server_id or "").strip().lower() != "local")
+    remote = bool(
+        str(context.workspace_server_id or "").strip()
+        and str(context.workspace_server_id or "").strip().lower() != "local"
+    )
     remote_overrides = {
         "list": remote_list_tool,
         "ls": remote_list_tool,
@@ -956,7 +1045,9 @@ def register_dynamic_bridge_tools(server: Any, logger: Any) -> None:
     existing_names = set(getattr(getattr(server, "_tool_manager", None), "_tools", {}).keys())
     for definition in iter_dynamic_bridge_tool_defs(existing_names=existing_names):
         try:
-            function = build_dynamic_bridge_function(str(definition.name), dict(definition.parameters or {}))
+            function = build_dynamic_bridge_function(
+                str(definition.name), dict(definition.parameters or {})
+            )
         except Exception:
             logger.exception("failed to build dynamic MCP bridge tool %s", definition.name)
             continue
@@ -967,4 +1058,3 @@ def register_dynamic_bridge_tools(server: Any, logger: Any) -> None:
             annotations=tool_annotations(definition),
             structured_output=True,
         )
-

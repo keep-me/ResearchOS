@@ -104,8 +104,7 @@ def test_reader_query_paper_uses_context(monkeypatch: pytest.MonkeyPatch, tmp_pa
         lambda session, repo, paper, pid: str(tmp_path / "paper.pdf"),
     )
 
-    from packages.ai.paper import figure_service
-    from packages.ai.paper import pdf_parser
+    from packages.ai.paper import figure_service, pdf_parser
 
     monkeypatch.setattr(
         pdf_parser.PdfTextExtractor,
@@ -115,7 +114,16 @@ def test_reader_query_paper_uses_context(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.setattr(
         figure_service.FigureService,
         "get_paper_analyses",
-        classmethod(lambda cls, pid: [{"page_number": 3, "image_type": "figure", "caption": "Figure 1", "description": "Shows a trend"}]),
+        classmethod(
+            lambda cls, pid: [
+                {
+                    "page_number": 3,
+                    "image_type": "figure",
+                    "caption": "Figure 1",
+                    "description": "Shows a trend",
+                }
+            ]
+        ),
     )
 
     def _fake_summarize(self, prompt, stage, max_tokens=None):
@@ -171,7 +179,9 @@ def test_reader_query_paper_prefers_mineru_ocr_context(
     )
     monkeypatch.setattr(
         "packages.ai.paper.pdf_parser.PdfTextExtractor.extract_text",
-        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(AssertionError("should not fallback")),
+        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(
+            AssertionError("should not fallback")
+        ),
     )
     monkeypatch.setattr(
         figure_service.FigureService,
@@ -408,12 +418,17 @@ def test_reader_query_figure_falls_back_to_text_context_when_vision_unavailable(
     payload = response.json()
     assert payload["result"] == "基于题注和已有解析的图表总结"
     assert payload["figure_id"] == figure_id
-    assert "当前视觉模型不可用" in captured["vision_prompt"] or "附加上下文" in captured["vision_prompt"]
+    assert (
+        "当前视觉模型不可用" in captured["vision_prompt"]
+        or "附加上下文" in captured["vision_prompt"]
+    )
     assert "Figure 6" in captured["summary_prompt"]
     assert "已有解析" in captured["summary_prompt"]
 
 
-def test_reader_query_paper_falls_back_when_pdf_prepare_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reader_query_paper_falls_back_when_pdf_prepare_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
     paper_id = _create_paper(
         metadata={
@@ -668,7 +683,10 @@ def test_reader_document_uses_output_root_metadata_when_cached_bundle_misses(
         encoding="utf-8",
     )
     (output_root / "manifest.json").write_text(
-        json.dumps({"status": "success", "pdf_sha256": "abc123", "output_root": str(output_root)}, ensure_ascii=False),
+        json.dumps(
+            {"status": "success", "pdf_sha256": "abc123", "output_root": str(output_root)},
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
     paper_id = _create_paper(
@@ -725,7 +743,10 @@ def test_reader_ocr_asset_resolves_relative_to_markdown_parent(
         encoding="utf-8",
     )
     output_root.joinpath("manifest.json").write_text(
-        json.dumps({"status": "success", "pdf_sha256": "abc123", "output_root": str(output_root)}, ensure_ascii=False),
+        json.dumps(
+            {"status": "success", "pdf_sha256": "abc123", "output_root": str(output_root)},
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
     paper_id = _create_paper(
@@ -871,7 +892,9 @@ def test_reader_note_draft_falls_back_to_structured_text(monkeypatch: pytest.Mon
     assert item["tags"] == ["实验", "结果"]
 
 
-def test_reader_note_draft_returns_503_when_model_service_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reader_note_draft_returns_503_when_model_service_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
     paper_id = _create_paper()
 

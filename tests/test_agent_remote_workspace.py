@@ -78,4 +78,3 @@ def test_local_workspace_keeps_path_tools_available():
     assert "write" in names
     assert "inspect_workspace" not in names
     assert "run_workspace_command" not in names
-

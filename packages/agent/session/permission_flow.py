@@ -10,4 +10,3 @@ def finalize_paused_session_abort(session_id: str) -> bool:
 
 
 __all__ = ["finalize_paused_session_abort"]
-

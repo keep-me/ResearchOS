@@ -68,4 +68,3 @@ def publish_message_deleted(session_id: str, message_id: str) -> None:
             "messageID": message_id,
         },
     )
-

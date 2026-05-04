@@ -25,13 +25,20 @@ def test_vision_analyze_openai_responses_success(monkeypatch) -> None:
         @staticmethod
         def create(**kwargs):
             assert kwargs["input"][0]["content"][0]["text"] == "看图"
-            return {"output": [{"type": "message", "content": [{"type": "output_text", "text": "vision ok"}]}], "usage": {"input_tokens": 6, "output_tokens": 4}}
+            return {
+                "output": [
+                    {"type": "message", "content": [{"type": "output_text", "text": "vision ok"}]}
+                ],
+                "usage": {"input_tokens": 6, "output_tokens": 4},
+            }
 
     class _FakeClient:
         responses = _FakeResponses()
 
     monkeypatch.setattr(llm_client_module, "_load_active_config", lambda: _config())
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     result = client.vision_analyze("ZmFrZQ==", "看图")
@@ -59,7 +66,9 @@ def test_vision_analyze_openai_falls_back_to_openai_compatible(monkeypatch) -> N
         chat = SimpleNamespace(completions=_FakeChatCompletions())
 
     monkeypatch.setattr(llm_client_module, "_load_active_config", lambda: _config())
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     result = client.vision_analyze("ZmFrZQ==", "看图")
@@ -91,7 +100,9 @@ def test_vision_analyze_openai_empty_responses_falls_back_to_openai_compatible(m
         chat = SimpleNamespace(completions=_FakeChatCompletions())
 
     monkeypatch.setattr(llm_client_module, "_load_active_config", lambda: _config())
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     result = client.vision_analyze("ZmFrZQ==", "看图")
@@ -125,11 +136,16 @@ def test_vision_analyze_custom_empty_fallbacks_use_raw_http(monkeypatch) -> None
     cfg.model_vision = "gpt-5.4"
 
     monkeypatch.setattr(llm_client_module, "_load_active_config", lambda: cfg)
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
     monkeypatch.setattr(
         LLMClient,
         "_call_openai_chat_raw_http",
-        lambda self, **kwargs: (LLMResult(content="raw vision", input_tokens=11, output_tokens=6), []),
+        lambda self, **kwargs: (
+            LLMResult(content="raw vision", input_tokens=11, output_tokens=6),
+            [],
+        ),
     )
 
     client = LLMClient()
@@ -157,7 +173,9 @@ def test_vision_analyze_zhipu_uses_openai_compatible_path(monkeypatch) -> None:
     cfg.model_vision = "glm-4v"
 
     monkeypatch.setattr(llm_client_module, "_load_active_config", lambda: cfg)
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     result = client.vision_analyze("ZmFrZQ==", "看图")
@@ -190,7 +208,9 @@ def test_vision_analyze_empty_across_all_fallbacks_returns_diagnostic_message(mo
     cfg.model_vision = "gpt-5.4"
 
     monkeypatch.setattr(llm_client_module, "_load_active_config", lambda: cfg)
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
     monkeypatch.setattr(
         LLMClient,
         "_call_openai_chat_raw_http",

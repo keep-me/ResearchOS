@@ -87,7 +87,10 @@ def resolve_model_top_p(model: str) -> float | None:
     model_lower = (model or "").strip().lower()
     if "qwen" in model_lower:
         return 1.0
-    if any(token in model_lower for token in ("minimax-m2", "gemini", "kimi-k2.5", "kimi-k2p5", "kimi-k2-5")):
+    if any(
+        token in model_lower
+        for token in ("minimax-m2", "gemini", "kimi-k2.5", "kimi-k2p5", "kimi-k2-5")
+    ):
         return 0.95
     return None
 
@@ -228,7 +231,10 @@ def normalize_openai_chat_messages(
         for index, item in enumerate(normalized):
             fixed.append(item)
             next_item = normalized[index + 1] if index + 1 < len(normalized) else None
-            if str(item.get("role") or "") == "tool" and str((next_item or {}).get("role") or "") == "user":
+            if (
+                str(item.get("role") or "") == "tool"
+                and str((next_item or {}).get("role") or "") == "user"
+            ):
                 fixed.append(
                     {
                         "role": "assistant",
@@ -284,7 +290,12 @@ def build_openai_chat_messages(
             has_content = bool(item.get("content"))
         else:
             has_content = bool(str(item.get("content") or "").strip())
-        if has_content or role in {"system", "user", "tool"} or item.get("tool_calls") or item.get("reasoning_content"):
+        if (
+            has_content
+            or role in {"system", "user", "tool"}
+            or item.get("tool_calls")
+            or item.get("reasoning_content")
+        ):
             payload.append(item)
     return normalize_openai_chat_messages(client, payload, resolved=resolved)
 
@@ -877,7 +888,9 @@ def apply_variant_to_responses_kwargs(
             kwargs["text"] = {"verbosity": "low"}
 
     if is_small_target(target):
-        apply_provider_options_to_responses_kwargs(kwargs, target, build_small_provider_options(target))
+        apply_provider_options_to_responses_kwargs(
+            kwargs, target, build_small_provider_options(target)
+        )
 
 
 def apply_variant_to_chat_kwargs(
@@ -912,14 +925,18 @@ def apply_variant_to_chat_kwargs(
         thinking = setdefault_object(extra_body, "thinking")
         thinking.setdefault("type", "enabled")
         thinking.setdefault("clear_thinking", False)
-    if effort and ("gpt-5" in model_lower or "codex" in model_lower or is_official_openai_target(target)):
+    if effort and (
+        "gpt-5" in model_lower or "codex" in model_lower or is_official_openai_target(target)
+    ):
         extra_body.setdefault("reasoning_summary", "auto")
     if "gpt-5" in model_lower or "codex" in model_lower:
         include = list(extra_body.get("include") or [])
         if "reasoning.encrypted_content" not in include:
             include.append("reasoning.encrypted_content")
         extra_body["include"] = include
-    if supports_dashscope_thinking(target.base_url) and should_enable_dashscope_reasoning(target.model):
+    if supports_dashscope_thinking(target.base_url) and should_enable_dashscope_reasoning(
+        target.model
+    ):
         extra_body.setdefault("enable_thinking", True)
     if extra_body:
         kwargs["extra_body"] = extra_body

@@ -62,7 +62,9 @@ def publish(event_type: str, properties: dict[str, Any] | None = None) -> Sessio
             from packages.agent.session.session_runtime import get_session_record
 
             record = get_session_record(session_id) or {}
-            directory = str(record.get("directory") or record.get("workspace_path") or "").strip() or None
+            directory = (
+                str(record.get("directory") or record.get("workspace_path") or "").strip() or None
+            )
         except Exception:  # pragma: no cover - defensive path
             directory = None
         global_bus.publish_event(
@@ -127,4 +129,3 @@ def wait_for(
 def reset_for_tests() -> None:
     with _LOCK:
         _SUBSCRIPTIONS.clear()
-

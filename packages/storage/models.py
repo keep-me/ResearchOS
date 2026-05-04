@@ -6,7 +6,6 @@ from datetime import UTC, date, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
-    Integer,
     JSON,
     Boolean,
     Date,
@@ -15,6 +14,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -147,7 +147,9 @@ class ResearchKGNode(Base):
     normalized_name: Mapped[str] = mapped_column(String(512), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, nullable=False, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False, index=True
     )
@@ -185,7 +187,9 @@ class ResearchKGEdge(Base):
     evidence: Mapped[str] = mapped_column(Text, nullable=False, default="")
     weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, nullable=False, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False, index=True
     )
@@ -285,7 +289,9 @@ class TopicSubscription(Base):
     priority_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="time")
     venue_tier: Mapped[str] = mapped_column(String(32), nullable=False, default="all")
     venue_type: Mapped[str] = mapped_column(String(32), nullable=False, default="all")
-    venue_names_json: Mapped[list[str]] = mapped_column("venue_names", JSON, nullable=False, default=list)
+    venue_names_json: Mapped[list[str]] = mapped_column(
+        "venue_names", JSON, nullable=False, default=list
+    )
     from_year: Mapped[int | None] = mapped_column(nullable=True)
     default_folder_id: Mapped[str | None] = mapped_column(
         String(36),
@@ -297,8 +303,12 @@ class TopicSubscription(Base):
     retry_limit: Mapped[int] = mapped_column(nullable=False, default=2)
     schedule_frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="daily")
     schedule_time_utc: Mapped[int] = mapped_column(nullable=False, default=21)
-    enable_date_filter: Mapped[bool] = mapped_column(nullable=False, default=False)  # 是否启用日期过滤
-    date_filter_days: Mapped[int] = mapped_column(nullable=False, default=7)  # 日期范围（最近 N 天）
+    enable_date_filter: Mapped[bool] = mapped_column(
+        nullable=False, default=False
+    )  # 是否启用日期过滤
+    date_filter_days: Mapped[int] = mapped_column(
+        nullable=False, default=7
+    )  # 日期范围（最近 N 天）
     date_filter_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     date_filter_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -844,7 +854,9 @@ class TaskRecord(Base):
     retry_supported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     retry_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     retry_metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, nullable=False, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=_utcnow,
@@ -879,7 +891,9 @@ class TaskLog(Base):
     level: Mapped[str] = mapped_column(String(32), nullable=False, default="info", index=True)
     message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     data_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, nullable=False, index=True
+    )
 
 
 class ProjectGpuLease(Base):
@@ -888,7 +902,9 @@ class ProjectGpuLease(Base):
     __tablename__ = "project_gpu_leases"
     __table_args__ = (
         Index("ix_project_gpu_leases_server_active", "workspace_server_id", "active"),
-        UniqueConstraint("workspace_server_id", "gpu_index", name="uq_project_gpu_leases_server_gpu"),
+        UniqueConstraint(
+            "workspace_server_id", "gpu_index", name="uq_project_gpu_leases_server_gpu"
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -999,7 +1015,9 @@ class AgentSessionMessage(Base):
     """Top-level message rows for agent sessions."""
 
     __tablename__ = "agent_session_messages"
-    __table_args__ = (Index("ix_agent_session_messages_session_created", "session_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_agent_session_messages_session_created", "session_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     session_id: Mapped[str] = mapped_column(
@@ -1028,7 +1046,9 @@ class AgentSessionPart(Base):
     __tablename__ = "agent_session_parts"
     __table_args__ = (
         Index("ix_agent_session_parts_message_created", "message_id", "created_at"),
-        Index("ix_agent_session_parts_session_type_created", "session_id", "part_type", "created_at"),
+        Index(
+            "ix_agent_session_parts_session_type_created", "session_id", "part_type", "created_at"
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -1100,7 +1120,9 @@ class AgentPendingAction(Base):
     """Persisted pending confirmations with optional permission metadata and resume state."""
 
     __tablename__ = "agent_pending_actions"
-    __table_args__ = (Index("ix_agent_pending_actions_session_created", "session_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_agent_pending_actions_session_created", "session_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     session_id: Mapped[str] = mapped_column(
@@ -1115,7 +1137,9 @@ class AgentPendingAction(Base):
         nullable=False,
         index=True,
     )
-    action_type: Mapped[str] = mapped_column(String(32), nullable=False, default="confirm", index=True)
+    action_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="confirm", index=True
+    )
     permission_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     continuation_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

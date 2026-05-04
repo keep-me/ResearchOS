@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from packages.domain.enums import ReadStatus
 from packages.domain.math_utils import cosine_distance as _cosine_distance
 from packages.domain.schemas import PaperCreate
-from packages.storage.models import Paper, PaperTopic, TopicSubscription
 from packages.storage.json_schema import with_schema_version
+from packages.storage.models import Paper, PaperTopic, TopicSubscription
 
 
 def _created_sort_key(value: datetime | None) -> float:
@@ -275,7 +275,7 @@ class PaperRepository:
 
     def folder_stats(self) -> dict:
         """返回文件夹统计：按手动文件夹、收藏、最近、未分类"""
-        from packages.timezone import utc_naive_to_user_date, user_today_start_utc
+        from packages.timezone import user_today_start_utc, utc_naive_to_user_date
 
         total = self.count_all()
         fav_q = select(func.count()).select_from(Paper).where(Paper.favorited == True)  # noqa: E712
@@ -284,11 +284,7 @@ class PaperRepository:
         # "最近 7 天" 用用户时区的今天 0 点往前推 7 天
         user_today_utc = user_today_start_utc()
         week_start_utc = user_today_utc - timedelta(days=7)
-        recent_q = (
-            select(func.count())
-            .select_from(Paper)
-            .where(Paper.created_at >= week_start_utc)
-        )
+        recent_q = select(func.count()).select_from(Paper).where(Paper.created_at >= week_start_utc)
         recent_7d = self.session.execute(recent_q).scalar() or 0
 
         # 有手动文件夹的论文 ID 集合
@@ -329,8 +325,7 @@ class PaperRepository:
         )
         subscription_rows = self.session.execute(subscription_counts_q).all()
         by_subscription = [
-            {"topic_id": r[0], "topic_name": r[1], "count": r[2]}
-            for r in subscription_rows
+            {"topic_id": r[0], "topic_name": r[1], "count": r[2]} for r in subscription_rows
         ]
 
         # 按阅读状态统计
@@ -408,7 +403,9 @@ class PaperRepository:
         }
         sort_col = _SORT_COLS.get(sort_by, Paper.created_at)
         order_expr = sort_col.desc() if sort_order == "desc" else sort_col.asc()
-        secondary_order = Paper.created_at.desc() if sort_order == "desc" else Paper.created_at.asc()
+        secondary_order = (
+            Paper.created_at.desc() if sort_order == "desc" else Paper.created_at.asc()
+        )
         papers = list(
             self.session.execute(
                 base_q.order_by(order_expr, secondary_order).offset(offset).limit(page_size)
@@ -637,17 +634,8 @@ class PaperRepository:
                 )
             ]
 
-        where_clause = (
-            group_conditions[0]
-            if len(group_conditions) == 1
-            else or_(*group_conditions)
-        )
-        q = (
-            select(Paper)
-            .where(where_clause)
-            .order_by(Paper.created_at.desc())
-            .limit(limit)
-        )
+        where_clause = group_conditions[0] if len(group_conditions) == 1 else or_(*group_conditions)
+        q = select(Paper).where(where_clause).order_by(Paper.created_at.desc()).limit(limit)
         return list(self.session.execute(q).scalars())
 
     def semantic_candidates(
@@ -678,7 +666,9 @@ class PaperRepository:
         if not vector or limit <= 0:
             return []
 
-        query = select(Paper.id, Paper.embedding, Paper.created_at).where(Paper.embedding.is_not(None))
+        query = select(Paper.id, Paper.embedding, Paper.created_at).where(
+            Paper.embedding.is_not(None)
+        )
         if exclude_id:
             query = query.where(Paper.id != exclude_id)
         if max_candidates is not None and max_candidates > 0:

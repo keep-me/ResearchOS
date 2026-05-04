@@ -6,17 +6,16 @@ Create Date: 2026-04-11
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20260411_0010_add_llm_image_generation_config"
-down_revision: Union[str, None] = "20260308_0009_add_date_filter_settings"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "20260308_0009_add_date_filter_settings"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -28,9 +27,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     Base.metadata.tables["llm_provider_configs"].create(bind=bind, checkfirst=True)
     inspector = inspect(bind)
-    existing_columns = {
-        column["name"] for column in inspector.get_columns("llm_provider_configs")
-    }
+    existing_columns = {column["name"] for column in inspector.get_columns("llm_provider_configs")}
 
     if "image_provider" not in existing_columns:
         op.add_column(
@@ -45,7 +42,9 @@ def upgrade() -> None:
     if "image_api_base_url" not in existing_columns:
         op.add_column(
             "llm_provider_configs",
-            sa.Column("image_api_base_url", sa.String(length=512), nullable=False, server_default=""),
+            sa.Column(
+                "image_api_base_url", sa.String(length=512), nullable=False, server_default=""
+            ),
         )
     if "model_image" not in existing_columns:
         op.add_column(

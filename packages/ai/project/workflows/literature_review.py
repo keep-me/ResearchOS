@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 
 def execute_literature_review(
-    context: "WorkflowContext",
-    progress_callback: "ProgressCallback | None",
+    context: WorkflowContext,
+    progress_callback: ProgressCallback | None,
     *,
     resume_stage_id: str | None = None,
     runtime: Any,
@@ -122,7 +122,9 @@ def execute_literature_review(
             generated_content_id = generated.id
 
     artifact_refs: list[dict[str, Any]] = []
-    report_artifact = runtime._write_run_artifact(context, "reports/literature-review.md", markdown, kind="report")
+    report_artifact = runtime._write_run_artifact(
+        context, "reports/literature-review.md", markdown, kind="report"
+    )
     if report_artifact:
         artifact_refs.append(report_artifact)
     log_artifact = runtime._write_run_log(
@@ -133,7 +135,7 @@ def execute_literature_review(
                 "",
                 f"- run_id: {run.id}",
                 f"- workflow: {run.workflow_type.value}",
-                f"- status: succeeded",
+                "- status: succeeded",
                 f"- completed_at: {runtime._iso_now()}",
                 f"- generated_content_id: {generated_content_id or 'N/A'}",
                 "",

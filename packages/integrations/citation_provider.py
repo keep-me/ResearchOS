@@ -2,6 +2,7 @@
 双源引用数据提供者
 OpenAlex（10 req/s）为主力，Semantic Scholar 为兜底
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,7 +69,11 @@ class CitationProvider:
         self.scholar = SemanticScholarClient(api_key=scholar_api_key)
 
     def fetch_edges_by_title(
-        self, title: str, limit: int = 8, *, arxiv_id: str | None = None,
+        self,
+        title: str,
+        limit: int = 8,
+        *,
+        arxiv_id: str | None = None,
     ) -> list[CitationEdge]:
         try:
             edges = self.openalex.fetch_edges_by_title(title, limit=limit, arxiv_id=arxiv_id)
@@ -98,7 +103,10 @@ class CitationProvider:
         openalex_results: list[RichCitationInfo] = []
         try:
             openalex_results = self.openalex.fetch_rich_citations(
-                title, ref_limit=ref_limit, cite_limit=cite_limit, arxiv_id=arxiv_id,
+                title,
+                ref_limit=ref_limit,
+                cite_limit=cite_limit,
+                arxiv_id=arxiv_id,
             )
             if openalex_results:
                 logger.debug(
@@ -117,7 +125,10 @@ class CitationProvider:
 
         try:
             scholar_results = self.scholar.fetch_rich_citations(
-                title, ref_limit=ref_limit, cite_limit=cite_limit, arxiv_id=arxiv_id,
+                title,
+                ref_limit=ref_limit,
+                cite_limit=cite_limit,
+                arxiv_id=arxiv_id,
             )
             if not openalex_results:
                 return scholar_results

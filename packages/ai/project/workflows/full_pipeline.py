@@ -9,4 +9,3 @@ def execute(*args: Any, **kwargs: Any) -> Any:
     from packages.ai.project.workflow_runner import _execute_full_pipeline
 
     return _execute_full_pipeline(*args, **kwargs)
-

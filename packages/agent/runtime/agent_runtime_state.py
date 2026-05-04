@@ -141,4 +141,3 @@ def update_todos(session_id: str | None, todos: list[dict]) -> list[dict]:
             for todo in normalized
         ],
     )
-

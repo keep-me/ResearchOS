@@ -1,5 +1,4 @@
-"""系统状态 & 指标路由
-"""
+"""系统状态 & 指标路由"""
 
 from fastapi import APIRouter, Query
 

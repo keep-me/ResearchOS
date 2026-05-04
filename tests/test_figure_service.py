@@ -7,7 +7,6 @@ from uuid import uuid4
 import packages.ai.paper.figure_service as figure_service_module
 from packages.ai.paper.figure_service import ExtractedFigure, FigureService
 
-
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO0p2uoAAAAASUVORK5CYII="
 )
@@ -37,16 +36,18 @@ def test_compose_ocr_candidate_markdown_converts_html_table_to_markdown():
 
 
 def test_mineru_content_list_keeps_table_footnote_in_candidate_markdown():
-    blocks = FigureService._collect_mineru_content_list_item_blocks([
-        {
-            "type": "table",
-            "page_idx": 2,
-            "bbox": [10, 20, 300, 420],
-            "table_caption": ["Table 1. Main results."],
-            "table_body": "| Method | Score |\n|---|---:|\n| MVP | 92.0 |",
-            "table_footnote": ["Best results are bolded."],
-        }
-    ])
+    blocks = FigureService._collect_mineru_content_list_item_blocks(
+        [
+            {
+                "type": "table",
+                "page_idx": 2,
+                "bbox": [10, 20, 300, 420],
+                "table_caption": ["Table 1. Main results."],
+                "table_body": "| Method | Score |\n|---|---:|\n| MVP | 92.0 |",
+                "table_footnote": ["Best results are bolded."],
+            }
+        ]
+    )
 
     assert len(blocks) == 1
     assert blocks[0]["image_type"] == "table"
@@ -183,7 +184,9 @@ def test_extract_figures_returns_empty_when_arxiv_and_mineru_are_unavailable(mon
         "_extract_via_arxiv_source",
         classmethod(lambda _cls, *args, **kwargs: []),
     )
-    monkeypatch.setattr(FigureService, "_extract_via_mineru_tables", classmethod(lambda _cls, *args, **kwargs: []))
+    monkeypatch.setattr(
+        FigureService, "_extract_via_mineru_tables", classmethod(lambda _cls, *args, **kwargs: [])
+    )
 
     results = service.extract_figures(uuid4(), str(pdf_path), arxiv_id="1234.5678")
 
@@ -201,7 +204,9 @@ def test_extract_figures_arxiv_mode_does_not_fallback_to_mineru(monkeypatch, tmp
         "_extract_via_arxiv_source",
         classmethod(lambda _cls, *args, **kwargs: []),
     )
-    monkeypatch.setattr(FigureService, "_extract_via_mineru_tables", classmethod(lambda _cls, *args, **kwargs: []))
+    monkeypatch.setattr(
+        FigureService, "_extract_via_mineru_tables", classmethod(lambda _cls, *args, **kwargs: [])
+    )
 
     def _unexpected_mineru_call(_cls, *args, **kwargs):
         raise AssertionError("MinerU should not be called when arxiv_source extraction fails")
@@ -286,7 +291,9 @@ def test_extract_figures_mineru_mode_returns_empty_without_mineru_outputs(monkey
     pdf_path = tmp_path / "paper.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
 
-    monkeypatch.setattr(FigureService, "_extract_via_mineru", classmethod(lambda _cls, *args, **kwargs: []))
+    monkeypatch.setattr(
+        FigureService, "_extract_via_mineru", classmethod(lambda _cls, *args, **kwargs: [])
+    )
 
     results = service.extract_figures(uuid4(), str(pdf_path), extract_mode="mineru")
 
@@ -308,7 +315,10 @@ def test_collect_mineru_structured_blocks_reads_middle_json(tmp_path):
                                 "lines": [
                                     {
                                         "spans": [
-                                            {"type": "text", "content": "Figure 1. Overview of the system."},
+                                            {
+                                                "type": "text",
+                                                "content": "Figure 1. Overview of the system.",
+                                            },
                                         ],
                                     }
                                 ],
@@ -326,7 +336,10 @@ def test_collect_mineru_structured_blocks_reads_middle_json(tmp_path):
                                 "lines": [
                                     {
                                         "spans": [
-                                            {"type": "text", "content": "Table 1. Main benchmark results."},
+                                            {
+                                                "type": "text",
+                                                "content": "Table 1. Main benchmark results.",
+                                            },
                                         ],
                                     }
                                 ],
@@ -516,7 +529,9 @@ def test_extract_via_mineru_uses_cached_runtime_bundle(monkeypatch, tmp_path):
             ]
         ),
     )
-    result = FigureService._extract_via_mineru(uuid4(), str(pdf_path), 6, set(), allow_generate=False)
+    result = FigureService._extract_via_mineru(
+        uuid4(), str(pdf_path), 6, set(), allow_generate=False
+    )
 
     assert len(result) == 1
     assert result[0].caption == "Figure 1. Runtime figure."
@@ -548,8 +563,14 @@ def test_extract_paper_figure_candidates_keeps_all_candidates(monkeypatch, tmp_p
     saved: list = []
 
     monkeypatch.setattr(service, "extract_figures", lambda *args, **kwargs: figures)
-    monkeypatch.setattr(FigureService, "_ensure_figure_dir", staticmethod(lambda _paper_id: tmp_path))
-    monkeypatch.setattr(FigureService, "_save_analyses", staticmethod(lambda _paper_id, analyses: saved.extend(analyses)))
+    monkeypatch.setattr(
+        FigureService, "_ensure_figure_dir", staticmethod(lambda _paper_id: tmp_path)
+    )
+    monkeypatch.setattr(
+        FigureService,
+        "_save_analyses",
+        staticmethod(lambda _paper_id, analyses: saved.extend(analyses)),
+    )
 
     result = service.extract_paper_figure_candidates(uuid4(), str(tmp_path / "paper.pdf"))
 
@@ -615,7 +636,9 @@ def test_get_paper_analyses_returns_duplicates_and_analyzed_flag(monkeypatch, tm
         yield FakeSession()
 
     monkeypatch.setattr(figure_service_module, "session_scope", fake_session_scope)
-    monkeypatch.setattr(FigureService, "resolve_stored_image_path", staticmethod(lambda _path: image_path))
+    monkeypatch.setattr(
+        FigureService, "resolve_stored_image_path", staticmethod(lambda _path: image_path)
+    )
 
     items = FigureService.get_paper_analyses(uuid4())
 

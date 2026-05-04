@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import defaultdict
 import json
 import threading
 import time
+from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,6 +21,8 @@ from packages.agent import (
     global_bus,
     session_bus,
     session_lifecycle,
+)
+from packages.agent import (
     session_runtime as session_runtime_module,
 )
 from packages.agent.session.session_bus import SessionBusEvent
@@ -172,8 +174,13 @@ class FakeBudgetHardStopLLM:
             "",
         )
         if last_user == agent_service.STEP_LIMIT_SUMMARY_PROMPT:
-            yield StreamEvent(type="text_delta", content="预算总结：第一步检索已完成，第二个工具调用因预算上限被跳过。")
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=6, output_tokens=16)
+            yield StreamEvent(
+                type="text_delta",
+                content="预算总结：第一步检索已完成，第二个工具调用因预算上限被跳过。",
+            )
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=6, output_tokens=16
+            )
             return
         if any(
             str(item.get("role") or "") == "assistant"
@@ -187,7 +194,9 @@ class FakeBudgetHardStopLLM:
                 tool_name="bash",
                 tool_arguments='{"command":"echo second"}',
             )
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=11, output_tokens=4)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=11, output_tokens=4
+            )
             return
         yield StreamEvent(
             type="tool_call",
@@ -227,7 +236,9 @@ class FakeRepeatedToolTurnLLM:
                 tool_name="bash",
                 tool_arguments='{"command":"echo repeat"}',
             )
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=11, output_tokens=2)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=11, output_tokens=2
+            )
             return
         yield StreamEvent(
             type="tool_call",
@@ -269,11 +280,14 @@ class FakeQueuedPromptLLM:
         if last_user == "first":
             time.sleep(0.35)
             yield StreamEvent(type="text_delta", content="first-done")
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6
+            )
             return
 
         has_first = any(
-            str(item.get("role") or "") == "assistant" and "first-done" in str(item.get("content") or "")
+            str(item.get("role") or "") == "assistant"
+            and "first-done" in str(item.get("content") or "")
             for item in messages
         )
         content = "second-saw-first" if has_first else "second-stale"
@@ -312,27 +326,35 @@ class FakeQueuedFifoLLM:
         if last_user == "first":
             time.sleep(0.75)
             yield StreamEvent(type="text_delta", content="first-done")
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6
+            )
             return
         if last_user == "second":
             time.sleep(0.2)
             has_first = any(
-                str(item.get("role") or "") == "assistant" and "first-done" in str(item.get("content") or "")
+                str(item.get("role") or "") == "assistant"
+                and "first-done" in str(item.get("content") or "")
                 for item in messages
             )
             content = "second-saw-first" if has_first else "second-stale"
             yield StreamEvent(type="text_delta", content=content)
-            yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6)
+            yield StreamEvent(
+                type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6
+            )
             return
         has_first = any(
-            str(item.get("role") or "") == "assistant" and "first-done" in str(item.get("content") or "")
+            str(item.get("role") or "") == "assistant"
+            and "first-done" in str(item.get("content") or "")
             for item in messages
         )
         has_second_user = any(
             str(item.get("role") or "") == "user" and str(item.get("content") or "") == "second"
             for item in messages
         )
-        content = "third-saw-first-and-second-user" if has_first and has_second_user else "third-stale"
+        content = (
+            "third-saw-first-and-second-user" if has_first and has_second_user else "third-stale"
+        )
         yield StreamEvent(type="text_delta", content=content)
         yield StreamEvent(type="usage", model="fake-chat-model", input_tokens=10, output_tokens=6)
 
@@ -490,10 +512,10 @@ def _fake_delta_stream_chat(*_args, **kwargs):
             'event: text_delta\ndata: {"content":"最终回答。"}\n\n',
             'event: usage\ndata: {"model":"fake-chat-model","input_tokens":10,"output_tokens":6,"reasoning_tokens":8}\n\n',
             (
-                'event: session_step_finish\ndata: '
+                "event: session_step_finish\ndata: "
                 '{"step":1,"reason":"stop","usage":{"input_tokens":10,"output_tokens":6,"reasoning_tokens":8},"cost":0}\n\n'
             ),
-            'event: done\ndata: {}\n\n',
+            "event: done\ndata: {}\n\n",
         ],
         kwargs,
     )
@@ -592,9 +614,7 @@ def test_session_bus_mirrors_events_to_global_bus(
     assert all(event.type == "event" for event in mirrored)
     assert all(event.directory == str(tmp_path) for event in mirrored)
     payload_types = [
-        str((event.payload or {}).get("type") or "")
-        if isinstance(event.payload, dict)
-        else ""
+        str((event.payload or {}).get("type") or "") if isinstance(event.payload, dict) else ""
         for event in mirrored
     ]
     assert SessionBusEvent.STATUS in payload_types
@@ -607,9 +627,14 @@ def test_session_bus_subscribe_filters_by_event_type() -> None:
     _reset_runtime_state()
 
     received = []
-    unsubscribe = session_bus.subscribe(SessionBusEvent.STATUS, lambda event: received.append(event))
+    unsubscribe = session_bus.subscribe(
+        SessionBusEvent.STATUS, lambda event: received.append(event)
+    )
     try:
-        session_bus.publish(SessionBusEvent.STATUS, {"sessionID": "bus_subscribe_session", "status": {"type": "busy"}})
+        session_bus.publish(
+            SessionBusEvent.STATUS,
+            {"sessionID": "bus_subscribe_session", "status": {"type": "busy"}},
+        )
         session_bus.publish(SessionBusEvent.MESSAGE_UPDATED, {"sessionID": "bus_subscribe_session"})
     finally:
         unsubscribe()
@@ -629,7 +654,7 @@ def test_stream_active_uses_unified_lifecycle_helper(monkeypatch: pytest.MonkeyP
         captured["assistant_message_id"] = self.assistant_message_id
         captured["config"] = config
         captured["run"] = run
-        return iter(['event: done\ndata: {}\n\n'])
+        return iter(["event: done\ndata: {}\n\n"])
 
     monkeypatch.setattr(
         agent_service.SessionPromptProcessor,
@@ -648,7 +673,7 @@ def test_stream_active_uses_unified_lifecycle_helper(monkeypatch: pytest.MonkeyP
 
     items = list(processor._stream_active())
 
-    assert items == ['event: done\ndata: {}\n\n']
+    assert items == ["event: done\ndata: {}\n\n"]
     assert captured["assistant_message_id"] == "message_unified_lifecycle"
     assert captured["config"] is None
     assert callable(captured["run"])
@@ -662,7 +687,7 @@ def test_run_loop_delegates_to_session_processor_prompt_loop(monkeypatch: pytest
 
     def _fake_stream_prompt_loop(config):  # noqa: ANN001, ANN202
         captured["config"] = config
-        yield 'event: done\ndata: {}\n\n'
+        yield "event: done\ndata: {}\n\n"
 
     monkeypatch.setattr(
         agent_service,
@@ -681,7 +706,7 @@ def test_run_loop_delegates_to_session_processor_prompt_loop(monkeypatch: pytest
 
     items = list(processor._run_loop([{"role": "user", "content": "continue"}]))
 
-    assert items == ['event: done\ndata: {}\n\n']
+    assert items == ["event: done\ndata: {}\n\n"]
     config = captured["config"]
     assert config is not None
     assert config.assistant_message_id == "message_delegated_prompt_loop"
@@ -696,8 +721,10 @@ def test_run_loop_scales_step_budget_with_reasoning_level(monkeypatch: pytest.Mo
     captured: list[tuple[str, int]] = []
 
     def _fake_stream_prompt_loop(config):  # noqa: ANN001, ANN202
-        captured.append((str(getattr(config.options, "reasoning_level", "")), int(config.max_steps)))
-        yield 'event: done\ndata: {}\n\n'
+        captured.append(
+            (str(getattr(config.options, "reasoning_level", "")), int(config.max_steps))
+        )
+        yield "event: done\ndata: {}\n\n"
 
     monkeypatch.setattr(
         agent_service,
@@ -746,7 +773,9 @@ def test_fill_workspace_defaults_scales_search_profile_with_reasoning_level():
         low_options,
     )
     high_read = agent_service._fill_workspace_defaults(
-        agent_service.ToolCall(id="call_high_read", name="read", arguments={"file_path": "/tmp/workspace/demo.py"}),
+        agent_service.ToolCall(
+            id="call_high_read", name="read", arguments={"file_path": "/tmp/workspace/demo.py"}
+        ),
         high_options,
     )
     low_list = agent_service._fill_workspace_defaults(
@@ -768,7 +797,9 @@ def test_fill_workspace_defaults_scales_search_profile_with_reasoning_level():
     assert preserved.arguments["limit"] == 7
 
 
-def test_run_model_turn_events_delegates_to_session_processor_runtime(monkeypatch: pytest.MonkeyPatch):
+def test_run_model_turn_events_delegates_to_session_processor_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+):
     from packages.agent import agent_service
 
     _configure_test_db(monkeypatch)
@@ -777,7 +808,9 @@ def test_run_model_turn_events_delegates_to_session_processor_runtime(monkeypatc
     def _fake_stream_model_turn(config, callbacks):  # noqa: ANN001, ANN202
         captured["config"] = config
         captured["callbacks"] = callbacks
-        yield agent_service._prompt_event("usage", {"model": "fake-model", "input_tokens": 1, "output_tokens": 2})
+        yield agent_service._prompt_event(
+            "usage", {"model": "fake-model", "input_tokens": 1, "output_tokens": 2}
+        )
         return agent_service.ModelTurnResult(status="continue", content="delegated")
 
     monkeypatch.setattr(
@@ -789,7 +822,9 @@ def test_run_model_turn_events_delegates_to_session_processor_runtime(monkeypatc
     items = list(
         agent_service._run_model_turn_events(
             [{"role": "user", "content": "continue"}],
-            agent_service.AgentRuntimeOptions(session_id="delegated_model_turn_session", mode="build"),
+            agent_service.AgentRuntimeOptions(
+                session_id="delegated_model_turn_session", mode="build"
+            ),
         )
     )
 
@@ -802,7 +837,9 @@ def test_run_model_turn_events_delegates_to_session_processor_runtime(monkeypatc
     assert callable(captured["callbacks"].build_turn_tools)
 
 
-def test_process_tool_calls_delegates_to_session_processor_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_process_tool_calls_delegates_to_session_processor_runtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     from packages.agent import agent_service
 
     _configure_test_db(monkeypatch)
@@ -817,7 +854,9 @@ def test_process_tool_calls_delegates_to_session_processor_runtime(monkeypatch: 
     def _fake_stream_tool_processing(config, callbacks):  # noqa: ANN001, ANN202
         captured["config"] = config
         captured["callbacks"] = callbacks
-        yield agent_service._prompt_event("tool_start", {"id": "call_delegate_1", "name": "bash", "args": {"command": "echo hi"}})
+        yield agent_service._prompt_event(
+            "tool_start", {"id": "call_delegate_1", "name": "bash", "args": {"command": "echo hi"}}
+        )
         return "continue", config.messages, config.step_index + 1
 
     monkeypatch.setattr(
@@ -828,7 +867,11 @@ def test_process_tool_calls_delegates_to_session_processor_runtime(monkeypatch: 
 
     iterator = agent_service._process_tool_calls(
         messages=[{"role": "user", "content": "continue"}],
-        tool_calls=[agent_service.ToolCall(id="call_delegate_1", name="bash", arguments={"command": "echo hi"})],
+        tool_calls=[
+            agent_service.ToolCall(
+                id="call_delegate_1", name="bash", arguments={"command": "echo hi"}
+            )
+        ],
         step_index=2,
         options=agent_service.AgentRuntimeOptions(
             session_id="delegated_tool_call_processing_session",
@@ -907,7 +950,9 @@ def test_prompt_instance_manager_waits_for_release_and_resolves_waiter() -> None
     thread.join(timeout=1)
 
 
-def test_prompt_result_payload_includes_persisted_message(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_prompt_result_payload_includes_persisted_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _configure_test_db(monkeypatch)
     _reset_runtime_state()
     ensure_session_record(
@@ -924,7 +969,9 @@ def test_prompt_result_payload_includes_persisted_message(monkeypatch: pytest.Mo
         parts=[{"id": "part_text_1", "type": "text", "text": "payload-ready"}],
     )
 
-    payload = agent_service._prompt_result_payload("prompt_result_payload_session", "message_assistant_1")
+    payload = agent_service._prompt_result_payload(
+        "prompt_result_payload_session", "message_assistant_1"
+    )
 
     assert payload is not None
     assert payload["messageID"] == "message_assistant_1"
@@ -1041,7 +1088,9 @@ def test_native_prompt_persistence_does_not_reparse_raw_sse_in_processor_path(
     def _unexpected_consume(self, raw):  # noqa: ANN001, ANN202
         raise AssertionError(f"native processor path should not call consume(raw): {raw}")
 
-    monkeypatch.setattr(session_runtime_module.SessionStreamPersistence, "consume", _unexpected_consume)
+    monkeypatch.setattr(
+        session_runtime_module.SessionStreamPersistence, "consume", _unexpected_consume
+    )
     client = TestClient(_build_app())
 
     created = client.post(
@@ -1086,7 +1135,9 @@ def test_native_prompt_processor_mutates_session_state_without_apply_event_bridg
         apply_calls.append((str(event_name), dict(data)))
         return original_apply_event(self, event_name, data)
 
-    monkeypatch.setattr(session_runtime_module.SessionStreamPersistence, "apply_event", _tracked_apply_event)
+    monkeypatch.setattr(
+        session_runtime_module.SessionStreamPersistence, "apply_event", _tracked_apply_event
+    )
     client = TestClient(_build_app())
 
     created = client.post(
@@ -1373,7 +1424,9 @@ def test_session_prompt_route_loads_persisted_user_message_for_claw_prompt(
     prompt_resp = client.post(
         "/session/session_prompt_claw_history_session/message",
         json={
-            "parts": [{"type": "text", "text": "我引用了 SigLIP 2，请分析一下其架构图，并引用原图。"}],
+            "parts": [
+                {"type": "text", "text": "我引用了 SigLIP 2，请分析一下其架构图，并引用原图。"}
+            ],
             "mode": "build",
             "workspace_path": str(tmp_path),
             "agent_backend_id": "claw",
@@ -1580,7 +1633,11 @@ def test_cli_chat_prompt_reuses_shared_turn_context_sections(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -1592,7 +1649,12 @@ def test_cli_chat_prompt_reuses_shared_turn_context_sections(
     monkeypatch.setattr(
         agent_service,
         "_available_turn_function_tools",
-        lambda *_args, **_kwargs: ["get_paper_detail", "analyze_figures", "get_paper_analysis", "search_arxiv"],
+        lambda *_args, **_kwargs: [
+            "get_paper_detail",
+            "analyze_figures",
+            "get_paper_analysis",
+            "search_arxiv",
+        ],
     )
 
     prompt = agent_service._build_cli_chat_prompt(
@@ -1630,7 +1692,11 @@ def test_cli_chat_prompt_includes_latest_user_system_and_output_constraint(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -1684,7 +1750,11 @@ def test_cli_chat_prompt_renders_tool_chain_transcript_and_orphan_recovery(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -1711,7 +1781,9 @@ def test_cli_chat_prompt_renders_tool_chain_transcript_and_orphan_recovery(
                         "type": "function",
                         "function": {
                             "name": "get_paper_detail",
-                            "arguments": json.dumps({"paper_id": "paper_siglip2"}, ensure_ascii=False),
+                            "arguments": json.dumps(
+                                {"paper_id": "paper_siglip2"}, ensure_ascii=False
+                            ),
                         },
                     }
                 ],
@@ -1958,7 +2030,9 @@ def test_native_prompt_hard_stops_local_tool_execution_on_reserved_summary_turn(
     FakeBudgetHardStopLLM.calls = []
     monkeypatch.setattr(agent_service, "LLMClient", FakeBudgetHardStopLLM)
     monkeypatch.setattr(agent_service, "_get_max_tool_steps", lambda *_args, **_kwargs: 2)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
     executed_commands: list[str] = []
 
     def _fake_execute_tool_stream(_name, arguments, context=None):  # noqa: ANN001, ANN202
@@ -2008,7 +2082,8 @@ def test_native_prompt_hard_stops_local_tool_execution_on_reserved_summary_turn(
     assert "未执行此工具调用" in str(skipped_results[0].get("content") or "")
     assert any(
         str(item.get("role") or "") == "assistant"
-        and "预算总结：第一步检索已完成，第二个工具调用因预算上限被跳过。" in str(item.get("content") or "")
+        and "预算总结：第一步检索已完成，第二个工具调用因预算上限被跳过。"
+        in str(item.get("content") or "")
         for item in messages
     )
 
@@ -2020,7 +2095,9 @@ def test_native_prompt_hard_stops_repeated_identical_tool_calls(
     _configure_test_db(monkeypatch)
     _reset_runtime_state()
     monkeypatch.setattr(agent_service, "LLMClient", FakeRepeatedToolTurnLLM)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
     executed_commands: list[str] = []
 
     def _fake_execute_tool_stream(_name, arguments, context=None):  # noqa: ANN001, ANN202
@@ -2102,7 +2179,7 @@ def test_session_prompt_no_reply_only_persists_user_message(
         nonlocal called
         called = True
         yield 'event: text_delta\ndata: {"content":"unexpected"}\n\n'
-        yield 'event: done\ndata: {}\n\n'
+        yield "event: done\ndata: {}\n\n"
 
     monkeypatch.setattr(session_runtime_router, "stream_chat", _unexpected_stream_chat)
 
@@ -2329,12 +2406,14 @@ def test_queued_prompt_uses_callback_queue_resume_path(
 
     first_step_started = threading.Event()
     unsubscribe = session_bus.subscribe_all(
-        lambda event: first_step_started.set()
-        if (
-            event.type == SessionBusEvent.STEP_STARTED
-            and str(event.properties.get("sessionID") or "") == "queued_prompt_callback_session"
+        lambda event: (
+            first_step_started.set()
+            if (
+                event.type == SessionBusEvent.STEP_STARTED
+                and str(event.properties.get("sessionID") or "") == "queued_prompt_callback_session"
+            )
+            else None
         )
-        else None
     )
     results: dict[str, str] = {}
 
@@ -2365,7 +2444,8 @@ def test_queued_prompt_uses_callback_queue_resume_path(
     assert "second-saw-first" in results["second"]
     assert len(FakeQueuedPromptLLM.calls) == 2
     assert any(
-        str(item.get("role") or "") == "assistant" and "first-done" in str(item.get("content") or "")
+        str(item.get("role") or "") == "assistant"
+        and "first-done" in str(item.get("content") or "")
         for item in FakeQueuedPromptLLM.calls[1]
     )
 
@@ -2404,12 +2484,15 @@ def test_queued_prompt_resume_existing_reuses_active_prompt_instance(
 
     first_step_started = threading.Event()
     unsubscribe = session_bus.subscribe_all(
-        lambda event: first_step_started.set()
-        if (
-            event.type == SessionBusEvent.STEP_STARTED
-            and str(event.properties.get("sessionID") or "") == "queued_prompt_resume_existing_session"
+        lambda event: (
+            first_step_started.set()
+            if (
+                event.type == SessionBusEvent.STEP_STARTED
+                and str(event.properties.get("sessionID") or "")
+                == "queued_prompt_resume_existing_session"
+            )
+            else None
         )
-        else None
     )
     results: dict[str, str] = {}
 
@@ -2501,12 +2584,15 @@ def test_queued_prompt_resume_restores_processor_from_minimal_callback_context(
 
     first_step_started = threading.Event()
     unsubscribe = session_bus.subscribe_all(
-        lambda event: first_step_started.set()
-        if (
-            event.type == SessionBusEvent.STEP_STARTED
-            and str(event.properties.get("sessionID") or "") == "queued_prompt_processor_reuse_session"
+        lambda event: (
+            first_step_started.set()
+            if (
+                event.type == SessionBusEvent.STEP_STARTED
+                and str(event.properties.get("sessionID") or "")
+                == "queued_prompt_processor_reuse_session"
+            )
+            else None
         )
-        else None
     )
     results: dict[str, str] = {}
 
@@ -2741,7 +2827,9 @@ def test_system_prompt_tool_binding_prefers_apply_patch_for_gpt5(
         provider = "openai"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="openai", base_url="https://api.openai.com/v1", model="gpt-5.2")
+            return SimpleNamespace(
+                provider="openai", base_url="https://api.openai.com/v1", model="gpt-5.2"
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeGpt5LLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -2782,7 +2870,11 @@ def test_system_prompt_tool_binding_respects_user_tool_overrides(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -2822,7 +2914,11 @@ def test_system_prompt_tool_binding_describes_plan_mode_controls(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -2842,7 +2938,11 @@ def test_system_prompt_tool_binding_describes_plan_mode_controls(
     )
 
     joined = "\n\n".join(messages)
-    available_line = next(line for line in joined.splitlines() if line.startswith("Available function tools this turn:"))
+    available_line = next(
+        line
+        for line in joined.splitlines()
+        if line.startswith("Available function tools this turn:")
+    )
     assert "Plan mode stays read-only except for the plan file tools listed above." in joined
     assert "Plan-mode control tools in this turn: question, plan_exit." in joined
     assert "Bash is not exposed in this turn." not in joined
@@ -2868,7 +2968,11 @@ def test_normalize_messages_keeps_latest_user_tool_binding_across_tool_history(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -2911,7 +3015,11 @@ def test_normalize_messages_keeps_latest_user_tool_binding_across_tool_history(
     ]
     joined = "\n\n".join(system_messages)
     assert "Bash is not exposed in this turn." in joined
-    assert any(item.get("tools") == {"bash": False} for item in normalized if str(item.get("role") or "") == "user")
+    assert any(
+        item.get("tools") == {"bash": False}
+        for item in normalized
+        if str(item.get("role") or "") == "user"
+    )
 
 
 def test_normalize_messages_recovers_orphan_tool_result_into_user_context(
@@ -2929,7 +3037,11 @@ def test_normalize_messages_recovers_orphan_tool_result_into_user_context(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -2968,7 +3080,8 @@ def test_normalize_messages_recovers_orphan_tool_result_into_user_context(
         item
         for item in normalized
         if str(item.get("role") or "") == "user"
-        and "Recovered result from an earlier `search_papers` tool call." in str(item.get("content") or "")
+        and "Recovered result from an earlier `search_papers` tool call."
+        in str(item.get("content") or "")
     ]
     assert len(recovered) == 1
     assert "Summary: 已找到 2 篇候选论文" in str(recovered[0]["content"])
@@ -2990,7 +3103,11 @@ def test_system_prompt_reasoning_profile_varies_with_reasoning_level(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -3042,7 +3159,11 @@ def test_system_prompt_adds_repo_lookup_strategy_for_code_fact_queries(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -3091,7 +3212,11 @@ def test_system_prompt_adds_academic_lookup_strategy_for_paper_queries(
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -3113,10 +3238,19 @@ def test_system_prompt_adds_academic_lookup_strategy_for_paper_queries(
 
     joined = "\n\n".join(messages)
     assert "Academic lookup strategy for this turn:" in joined
-    assert "Use search_papers first for papers already in the local library. It returns a compact candidate list" in joined
-    assert "Use search_literature for external paper discovery across arXiv, conferences, and journals" in joined
+    assert (
+        "Use search_papers first for papers already in the local library. It returns a compact candidate list"
+        in joined
+    )
+    assert (
+        "Use search_literature for external paper discovery across arXiv, conferences, and journals"
+        in joined
+    )
     assert "Use search_arxiv for external paper discovery and arXiv candidate lookup." in joined
-    assert "Do not start with broad web search if local library or arXiv tools can answer the request directly." in joined
+    assert (
+        "Do not start with broad web search if local library or arXiv tools can answer the request directly."
+        in joined
+    )
 
 
 def test_system_prompt_adds_figure_grounded_mounted_paper_guidance_without_academic_keywords(
@@ -3134,7 +3268,11 @@ def test_system_prompt_adds_figure_grounded_mounted_paper_guidance_without_acade
         provider = "anthropic"
 
         def _resolve_model_target(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            return SimpleNamespace(provider="anthropic", base_url="https://api.anthropic.com", model="claude-3-7-sonnet")
+            return SimpleNamespace(
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                model="claude-3-7-sonnet",
+            )
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeClaudeLLM)
     monkeypatch.setattr(agent_service, "list_local_skills", lambda: [])
@@ -3166,7 +3304,10 @@ def test_system_prompt_adds_figure_grounded_mounted_paper_guidance_without_acade
     assert "This turn is figure-grounded on an already mounted local paper." in joined
     assert "Inspect get_paper_detail first" in joined
     assert "call analyze_figures before answering" in joined
-    assert "Do not call get_paper_analysis / analyze_paper_rounds just to recover figure refs" in joined
+    assert (
+        "Do not call get_paper_analysis / analyze_paper_rounds just to recover figure refs"
+        in joined
+    )
 
 
 @REMOVED_NATIVE_ROUTE
@@ -3211,12 +3352,15 @@ def test_active_prompt_handoff_runs_callback_loop_inline(
 
     first_step_started = threading.Event()
     unsubscribe = session_bus.subscribe_all(
-        lambda event: first_step_started.set()
-        if (
-            event.type == SessionBusEvent.STEP_STARTED
-            and str(event.properties.get("sessionID") or "") == "queued_prompt_inline_handoff_session"
+        lambda event: (
+            first_step_started.set()
+            if (
+                event.type == SessionBusEvent.STEP_STARTED
+                and str(event.properties.get("sessionID") or "")
+                == "queued_prompt_inline_handoff_session"
+            )
+            else None
         )
-        else None
     )
     results: dict[str, str] = {}
 
@@ -3324,11 +3468,21 @@ def test_queued_prompts_catch_up_in_single_session_loop_and_share_final_result(
     assert [event.type for event in events].count(SessionBusEvent.IDLE) == 1
 
     history = client.get("/session/queued_prompt_fifo_session/message").json()
-    assert [item["info"]["role"] for item in history] == ["user", "assistant", "user", "user", "assistant"]
+    assert [item["info"]["role"] for item in history] == [
+        "user",
+        "assistant",
+        "user",
+        "user",
+        "assistant",
+    ]
     assert history[1]["info"]["parentID"] == history[0]["info"]["id"]
     assert history[4]["info"]["parentID"] == history[3]["info"]["id"]
     assistant_texts = [
-        "".join(str(part.get("text") or "") for part in item["parts"] if str(part.get("type") or "") == "text")
+        "".join(
+            str(part.get("text") or "")
+            for part in item["parts"]
+            if str(part.get("type") or "") == "text"
+        )
         for item in history
         if str(item["info"]["role"] or "") == "assistant"
     ]
@@ -3358,12 +3512,14 @@ def test_queued_prompt_is_rejected_when_active_prompt_errors(
 
     first_step_started = threading.Event()
     unsubscribe = session_bus.subscribe_all(
-        lambda event: first_step_started.set()
-        if (
-            event.type == SessionBusEvent.STEP_STARTED
-            and str(event.properties.get("sessionID") or "") == "queued_prompt_error_session"
+        lambda event: (
+            first_step_started.set()
+            if (
+                event.type == SessionBusEvent.STEP_STARTED
+                and str(event.properties.get("sessionID") or "") == "queued_prompt_error_session"
+            )
+            else None
         )
-        else None
     )
     results: dict[str, str] = {}
 
@@ -3460,7 +3616,7 @@ def test_queued_prompt_handoff_resolves_all_waiters_from_single_session_loop(
                 [
                     f'event: assistant_message_id\ndata: {{"message_id":"message_{label}"}}\n\n',
                     f'event: text_delta\ndata: {{"content":"{label}-output"}}\n\n',
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ],
                 agent_service.PromptStreamControl(
                     saw_done=True,
@@ -3516,13 +3672,21 @@ def test_queued_prompt_handoff_resolves_all_waiters_from_single_session_loop(
         assert first_callback.items == []
         assert second_callback.items == []
         assert third_callback.items == []
-        first_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(first_callback))
-        second_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(second_callback))
-        third_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(third_callback))
+        first_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(first_callback)
+        )
+        second_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(second_callback)
+        )
+        third_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(third_callback)
+        )
         assert any("first-output" in item for item in first_items)
         assert any("first-output" in item for item in second_items)
         assert any("first-output" in item for item in third_items)
-        while time.time() < deadline and session_lifecycle.get_prompt_instance(session_id) is not None:
+        while (
+            time.time() < deadline and session_lifecycle.get_prompt_instance(session_id) is not None
+        ):
             time.sleep(0.05)
         assert session_lifecycle.get_prompt_instance(session_id) is None
     finally:
@@ -3597,7 +3761,7 @@ def test_queued_prompt_resume_does_not_start_parallel_loops(
                 [
                     f'event: assistant_message_id\ndata: {{"message_id":"message_{label}"}}\n\n',
                     f'event: text_delta\ndata: {{"content":"{label}-output"}}\n\n',
-                    'event: done\ndata: {}\n\n',
+                    "event: done\ndata: {}\n\n",
                 ],
                 agent_service.PromptStreamControl(
                     saw_done=True,
@@ -3676,8 +3840,12 @@ def test_queued_prompt_resume_does_not_start_parallel_loops(
         assert second_callback.outcome == "resolved"
         assert first_callback.items == []
         assert second_callback.items == []
-        first_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(first_callback))
-        second_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(second_callback))
+        first_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(first_callback)
+        )
+        second_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(second_callback)
+        )
         assert any("first-output" in item for item in first_items)
         assert any("first-output" in item for item in second_items)
     finally:
@@ -3700,7 +3868,7 @@ def test_callback_stream_uses_saved_control_to_complete_tail():
 
     assert any("partial" in item for item in items)
     assert any("event: error" in item and "callback failed" in item for item in items)
-    assert items[-1] == 'event: done\ndata: {}\n\n'
+    assert items[-1] == "event: done\ndata: {}\n\n"
 
 
 def test_prompt_event_stream_driver_accepts_structured_prompt_event_without_sse_parse(
@@ -3800,7 +3968,7 @@ def test_reject_queued_callbacks_replays_error_without_buffered_tail():
     items = list(agent_service.SessionPromptProcessor._iter_callback_stream(callback))
 
     assert any("event: error" in item and "reject replay" in item for item in items)
-    assert items[-1] == 'event: done\ndata: {}\n\n'
+    assert items[-1] == "event: done\ndata: {}\n\n"
 
 
 def test_callback_stream_reconstructs_terminal_tail_from_resolved_callback():
@@ -3819,7 +3987,7 @@ def test_callback_stream_reconstructs_terminal_tail_from_resolved_callback():
     assert len(items) == 2
     assert "event: assistant_message_id" in items[0]
     assert "message_resolved_tail" in items[0]
-    assert items[1] == 'event: done\ndata: {}\n\n'
+    assert items[1] == "event: done\ndata: {}\n\n"
 
 
 def test_callback_stream_replays_resolved_message_when_raw_items_absent():
@@ -3851,12 +4019,14 @@ def test_callback_stream_replays_resolved_message_when_raw_items_absent():
     assert "part_text_one" in items[1]
     assert "event: text_delta" in items[2] and "第二段" in items[2]
     assert "part_text_two" in items[2]
-    assert items[3] == 'event: done\ndata: {}\n\n'
+    assert items[3] == "event: done\ndata: {}\n\n"
 
 
 def test_callback_stream_backfills_text_from_resolved_message_when_raw_tail_lacks_text():
     _reset_runtime_state()
-    callback = session_lifecycle.queue_prompt_callback("queued_callback_partial_result_message_session")
+    callback = session_lifecycle.queue_prompt_callback(
+        "queued_callback_partial_result_message_session"
+    )
     callback.push('event: assistant_message_id\ndata: {"message_id":"message_partial_result"}\n\n')
     callback.resolve(
         result={
@@ -3881,7 +4051,7 @@ def test_callback_stream_backfills_text_from_resolved_message_when_raw_tail_lack
     assert "message_partial_result" in items[0]
     assert "event: text_delta" in items[1] and "补回正文" in items[1]
     assert "part_text_partial" in items[1]
-    assert items[2] == 'event: done\ndata: {}\n\n'
+    assert items[2] == "event: done\ndata: {}\n\n"
 
 
 def test_callback_stream_reconstructs_action_confirm_from_saved_control():
@@ -3918,7 +4088,7 @@ def test_callback_stream_reconstructs_action_confirm_from_saved_control():
     assert "event: text_delta" in items[1] and "先暂停一下" in items[1]
     assert "event: action_confirm" in items[2]
     assert "permission_pause_tail" in items[2]
-    assert items[3] == 'event: done\ndata: {}\n\n'
+    assert items[3] == "event: done\ndata: {}\n\n"
 
 
 def test_prompt_callback_exposes_resolve_reject_outcomes():
@@ -3957,8 +4127,12 @@ def test_prompt_callback_exposes_resolve_reject_outcomes():
 
 def test_prompt_callback_loop_claim_is_single_owner():
     _reset_runtime_state()
-    session_lifecycle.queue_prompt_callback("queued_callback_loop_claim_session", payload={"label": "first"})
-    session_lifecycle.queue_prompt_callback("queued_callback_loop_claim_session", payload={"label": "second"})
+    session_lifecycle.queue_prompt_callback(
+        "queued_callback_loop_claim_session", payload={"label": "first"}
+    )
+    session_lifecycle.queue_prompt_callback(
+        "queued_callback_loop_claim_session", payload={"label": "second"}
+    )
 
     status, first = claim_prompt_callback("queued_callback_loop_claim_session")
     assert status == "started"
@@ -3978,7 +4152,9 @@ def test_callback_loop_claim_respects_active_prompt_instance_as_single_owner():
     _reset_runtime_state()
     owner = acquire_prompt_instance("queued_callback_prompt_owner_session", wait=False)
     assert owner is not None
-    session_lifecycle.mark_prompt_instance_running("queued_callback_prompt_owner_session", loop_kind="prompt")
+    session_lifecycle.mark_prompt_instance_running(
+        "queued_callback_prompt_owner_session", loop_kind="prompt"
+    )
     callback = session_lifecycle.queue_prompt_callback(
         "queued_callback_prompt_owner_session",
         payload={"label": "next"},
@@ -4047,7 +4223,9 @@ def test_prompt_instance_handoff_claims_callback_before_finishing_owner():
 
     assert status == "started"
     assert handed_off is callback
-    assert session_lifecycle.get_prompt_instance("queued_callback_handoff_finish_session") is not None
+    assert (
+        session_lifecycle.get_prompt_instance("queued_callback_handoff_finish_session") is not None
+    )
     assert waiter.event.is_set() is False
 
     pause_prompt_instance("queued_callback_handoff_finish_session")
@@ -4066,7 +4244,9 @@ def test_finish_prompt_instance_finishes_when_queue_empty():
     )
 
     assert session_lifecycle.get_prompt_instance("queued_callback_finish_only_session") is None
-    assert wait_for_prompt_completion(waiter, timeout_ms=100) == {"messageID": "message_finish_only"}
+    assert wait_for_prompt_completion(waiter, timeout_ms=100) == {
+        "messageID": "message_finish_only"
+    }
 
 
 def test_drain_prompt_callbacks_then_finish_prompt_instance_drains_queue_atomically():
@@ -4074,8 +4254,12 @@ def test_drain_prompt_callbacks_then_finish_prompt_instance_drains_queue_atomica
     owner = acquire_prompt_instance("queued_callback_reject_finish_session", wait=False)
     assert owner is not None
     waiter = register_prompt_waiter("queued_callback_reject_finish_session")
-    first = session_lifecycle.queue_prompt_callback("queued_callback_reject_finish_session", payload={"label": "first"})
-    second = session_lifecycle.queue_prompt_callback("queued_callback_reject_finish_session", payload={"label": "second"})
+    first = session_lifecycle.queue_prompt_callback(
+        "queued_callback_reject_finish_session", payload={"label": "first"}
+    )
+    second = session_lifecycle.queue_prompt_callback(
+        "queued_callback_reject_finish_session", payload={"label": "second"}
+    )
 
     rejected = drain_prompt_callbacks("queued_callback_reject_finish_session")
     finish_prompt_instance(
@@ -4086,7 +4270,9 @@ def test_drain_prompt_callbacks_then_finish_prompt_instance_drains_queue_atomica
     assert rejected == [first, second]
     assert session_lifecycle.get_prompt_instance("queued_callback_reject_finish_session") is None
     assert session_lifecycle.queued_prompt_callbacks("queued_callback_reject_finish_session") == []
-    assert wait_for_prompt_completion(waiter, timeout_ms=100) == {"messageID": "message_reject_finish"}
+    assert wait_for_prompt_completion(waiter, timeout_ms=100) == {
+        "messageID": "message_reject_finish"
+    }
 
 
 def test_queued_prompt_resolves_waiters_from_latest_finished_message_when_no_pending_turn(
@@ -4135,7 +4321,9 @@ def test_queued_prompt_resolves_waiters_from_latest_finished_message_when_no_pen
     monkeypatch.setattr(
         agent_service.SessionPromptProcessor,
         "_processor_from_callback",
-        classmethod(lambda *_args, **_kwargs: pytest.fail("processor should not run when no pending turn")),
+        classmethod(
+            lambda *_args, **_kwargs: pytest.fail("processor should not run when no pending turn")
+        ),
     )
 
     try:
@@ -4167,13 +4355,21 @@ def test_queued_prompt_resolves_waiters_from_latest_finished_message_when_no_pen
         assert first_callback.control is None
         assert second_callback.control is None
         assert third_callback.control is None
-        first_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(first_callback))
-        second_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(second_callback))
-        third_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(third_callback))
+        first_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(first_callback)
+        )
+        second_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(second_callback)
+        )
+        third_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(third_callback)
+        )
         assert any("latest-output" in item for item in first_items)
         assert any("latest-output" in item for item in second_items)
         assert any("latest-output" in item for item in third_items)
-        while time.time() < deadline and session_lifecycle.get_prompt_instance(session_id) is not None:
+        while (
+            time.time() < deadline and session_lifecycle.get_prompt_instance(session_id) is not None
+        ):
             time.sleep(0.05)
         assert session_lifecycle.get_prompt_instance(session_id) is None
     finally:
@@ -4229,10 +4425,10 @@ def test_queued_prompt_pause_does_not_consume_later_callbacks(
                         [
                             'event: assistant_message_id\ndata: {"message_id":"message_pause_first"}\n\n',
                             (
-                                'event: action_confirm\ndata: '
+                                "event: action_confirm\ndata: "
                                 '{"id":"permission_pause_1","assistant_message_id":"message_pause_first"}\n\n'
                             ),
-                            'event: done\ndata: {}\n\n',
+                            "event: done\ndata: {}\n\n",
                         ],
                         agent_service.PromptStreamControl(
                             saw_done=True,
@@ -4244,7 +4440,7 @@ def test_queued_prompt_pause_does_not_consume_later_callbacks(
                     [
                         'event: assistant_message_id\ndata: {"message_id":"message_pause_second"}\n\n',
                         'event: text_delta\ndata: {"content":"should-not-run"}\n\n',
-                        'event: done\ndata: {}\n\n',
+                        "event: done\ndata: {}\n\n",
                     ],
                     agent_service.PromptStreamControl(
                         saw_done=True,
@@ -4276,7 +4472,9 @@ def test_queued_prompt_pause_does_not_consume_later_callbacks(
         assert first_callback.control is not None
         assert first_callback.control.paused is True
         assert first_callback.result == {"messageID": "message_pause_first"}
-        first_items = list(agent_service.SessionPromptProcessor._iter_callback_stream(first_callback))
+        first_items = list(
+            agent_service.SessionPromptProcessor._iter_callback_stream(first_callback)
+        )
         assert any("event: action_confirm" in item for item in first_items)
         assert second_callback.closed is False
         assert second_callback.items == []
@@ -4340,7 +4538,9 @@ def test_streaming_parts_publish_delta_events_with_stable_part_ids(
             continue
         assert str(event.properties.get("messageID") or "").strip() != ""
         assert str(event.properties.get("field") or "") == "text"
-        delta_by_part[str(event.properties.get("partID") or "")] += str(event.properties.get("delta") or "")
+        delta_by_part[str(event.properties.get("partID") or "")] += str(
+            event.properties.get("delta") or ""
+        )
 
     assert placeholder_parts
     assert delta_by_part

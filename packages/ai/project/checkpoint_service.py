@@ -66,7 +66,9 @@ def build_checkpoint_settings(
         next_metadata["human_checkpoint_enabled"] = normalized_enabled
         next_metadata["auto_proceed"] = not normalized_enabled
     next_metadata["notification_recipients"] = normalize_notification_recipients(
-        notification_recipients if notification_recipients is not None else next_metadata.get("notification_recipients")
+        notification_recipients
+        if notification_recipients is not None
+        else next_metadata.get("notification_recipients")
     )
     if not bool(next_metadata.get("human_checkpoint_enabled")):
         next_metadata["human_checkpoint_enabled"] = False
@@ -159,7 +161,9 @@ def mark_run_waiting_for_stage_checkpoint(
     resume_stage_label: str | None,
     stage_summary: str | None = None,
 ) -> str:
-    completed_label = str(completed_stage_label or completed_stage_id or "当前阶段").strip() or "当前阶段"
+    completed_label = (
+        str(completed_stage_label or completed_stage_id or "当前阶段").strip() or "当前阶段"
+    )
     resume_label = str(resume_stage_label or resume_stage_id or "下一阶段").strip() or "下一阶段"
     message = f"阶段“{completed_label}”已完成，等待人工确认后继续执行“{resume_label}”。"
     payload = {
@@ -203,7 +207,8 @@ def _mark_run_waiting_for_checkpoint(
             and current_pending
             and str(current_pending.get("status") or "").strip().lower() == "pending"
             and str(current_pending.get("type") or "").strip().lower() == normalized_type
-            and str(current_pending.get("resume_stage_id") or "").strip() == str(normalized_resume_stage or "")
+            and str(current_pending.get("resume_stage_id") or "").strip()
+            == str(normalized_resume_stage or "")
         ):
             _sync_checkpoint_task(run, metadata, task_id=run.task_id or task_id)
             return str(run.task_id or task_id)
@@ -212,12 +217,16 @@ def _mark_run_waiting_for_checkpoint(
         next_payload = dict(checkpoint_payload)
         next_payload["status"] = "pending"
         next_payload["requested_at"] = requested_at
-        next_payload["notification_recipients"] = list(metadata.get("notification_recipients") or [])
+        next_payload["notification_recipients"] = list(
+            metadata.get("notification_recipients") or []
+        )
         metadata["checkpoint_state"] = "pending"
         metadata["checkpoint_requested_at"] = requested_at
         metadata["pending_checkpoint"] = next_payload
         metadata["checkpoint_resume_stage_id"] = normalized_resume_stage
-        metadata["checkpoint_resume_stage_label"] = str(next_payload.get("resume_stage_label") or "").strip() or None
+        metadata["checkpoint_resume_stage_label"] = (
+            str(next_payload.get("resume_stage_label") or "").strip() or None
+        )
         project_repo.update_run(
             run.id,
             task_id=task_id,
@@ -265,7 +274,10 @@ def apply_checkpoint_response(
 
         metadata = build_checkpoint_settings(run.metadata_json or {}, reset_state=False)
         current_pending = pending_checkpoint(metadata)
-        if not current_pending or str(current_pending.get("status") or "").strip().lower() != "pending":
+        if (
+            not current_pending
+            or str(current_pending.get("status") or "").strip().lower() != "pending"
+        ):
             raise ValueError("当前运行没有待处理的人机确认")
 
         responded_at = datetime.now(UTC).isoformat()
@@ -390,7 +402,10 @@ def process_checkpoint_response(
             try:
                 notify_project_run_status(run_id, "failed")
             except Exception:
-                logger.exception("failed to send failure notification after checkpoint submit error for run %s", run_id)
+                logger.exception(
+                    "failed to send failure notification after checkpoint submit error for run %s",
+                    run_id,
+                )
             raise
 
     try:
@@ -401,10 +416,20 @@ def process_checkpoint_response(
 
 
 def _sync_checkpoint_task(run, metadata: dict[str, Any], *, task_id: str) -> None:
-    title = str(run.title or getattr(run.workflow_type, "value", run.workflow_type) or "项目运行").strip() or "项目运行"
-    workspace_path = str(run.run_directory or run.remote_workdir or run.workdir or "").strip() or None
+    title = (
+        str(
+            run.title or getattr(run.workflow_type, "value", run.workflow_type) or "项目运行"
+        ).strip()
+        or "项目运行"
+    )
+    workspace_path = (
+        str(run.run_directory or run.remote_workdir or run.workdir or "").strip() or None
+    )
     pending = pending_checkpoint(metadata) or {}
-    message = str(pending.get("message") or CHECKPOINT_PENDING_MESSAGE).strip() or CHECKPOINT_PENDING_MESSAGE
+    message = (
+        str(pending.get("message") or CHECKPOINT_PENDING_MESSAGE).strip()
+        or CHECKPOINT_PENDING_MESSAGE
+    )
     tracker_metadata = {
         "source": "project",
         "source_id": str(run.id),
@@ -419,8 +444,12 @@ def _sync_checkpoint_task(run, metadata: dict[str, Any], *, task_id: str) -> Non
         "checkpoint_state": "pending",
         "checkpoint_required": True,
         "checkpoint_type": str(pending.get("type") or "preflight"),
-        "checkpoint_resume_stage_id": str(metadata.get("checkpoint_resume_stage_id") or "").strip() or None,
-        "checkpoint_resume_stage_label": str(metadata.get("checkpoint_resume_stage_label") or "").strip() or None,
+        "checkpoint_resume_stage_id": str(metadata.get("checkpoint_resume_stage_id") or "").strip()
+        or None,
+        "checkpoint_resume_stage_label": str(
+            metadata.get("checkpoint_resume_stage_label") or ""
+        ).strip()
+        or None,
         "notification_recipients": list(metadata.get("notification_recipients") or []),
     }
     global_tracker.start(task_id, "project_workflow", title, total=100, metadata=tracker_metadata)

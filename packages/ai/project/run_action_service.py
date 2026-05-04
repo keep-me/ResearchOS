@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from packages.agent.workspace.workspace_executor import write_workspace_file
 from packages.agent.workspace.workspace_remote import remote_write_file
 from packages.agent.workspace.workspace_server_registry import get_workspace_server_entry
 from packages.ai.project.amadeus_compat import (
@@ -20,8 +21,11 @@ from packages.ai.project.amadeus_compat import (
 from packages.ai.project.checkpoint_service import build_checkpoint_settings
 from packages.ai.project.execution_service import submit_project_run, supports_project_run
 from packages.ai.project.followup_actions import resolve_followup_action
-from packages.ai.project.workflow_catalog import build_run_orchestration, build_stage_trace, is_active_project_workflow
-from packages.agent.workspace.workspace_executor import write_workspace_file
+from packages.ai.project.workflow_catalog import (
+    build_run_orchestration,
+    build_stage_trace,
+    is_active_project_workflow,
+)
 from packages.domain.enums import ProjectRunStatus, ProjectWorkflowType
 from packages.domain.task_tracker import TaskCancelledError, global_tracker
 from packages.storage.db import session_scope
@@ -89,7 +93,9 @@ def _artifact_ref(run, path: str | None, *, kind: str = "artifact") -> dict[str,
     absolute_path = str(path or "").strip()
     if not absolute_path:
         return None
-    relative_path = _relative_path(_artifact_root_path(run), absolute_path, remote=bool(run.workspace_server_id))
+    relative_path = _relative_path(
+        _artifact_root_path(run), absolute_path, remote=bool(run.workspace_server_id)
+    )
     payload: dict[str, Any] = {
         "kind": kind,
         "path": absolute_path,
@@ -99,7 +105,9 @@ def _artifact_ref(run, path: str | None, *, kind: str = "artifact") -> dict[str,
     return payload
 
 
-def _write_action_file(run, absolute_path: str | None, content: str, *, kind: str = "artifact") -> dict[str, Any] | None:
+def _write_action_file(
+    run, absolute_path: str | None, content: str, *, kind: str = "artifact"
+) -> dict[str, Any] | None:
     target_path = str(absolute_path or "").strip()
     if not target_path:
         return None
@@ -134,7 +142,11 @@ def _write_action_file(run, absolute_path: str | None, content: str, *, kind: st
 def _workflow_label(workflow_type: ProjectWorkflowType | str) -> str:
     compat = get_amadeus_workflow_config(workflow_type)
     label = str(compat.get("label") or "").strip()
-    raw = str(workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type or "").strip()
+    raw = str(
+        workflow_type.value
+        if isinstance(workflow_type, ProjectWorkflowType)
+        else workflow_type or ""
+    ).strip()
     return label or raw.replace("_", " ").strip() or "Workflow"
 
 
@@ -204,7 +216,9 @@ def _build_followup_run_prompt(project, run, action, target, transition: dict[st
     return "\n".join(lines).strip()
 
 
-def _build_action_result_markdown(project, run, action, transition: dict[str, Any], child_run) -> str:
+def _build_action_result_markdown(
+    project, run, action, transition: dict[str, Any], child_run
+) -> str:
     lines = [
         "# Follow-up Workflow Started",
         "",
@@ -239,7 +253,9 @@ def _build_action_result_markdown(project, run, action, transition: dict[str, An
     return "\n".join(lines).strip() + "\n"
 
 
-def _build_action_log(action, run, transition: dict[str, Any], child_run, *, status: str, summary: str) -> str:
+def _build_action_log(
+    action, run, transition: dict[str, Any], child_run, *, status: str, summary: str
+) -> str:
     lines = [
         f"# {transition.get('label') or amadeus_action_label(action.action_type)}",
         "",
@@ -600,7 +616,11 @@ def run_project_run_action(
                 "source_skill": transition.get("source_skill"),
             },
         )
-        _emit_progress(progress_callback, f"正在启动 {transition.get('label') or transition['workflow_type']}。", 52)
+        _emit_progress(
+            progress_callback,
+            f"正在启动 {transition.get('label') or transition['workflow_type']}。",
+            52,
+        )
 
         child_run_id = _create_followup_run(project, run, target, action, transition)
         child_run = _load_child_run(child_run_id)
@@ -726,7 +746,9 @@ def run_project_run_action(
                     "workspace_path": _display_root_path(run),
                     "run_directory": run.run_directory,
                     "result_path": action.result_path,
-                    "artifact_refs": [item for item in [_artifact_ref(run, action.log_path, kind="log")] if item],
+                    "artifact_refs": [
+                        item for item in [_artifact_ref(run, action.log_path, kind="log")] if item
+                    ],
                 },
             )
         raise
@@ -777,4 +799,3 @@ def _emit_progress(progress_callback, message: str, current: int) -> None:
 def _raise_if_cancel_requested(task_id: str) -> None:
     if task_id and global_tracker.is_cancel_requested(task_id):
         raise TaskCancelledError("任务已终止")
-

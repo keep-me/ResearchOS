@@ -157,10 +157,16 @@ def call_openai_responses(
             request_timeout=request_timeout,
         )
         lower = (fallback.content or "").lower()
-        if any(token in lower for token in ("模型服务暂不可用", "api key 无效", "connection error", "模型连接异常")):
+        if any(
+            token in lower
+            for token in ("模型服务暂不可用", "api key 无效", "connection error", "模型连接异常")
+        ):
             logger.warning("OpenAI responses call failed: %s", last_exc)
         else:
-            logger.info("OpenAI responses unsupported/unavailable, switched to chat.completions: %s", last_exc)
+            logger.info(
+                "OpenAI responses unsupported/unavailable, switched to chat.completions: %s",
+                last_exc,
+            )
         return fallback
 
 
@@ -206,7 +212,9 @@ def call_openai_compatible(
                 max_tokens=max_tokens,
             )
             if stream_fallback is not None:
-                content, reasoning_content, in_tokens, out_tokens, reasoning_tokens = stream_fallback
+                content, reasoning_content, in_tokens, out_tokens, reasoning_tokens = (
+                    stream_fallback
+                )
                 in_cost, out_cost = client._estimate_cost(
                     model=model,
                     input_tokens=in_tokens,
@@ -244,7 +252,9 @@ def call_openai_compatible(
                 content, reasoning_content, stream_in, stream_out, stream_reasoning = fallback
                 in_tokens = stream_in if stream_in is not None else in_tokens
                 out_tokens = stream_out if stream_out is not None else out_tokens
-                reasoning_tokens = stream_reasoning if stream_reasoning is not None else reasoning_tokens
+                reasoning_tokens = (
+                    stream_reasoning if stream_reasoning is not None else reasoning_tokens
+                )
             else:
                 return client._pseudo_summary(
                     prompt,

@@ -27,7 +27,9 @@ def _parse_patch_header(lines: list[str], start_idx: int) -> dict[str, Any] | No
         return {"type": "add", "path": file_path, "next_idx": start_idx + 1} if file_path else None
     if line.startswith("*** Delete File:"):
         file_path = line[len("*** Delete File:") :].strip()
-        return {"type": "delete", "path": file_path, "next_idx": start_idx + 1} if file_path else None
+        return (
+            {"type": "delete", "path": file_path, "next_idx": start_idx + 1} if file_path else None
+        )
     if line.startswith("*** Update File:"):
         file_path = line[len("*** Update File:") :].strip()
         if not file_path:
@@ -58,7 +60,11 @@ def _parse_update_file_chunks(lines: list[str], start_idx: int) -> tuple[list[di
         old_lines: list[str] = []
         new_lines: list[str] = []
         is_end_of_file = False
-        while index < len(lines) and not lines[index].startswith("@@") and not lines[index].startswith("***"):
+        while (
+            index < len(lines)
+            and not lines[index].startswith("@@")
+            and not lines[index].startswith("***")
+        ):
             change_line = lines[index]
             if change_line == "*** End of File":
                 is_end_of_file = True
@@ -97,7 +103,9 @@ def _parse_add_file_content(lines: list[str], start_idx: int) -> tuple[str, int]
 def parse_patch(patch_text: str) -> list[dict[str, Any]]:
     cleaned = _strip_heredoc(str(patch_text or "").strip())
     lines = cleaned.split("\n")
-    begin_idx = next((idx for idx, line in enumerate(lines) if line.strip() == "*** Begin Patch"), -1)
+    begin_idx = next(
+        (idx for idx, line in enumerate(lines) if line.strip() == "*** Begin Patch"), -1
+    )
     end_idx = next((idx for idx, line in enumerate(lines) if line.strip() == "*** End Patch"), -1)
     if begin_idx == -1 or end_idx == -1 or begin_idx >= end_idx:
         raise ValueError("Invalid patch format: missing Begin/End markers")
@@ -177,7 +185,11 @@ def _compute_replacements(
         is_end_of_file = bool(chunk.get("is_end_of_file"))
 
         if not old_lines:
-            insertion_idx = len(original_lines) - 1 if original_lines and original_lines[-1] == "" else len(original_lines)
+            insertion_idx = (
+                len(original_lines) - 1
+                if original_lines and original_lines[-1] == ""
+                else len(original_lines)
+            )
             replacements.append((insertion_idx, 0, new_lines))
             continue
 
@@ -190,7 +202,9 @@ def _compute_replacements(
                 new_slice = new_slice[:-1]
             found = _seek_sequence(original_lines, pattern, line_index, eof=is_end_of_file)
         if found == -1:
-            raise ValueError(f"Failed to find expected lines in {file_path}:\n" + "\n".join(old_lines))
+            raise ValueError(
+                f"Failed to find expected lines in {file_path}:\n" + "\n".join(old_lines)
+            )
         replacements.append((found, len(pattern), new_slice))
         line_index = found + len(pattern)
 
@@ -198,7 +212,9 @@ def _compute_replacements(
     return replacements
 
 
-def _apply_replacements(lines: list[str], replacements: list[tuple[int, int, list[str]]]) -> list[str]:
+def _apply_replacements(
+    lines: list[str], replacements: list[tuple[int, int, list[str]]]
+) -> list[str]:
     result = list(lines)
     for start_idx, old_len, new_segment in reversed(replacements):
         del result[start_idx : start_idx + old_len]
@@ -211,12 +227,12 @@ def _normalize_unicode(value: str) -> str:
     return (
         value.replace("\u2018", "'")
         .replace("\u2019", "'")
-        .replace("\u201A", "'")
-        .replace("\u201B", "'")
-        .replace("\u201C", '"')
-        .replace("\u201D", '"')
-        .replace("\u201E", '"')
-        .replace("\u201F", '"')
+        .replace("\u201a", "'")
+        .replace("\u201b", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u201e", '"')
+        .replace("\u201f", '"')
         .replace("\u2010", "-")
         .replace("\u2011", "-")
         .replace("\u2012", "-")
@@ -224,7 +240,7 @@ def _normalize_unicode(value: str) -> str:
         .replace("\u2014", "-")
         .replace("\u2015", "-")
         .replace("\u2026", "...")
-        .replace("\u00A0", " ")
+        .replace("\u00a0", " ")
     )
 
 
@@ -239,7 +255,9 @@ def _try_match(
     if eof:
         from_end = len(lines) - len(pattern)
         if from_end >= start_index:
-            if all(compare(lines[from_end + offset], pattern[offset]) for offset in range(len(pattern))):
+            if all(
+                compare(lines[from_end + offset], pattern[offset]) for offset in range(len(pattern))
+            ):
                 return from_end
     for index in range(start_index, len(lines) - len(pattern) + 1):
         if all(compare(lines[index + offset], pattern[offset]) for offset in range(len(pattern))):
@@ -247,16 +265,22 @@ def _try_match(
     return -1
 
 
-def _seek_sequence(lines: list[str], pattern: list[str], start_index: int, *, eof: bool = False) -> int:
+def _seek_sequence(
+    lines: list[str], pattern: list[str], start_index: int, *, eof: bool = False
+) -> int:
     if not pattern:
         return -1
     exact = _try_match(lines, pattern, start_index, lambda left, right: left == right, eof=eof)
     if exact != -1:
         return exact
-    rstrip = _try_match(lines, pattern, start_index, lambda left, right: left.rstrip() == right.rstrip(), eof=eof)
+    rstrip = _try_match(
+        lines, pattern, start_index, lambda left, right: left.rstrip() == right.rstrip(), eof=eof
+    )
     if rstrip != -1:
         return rstrip
-    trimmed = _try_match(lines, pattern, start_index, lambda left, right: left.strip() == right.strip(), eof=eof)
+    trimmed = _try_match(
+        lines, pattern, start_index, lambda left, right: left.strip() == right.strip(), eof=eof
+    )
     if trimmed != -1:
         return trimmed
     return _try_match(

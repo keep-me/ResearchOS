@@ -67,9 +67,15 @@ def execute_tool_stream(
             else:
                 if context.mode:
                     session_payload["mode"] = context.mode
-                if context.workspace_path and not str(session_payload.get("workspace_path") or "").strip():
+                if (
+                    context.workspace_path
+                    and not str(session_payload.get("workspace_path") or "").strip()
+                ):
                     session_payload["workspace_path"] = context.workspace_path
-                if context.workspace_server_id and not str(session_payload.get("workspace_server_id") or "").strip():
+                if (
+                    context.workspace_server_id
+                    and not str(session_payload.get("workspace_server_id") or "").strip()
+                ):
                     session_payload["workspace_server_id"] = context.workspace_server_id
             violation = check_plan_mode_tool_access(
                 name,
@@ -91,4 +97,3 @@ def execute_tool_stream(
     except Exception as exc:  # pragma: no cover - defensive path
         logger.exception("Tool %s failed: %s", name, exc)
         yield ToolResult(success=False, summary=str(exc))
-

@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from playwright.sync_api import Error, TimeoutError as PlaywrightTimeoutError, sync_playwright
-
+from playwright.sync_api import Error, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:4317").rstrip("/")
 ARTIFACT_DIR = Path("artifacts") / "assistant-runtime-settings"
@@ -107,7 +107,7 @@ FETCH_SPY_SCRIPT = """
 
 def extract_done_payload(sse_text: str | None) -> dict[str, Any] | None:
     if not sse_text:
-      return None
+        return None
 
     blocks = re.split(r"\r?\n\r?\n", sse_text)
     done_payload: dict[str, Any] | None = None
@@ -132,11 +132,7 @@ def extract_done_payload(sse_text: str | None) -> dict[str, Any] | None:
 
 
 def last_session_request(fetch_logs: list[dict[str, Any]]) -> dict[str, Any]:
-    matches = [
-        entry
-        for entry in fetch_logs
-        if REQUEST_PATTERN.search(str(entry.get("url") or ""))
-    ]
+    matches = [entry for entry in fetch_logs if REQUEST_PATTERN.search(str(entry.get("url") or ""))]
     if not matches:
         raise AssertionError("未捕获到 /session/{id}/message 请求")
     return matches[-1]
@@ -202,14 +198,25 @@ def validate_results(results: list[dict[str, Any]]) -> None:
         request_json = result.get("request_json") or {}
         done_payload = result.get("done_payload") or {}
         _assert(flags.get("has_backend_select") is False, f"{name}: 不应再展示 backend 选择器")
-        _assert(request_json.get("agent_backend_id") == "claw", f"{name}: 请求中的 agent_backend_id 必须固定为 claw")
-        _assert(done_payload.get("agent_backend_id") == "claw", f"{name}: done 事件中的 agent_backend_id 必须固定为 claw")
+        _assert(
+            request_json.get("agent_backend_id") == "claw",
+            f"{name}: 请求中的 agent_backend_id 必须固定为 claw",
+        )
+        _assert(
+            done_payload.get("agent_backend_id") == "claw",
+            f"{name}: done 事件中的 agent_backend_id 必须固定为 claw",
+        )
 
     default_result = result_map["default_claw"]
     default_request = default_result.get("request_json") or {}
     _assert(default_request.get("mode") == "plan", "default_claw: 模式切换后请求应传 mode=plan")
-    _assert(default_request.get("reasoning_level") == "high", "default_claw: 推理切换后请求应传 reasoning_level=high")
-    _assert(default_request.get("workspace_server_id") is None, "default_claw: 默认目标应保持本地后端")
+    _assert(
+        default_request.get("reasoning_level") == "high",
+        "default_claw: 推理切换后请求应传 reasoning_level=high",
+    )
+    _assert(
+        default_request.get("workspace_server_id") is None, "default_claw: 默认目标应保持本地后端"
+    )
 
     legacy_result = result_map["legacy_storage_forced_to_claw"]
     legacy_request = legacy_result.get("request_json") or {}
@@ -233,14 +240,8 @@ def validate_results(results: list[dict[str, Any]]) -> None:
     target_done_server_id = str(target_done.get("workspace_server_id") or "").strip() or None
     target_fallback_reason = str(target_done.get("fallback_reason") or "").strip() or None
     _assert(
-        (
-            target_execution_mode == "ssh"
-            and target_done_server_id == "xdu"
-        )
-        or (
-            target_execution_mode == "local"
-            and target_fallback_reason is not None
-        ),
+        (target_execution_mode == "ssh" and target_done_server_id == "xdu")
+        or (target_execution_mode == "local" and target_fallback_reason is not None),
         (
             "switch_target_xdu: done 事件必须体现远端接管结果，"
             "要么真正走 ssh，要么带上明确 fallback_reason，不能静默退回本地"
@@ -266,9 +267,11 @@ def run_scenario(
     page_errors: list[str] = []
     page.on(
         "console",
-        lambda msg: console_errors.append(f"{msg.type}: {msg.text}")
-        if msg.type in {"error", "warning"}
-        else None,
+        lambda msg: (
+            console_errors.append(f"{msg.type}: {msg.text}")
+            if msg.type in {"error", "warning"}
+            else None
+        ),
     )
     page.on("pageerror", lambda exc: page_errors.append(str(exc)))
 
@@ -296,7 +299,9 @@ def run_scenario(
 
     request_entry = wait_for_session_request_completion(page)
     request_body = request_entry.get("requestBody")
-    request_json = json.loads(request_body) if isinstance(request_body, str) and request_body else None
+    request_json = (
+        json.loads(request_body) if isinstance(request_body, str) and request_body else None
+    )
     response_text = request_entry.get("responseText")
     done_payload = extract_done_payload(response_text)
 

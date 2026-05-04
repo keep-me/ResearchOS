@@ -136,9 +136,12 @@ def _assistant_tool_call_blocks(message: dict[str, Any]) -> list[str]:
         if not isinstance(raw_call, dict):
             continue
         function = raw_call.get("function") if isinstance(raw_call.get("function"), dict) else {}
-        tool_name = str(
-            function.get("name") or raw_call.get("name") or raw_call.get("tool_name") or "tool"
-        ).strip() or "tool"
+        tool_name = (
+            str(
+                function.get("name") or raw_call.get("name") or raw_call.get("tool_name") or "tool"
+            ).strip()
+            or "tool"
+        )
         arguments = _extract_tool_call_arguments(raw_call)
         lines = [f"Called tool `{tool_name}`."]
         if arguments:
@@ -205,16 +208,13 @@ def collect_tool_result_items_from_messages(
         if not isinstance(parsed, dict):
             continue
         data = copy.deepcopy(parsed.get("data"))
-        if (
-            not include_skipped
-            and isinstance(data, dict)
-            and bool(data.get("skipped"))
-        ):
+        if not include_skipped and isinstance(data, dict) and bool(data.get("skipped")):
             continue
         items.append(
             {
                 "id": str(message.get("tool_call_id") or "").strip() or None,
-                "name": str(message.get("name") or message.get("tool_name") or "tool").strip() or "tool",
+                "name": str(message.get("name") or message.get("tool_name") or "tool").strip()
+                or "tool",
                 "success": bool(parsed.get("success", not bool(parsed.get("is_error")))),
                 "summary": str(parsed.get("summary") or "").strip(),
                 "data": data,
@@ -253,10 +253,7 @@ def resolve_tool_result_followup_text(
             synthesized=True,
             appended_summary=False,
         )
-    if (
-        _shared_is_tool_progress_placeholder_text(base_text)
-        and summary_text not in base_text
-    ):
+    if _shared_is_tool_progress_placeholder_text(base_text) and summary_text not in base_text:
         return ToolResultFollowupText(
             final_text=f"{base_text.rstrip()}\n\n{summary_text}".strip(),
             summary_text=summary_text,
@@ -375,7 +372,9 @@ def build_cli_transcript(
                 )
             )
             if rendered:
-                label = "User" if not tool_call_id or tool_call_id not in seen_tool_call_ids else "Tool"
+                label = (
+                    "User" if not tool_call_id or tool_call_id not in seen_tool_call_ids else "Tool"
+                )
                 transcript.append(f"[{label}]\n{rendered}")
             continue
 
@@ -395,4 +394,3 @@ def build_cli_transcript(
     if not transcript:
         transcript.append("[User]\n你好")
     return CliTranscript(entries=copy.deepcopy(transcript), latest_user_text=latest_user_text)
-

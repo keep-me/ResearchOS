@@ -146,7 +146,9 @@ def test_submit_project_run_builds_tracker_metadata_without_detached_instance(mo
     assert tracker.retries[0]["metadata"]["run_id"] == run_id
 
 
-def test_submit_multi_agent_project_run_builds_tracker_metadata_without_detached_instance(monkeypatch):
+def test_submit_multi_agent_project_run_builds_tracker_metadata_without_detached_instance(
+    monkeypatch,
+):
     _configure_test_db(monkeypatch)
     run_id = _seed_run(ProjectWorkflowType.init_repo)
     tracker = _TrackerStub()

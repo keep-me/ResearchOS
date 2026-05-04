@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import types
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -13,7 +13,7 @@ class _FakeCronTrigger:
         self.kwargs = kwargs
 
     @classmethod
-    def from_crontab(cls, expr: str) -> "_FakeCronTrigger":
+    def from_crontab(cls, expr: str) -> _FakeCronTrigger:
         return cls(expr=expr)
 
 
@@ -53,10 +53,26 @@ def test_worker_registers_automatic_maintenance_and_brief_jobs(
     scheduler = _FakeScheduler(timezone="UTC")
 
     monkeypatch.setattr(worker_main, "_acquire_single_instance_lock", lambda: True)
-    monkeypatch.setattr(worker_main, "_release_single_instance_lock", lambda: observed.__setitem__("released", int(observed["released"]) + 1))
-    monkeypatch.setattr(worker_main, "_write_heartbeat", lambda: observed.__setitem__("heartbeats", int(observed["heartbeats"]) + 1))
-    monkeypatch.setattr(worker_main, "start_idle_processor", lambda: observed.__setitem__("idle_start", int(observed["idle_start"]) + 1))
-    monkeypatch.setattr(worker_main, "stop_idle_processor", lambda: observed.__setitem__("idle_stop", int(observed["idle_stop"]) + 1))
+    monkeypatch.setattr(
+        worker_main,
+        "_release_single_instance_lock",
+        lambda: observed.__setitem__("released", int(observed["released"]) + 1),
+    )
+    monkeypatch.setattr(
+        worker_main,
+        "_write_heartbeat",
+        lambda: observed.__setitem__("heartbeats", int(observed["heartbeats"]) + 1),
+    )
+    monkeypatch.setattr(
+        worker_main,
+        "start_idle_processor",
+        lambda: observed.__setitem__("idle_start", int(observed["idle_start"]) + 1),
+    )
+    monkeypatch.setattr(
+        worker_main,
+        "stop_idle_processor",
+        lambda: observed.__setitem__("idle_stop", int(observed["idle_stop"]) + 1),
+    )
     monkeypatch.setattr(worker_main, "BlockingScheduler", lambda timezone: scheduler)
     monkeypatch.setattr(worker_main, "CronTrigger", _FakeCronTrigger)
     monkeypatch.setattr(worker_main.signal, "signal", lambda *_args, **_kwargs: None)
@@ -103,19 +119,19 @@ def test_topic_due_for_dispatch_catches_missed_daily_slot() -> None:
     due_at = worker_main._topic_due_for_dispatch(
         freq="daily",
         time_utc=1,
-        now=datetime(2026, 5, 3, 15, 30, tzinfo=timezone.utc),
-        last_run_at=datetime(2026, 4, 28, 1, 0, tzinfo=timezone.utc),
+        now=datetime(2026, 5, 3, 15, 30, tzinfo=UTC),
+        last_run_at=datetime(2026, 4, 28, 1, 0, tzinfo=UTC),
     )
 
-    assert due_at == datetime(2026, 5, 3, 1, 0, tzinfo=timezone.utc)
+    assert due_at == datetime(2026, 5, 3, 1, 0, tzinfo=UTC)
 
 
 def test_topic_due_for_dispatch_skips_when_latest_slot_already_recorded() -> None:
     due_at = worker_main._topic_due_for_dispatch(
         freq="daily",
         time_utc=1,
-        now=datetime(2026, 5, 3, 15, 30, tzinfo=timezone.utc),
-        last_run_at=datetime(2026, 5, 3, 1, 5, tzinfo=timezone.utc),
+        now=datetime(2026, 5, 3, 15, 30, tzinfo=UTC),
+        last_run_at=datetime(2026, 5, 3, 1, 5, tzinfo=UTC),
     )
 
     assert due_at is None
@@ -125,7 +141,7 @@ def test_latest_due_slot_handles_twice_daily_schedule() -> None:
     due_at = worker_main._latest_due_slot(
         "twice_daily",
         21,
-        datetime(2026, 5, 3, 13, 30, tzinfo=timezone.utc),
+        datetime(2026, 5, 3, 13, 30, tzinfo=UTC),
     )
 
-    assert due_at == datetime(2026, 5, 3, 9, 0, tzinfo=timezone.utc)
+    assert due_at == datetime(2026, 5, 3, 9, 0, tzinfo=UTC)

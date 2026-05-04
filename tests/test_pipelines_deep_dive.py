@@ -66,11 +66,15 @@ def test_deep_dive_prefers_mineru_ocr_context(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "packages.ai.paper.pipelines.VisionPdfReader.extract_page_descriptions",
-        lambda self, pdf_path, max_pages=8: (_ for _ in ()).throw(AssertionError("should not fallback")),
+        lambda self, pdf_path, max_pages=8: (_ for _ in ()).throw(
+            AssertionError("should not fallback")
+        ),
     )
     monkeypatch.setattr(
         "packages.ai.paper.pipelines.PdfTextExtractor.extract_text",
-        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(AssertionError("should not fallback")),
+        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(
+            AssertionError("should not fallback")
+        ),
     )
     monkeypatch.setattr(
         "packages.ai.paper.pipelines.CostGuardService.choose_model",
@@ -82,9 +86,11 @@ def test_deep_dive_prefers_mineru_ocr_context(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "packages.integrations.llm_client.LLMClient.summarize_text",
         lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: (
-            focus_prompts.append(prompt),
-            LLMResult(content="阶段分析"),
-        )[1],
+            (
+                focus_prompts.append(prompt),
+                LLMResult(content="阶段分析"),
+            )[1]
+        ),
     )
 
     def _fake_complete_json(
@@ -153,8 +159,10 @@ def test_deep_dive_pdf_source_skips_cached_markdown(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "packages.integrations.llm_client.LLMClient.summarize_text",
-        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: LLMResult(
-            content="阶段分析",
+        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: (
+            LLMResult(
+                content="阶段分析",
+            )
         ),
     )
 
@@ -209,7 +217,9 @@ def test_deep_dive_rough_mode_skips_focus_stages(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "packages.ai.paper.pipelines.VisionPdfReader.extract_page_descriptions",
-        lambda self, pdf_path, max_pages=8: (_ for _ in ()).throw(AssertionError("rough mode should skip vision")),
+        lambda self, pdf_path, max_pages=8: (_ for _ in ()).throw(
+            AssertionError("rough mode should skip vision")
+        ),
     )
     monkeypatch.setattr(
         "packages.ai.paper.pipelines.PdfTextExtractor.extract_text",
@@ -224,7 +234,9 @@ def test_deep_dive_rough_mode_skips_focus_stages(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "packages.integrations.llm_client.LLMClient.summarize_text",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("rough mode should skip focus stages")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("rough mode should skip focus stages")
+        ),
     )
 
     def _fake_complete_json(

@@ -7,6 +7,7 @@
 - 统一 start / update / finish 生命周期
 - 线程安全 + 自动清理过期任务
 """
+
 from __future__ import annotations
 
 import json
@@ -14,9 +15,10 @@ import logging
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -93,13 +95,17 @@ class TaskInfo:
         effective_current = self.current
         if self.finished and effective_total > 0 and not self.cancelled:
             effective_current = max(effective_current, effective_total)
-        real_progress_pct = round(effective_current / effective_total * 100) if effective_total > 0 else 0
+        real_progress_pct = (
+            round(effective_current / effective_total * 100) if effective_total > 0 else 0
+        )
 
         if self.finished:
             if self.cancelled:
                 progress_pct = float(max(0, min(real_progress_pct, 99)))
             else:
-                progress_pct = float(max(real_progress_pct, 100 if effective_total > 0 else real_progress_pct))
+                progress_pct = float(
+                    max(real_progress_pct, 100 if effective_total > 0 else real_progress_pct)
+                )
         else:
             # Keep display progress monotonic and gently pulse during idle windows.
             display_pct = max(float(real_progress_pct), float(self.display_progress_pct))
@@ -110,7 +116,9 @@ class TaskInfo:
                 if pulse_delta > 0:
                     pulse_cap = _PULSE_ABSOLUTE_CAP_PCT
                     if effective_total > 0:
-                        pulse_cap = min(_PULSE_ABSOLUTE_CAP_PCT, float(real_progress_pct) + _PULSE_MAX_AHEAD_PCT)
+                        pulse_cap = min(
+                            _PULSE_ABSOLUTE_CAP_PCT, float(real_progress_pct) + _PULSE_MAX_AHEAD_PCT
+                        )
                     display_pct = min(pulse_cap, display_pct + pulse_delta)
             progress_pct = display_pct
             self.display_updated_at = now
@@ -388,7 +396,9 @@ class TaskTracker:
         if task_snapshot is not None:
             self._sync_task(task_snapshot)
 
-    def set_metadata(self, task_id: str, metadata: dict[str, Any] | None = None, **extra: Any) -> None:
+    def set_metadata(
+        self, task_id: str, metadata: dict[str, Any] | None = None, **extra: Any
+    ) -> None:
         """补充任务元数据，用于任务中心展示与跳转。"""
         merged = dict(metadata or {})
         merged.update(extra)
@@ -433,11 +443,11 @@ class TaskTracker:
             if not task:
                 task = None
             else:
-                return list(task.logs[-max(1, limit):])
+                return list(task.logs[-max(1, limit) :])
         persisted = self._load_persisted_task(task_id)
         if not persisted:
             return []
-        return list(persisted.logs[-max(1, limit):])
+        return list(persisted.logs[-max(1, limit) :])
 
     def register_retry(
         self,
@@ -616,18 +626,24 @@ class TaskTracker:
             tasks = [task for task in tasks if task.task_type == task_type]
         items = [task.to_dict() for task in tasks]
         seen = {item["task_id"] for item in items}
-        for persisted in self._list_persisted_tasks(task_type=task_type, limit=max(limit * 3, limit)):
+        for persisted in self._list_persisted_tasks(
+            task_type=task_type, limit=max(limit * 3, limit)
+        ):
             if persisted.task_id in seen:
                 continue
             items.append(persisted.to_dict())
         items.sort(
-            key=lambda item: item.get("finished_at") or item.get("updated_at") or item.get("created_at") or 0,
+            key=lambda item: (
+                item.get("finished_at") or item.get("updated_at") or item.get("created_at") or 0
+            ),
             reverse=True,
         )
         return items[: max(1, limit)]
 
     def forget_tasks(self, task_ids: list[str], *, delete_persisted: bool = True) -> int:
-        normalized = [str(task_id or "").strip() for task_id in task_ids if str(task_id or "").strip()]
+        normalized = [
+            str(task_id or "").strip() for task_id in task_ids if str(task_id or "").strip()
+        ]
         if not normalized:
             return 0
         with self._lock:
@@ -654,8 +670,10 @@ class TaskTracker:
         """清除完成超过 TTL 的任务"""
         now = time.time()
         expired = [
-            tid for tid, t in self._tasks.items()
-            if t.finished and (now - (t.finished_at or t.updated_at or t.started_at)) > _FINISHED_TTL
+            tid
+            for tid, t in self._tasks.items()
+            if t.finished
+            and (now - (t.finished_at or t.updated_at or t.started_at)) > _FINISHED_TTL
         ]
         for tid in expired:
             del self._tasks[tid]
@@ -730,7 +748,9 @@ class TaskTracker:
             logger.debug("task load skipped for %s: %s", task_id, exc)
             return None
 
-    def _list_persisted_tasks(self, task_type: str | None = None, limit: int = 100) -> list[TaskInfo]:
+    def _list_persisted_tasks(
+        self, task_type: str | None = None, limit: int = 100
+    ) -> list[TaskInfo]:
         try:
             from packages.storage.db import session_scope
             from packages.storage.repositories import TaskRepository
@@ -774,7 +794,9 @@ class TaskTracker:
             "retry_metadata_json": dict(task.retry_metadata),
             "started_at": self._timestamp_to_datetime(task.started_at),
             "updated_at": self._timestamp_to_datetime(task.updated_at),
-            "finished_at": self._timestamp_to_datetime(task.finished_at) if task.finished_at else None,
+            "finished_at": self._timestamp_to_datetime(task.finished_at)
+            if task.finished_at
+            else None,
         }
 
     def _task_from_record(self, record) -> TaskInfo:

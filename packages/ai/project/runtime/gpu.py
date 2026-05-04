@@ -41,4 +41,3 @@ __all__ = [
     "select_remote_gpu",
     "touch_gpu_lease",
 ]
-

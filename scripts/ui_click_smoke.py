@@ -5,7 +5,6 @@ from pathlib import Path
 
 from playwright.sync_api import Error, Page, sync_playwright
 
-
 BASE_URL = "http://localhost:4317"
 ARTIFACT_DIR = Path("artifacts") / "ui-smoke"
 
@@ -61,16 +60,16 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1600, "height": 1000})
         page.on(
             "console",
-            lambda msg: console_errors.append(f"{msg.type}: {msg.text}")
-            if msg.type in {"error", "warning"}
-            else None,
+            lambda msg: (
+                console_errors.append(f"{msg.type}: {msg.text}")
+                if msg.type in {"error", "warning"}
+                else None
+            ),
         )
         page.on("pageerror", lambda exc: page_errors.append(str(exc)))
         page.on(
             "response",
-            lambda response: network_404s.append(response.url)
-            if response.status == 404
-            else None,
+            lambda response: network_404s.append(response.url) if response.status == 404 else None,
         )
 
         page.wait_for_timeout(1200)
@@ -99,10 +98,14 @@ def main() -> None:
         assert_no_crash(page, "assistant-initial")
         results["steps"].append("assistant-loaded")
 
-        collapse_button = first_visible(page, ['button[aria-label="收起侧栏"]', 'button[title="收起侧栏"]'])
+        collapse_button = first_visible(
+            page, ['button[aria-label="收起侧栏"]', 'button[title="收起侧栏"]']
+        )
         collapse_button.click()
         page.wait_for_timeout(400)
-        first_visible(page, ['button[aria-label="展开侧栏"]', 'button[title="展开侧栏"]']).wait_for(timeout=10000)
+        first_visible(page, ['button[aria-label="展开侧栏"]', 'button[title="展开侧栏"]']).wait_for(
+            timeout=10000
+        )
         results["steps"].append("sidebar-collapsed")
 
         first_visible(page, ['button[aria-label="展开侧栏"]', 'button[title="展开侧栏"]']).click()

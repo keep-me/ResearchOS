@@ -17,7 +17,11 @@ from pathlib import Path
 
 import paramiko
 
-from packages.agent.workspace.workspace_executor import DEFAULT_IGNORES, TERMINAL_CWD_MARKER, WorkspaceAccessError
+from packages.agent.workspace.workspace_executor import (
+    DEFAULT_IGNORES,
+    TERMINAL_CWD_MARKER,
+    WorkspaceAccessError,
+)
 
 DEFAULT_SSH_PORT = 22
 SSH_CONNECT_TIMEOUT_SEC = 20
@@ -61,6 +65,45 @@ def mask_secret(value: str | None) -> str | None:
     return f"{secret[:4]}...{secret[-2:]}"
 
 
+def normalize_host_key_fingerprint(value: object) -> str:
+    text = clean_text(value).lower()
+    for prefix in ("sha256:", "md5:"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    return re.sub(r"[^a-f0-9]", "", text)
+
+
+def host_key_fingerprint(key: paramiko.PKey) -> str:
+    return hashlib.md5(key.asbytes(), usedforsecurity=False).hexdigest()
+
+
+def verify_host_key_fingerprint(client: paramiko.SSHClient, expected: str) -> None:
+    normalized_expected = normalize_host_key_fingerprint(expected)
+    if not normalized_expected:
+        return
+    transport = client.get_transport()
+    key = transport.get_remote_server_key() if transport is not None else None
+    if key is None:
+        raise WorkspaceAccessError("无法读取 SSH 服务器 host key")
+    actual = host_key_fingerprint(key)
+    if actual != normalized_expected:
+        raise WorkspaceAccessError("SSH host key fingerprint 不匹配")
+
+
+class FingerprintHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+    def __init__(self, expected_fingerprint: str):
+        self.expected_fingerprint = normalize_host_key_fingerprint(expected_fingerprint)
+
+    def missing_host_key(self, client, hostname, key):  # noqa: ANN001, ANN201
+        if not self.expected_fingerprint:
+            raise paramiko.SSHException("Unknown SSH host key")
+        actual = host_key_fingerprint(key)
+        if actual != self.expected_fingerprint:
+            raise paramiko.SSHException("SSH host key fingerprint mismatch")
+        client.get_host_keys().add(hostname, key.get_name(), key)
+
+
 def is_ssh_banner_error(exc: Exception) -> bool:
     message = clean_text(exc).lower()
     return "ssh protocol banner" in message or "protocol banner" in message
@@ -90,10 +133,14 @@ def probe_ssh_banner(host: str, port: int) -> dict[str, str | None]:
             if banner.upper().startswith("SSH-"):
                 return {"state": "ssh", "banner": banner, "error": None}
             return {"state": "non_ssh", "banner": banner, "error": None}
-    except (socket.timeout, TimeoutError):
+    except TimeoutError:
         return {"state": "timeout", "banner": None, "error": "timeout"}
     except Exception as exc:  # pragma: no cover - network/environment dependent
-        return {"state": "error", "banner": None, "error": clean_text(exc) or exc.__class__.__name__}
+        return {
+            "state": "error",
+            "banner": None,
+            "error": clean_text(exc) or exc.__class__.__name__,
+        }
 
 
 def format_ssh_exception(exc: Exception, *, host: str, port: int) -> str:
@@ -139,7 +186,9 @@ def trim_output(text: str, max_chars: int = 12000) -> str:
     return value[:max_chars] + "\n...[truncated]"
 
 
-def build_diff_preview(before: str, after: str, *, max_lines: int = 220, max_chars: int = 6000) -> str:
+def build_diff_preview(
+    before: str, after: str, *, max_lines: int = 220, max_chars: int = 6000
+) -> str:
     diff_lines = list(
         unified_diff(
             (before or "").splitlines(),
@@ -215,12 +264,10 @@ def _ensure_remote_directory(session: SSHWorkspaceSession, target_dir: str) -> N
 
 def _remote_copy_overlay_command(source_path: str, target_path: str) -> str:
     rsync_excludes = " ".join(
-        f"--exclude {shlex.quote(pattern)}"
-        for pattern in _REMOTE_RUN_SYNC_PATTERNS
+        f"--exclude {shlex.quote(pattern)}" for pattern in _REMOTE_RUN_SYNC_PATTERNS
     )
     tar_excludes = " ".join(
-        f"--exclude={shlex.quote(pattern)}"
-        for pattern in _REMOTE_RUN_SYNC_PATTERNS
+        f"--exclude={shlex.quote(pattern)}" for pattern in _REMOTE_RUN_SYNC_PATTERNS
     )
     source_root = source_path.rstrip("/") + "/"
     target_root = target_path.rstrip("/") + "/"
@@ -326,12 +373,17 @@ def open_ssh_session(server_entry: dict):
         connect_kwargs["password"] = password
     else:
         raise WorkspaceAccessError("SSH 服务器缺少可用的认证信息")
+    expected_fingerprint = clean_text(server_entry.get("host_key_fingerprint"))
     for attempt in range(SSH_BANNER_RETRY_COUNT):
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        client.set_missing_host_key_policy(FingerprintHostKeyPolicy(expected_fingerprint))
         sftp: paramiko.SFTPClient | None = None
         try:
             client.connect(**connect_kwargs)
+            verify_host_key_fingerprint(
+                client, clean_text(server_entry.get("host_key_fingerprint"))
+            )
             sftp = client.open_sftp()
             try:
                 home_dir = sftp.normalize(".")
@@ -343,7 +395,7 @@ def open_ssh_session(server_entry: dict):
             raise WorkspaceAccessError(f"SSH 认证失败: {exc}") from exc
         except paramiko.ssh_exception.NoValidConnectionsError as exc:
             raise WorkspaceAccessError(f"SSH 连接失败: {exc}") from exc
-        except (socket.timeout, TimeoutError) as exc:
+        except TimeoutError as exc:
             raise WorkspaceAccessError(f"SSH 连接超时: {exc}") from exc
         except socket.gaierror as exc:
             raise WorkspaceAccessError(f"无法解析 SSH 主机: {exc}") from exc
@@ -366,31 +418,41 @@ def open_ssh_session(server_entry: dict):
             client.close()
 
 
-def resolve_remote_workspace_path(server_entry: dict, requested_path: str, session: SSHWorkspaceSession) -> str:
-    requested = clean_text(requested_path)
-    configured = clean_text(server_entry.get("workspace_root"))
-    if requested and not looks_like_windows_path(requested):
-        raw_root = requested if requested.startswith("/") or requested.startswith("~") else posixpath.join(configured, requested.replace("\\", "/")) if configured else requested.replace("\\", "/")
-    elif configured:
-        raw_root = configured
-    elif requested:
-        raise WorkspaceAccessError("SSH 服务器需要配置远程工作区目录")
-    else:
+def _normalize_remote_root(value: str, session: SSHWorkspaceSession) -> str:
+    normalized = clean_text(value).replace("\\", "/")
+    if not normalized:
         raise WorkspaceAccessError("远程工作区目录为空")
-    value = raw_root.replace("\\", "/").strip() or "."
-    if value == "~":
-        value = session.home_dir
-    elif value.startswith("~/"):
-        value = posixpath.join(session.home_dir, value[2:])
-    elif not value.startswith("/"):
-        value = posixpath.join(session.home_dir, value)
-    return posixpath.normpath(value)
+    if normalized == "~":
+        normalized = session.home_dir
+    elif normalized.startswith("~/"):
+        normalized = posixpath.join(session.home_dir, normalized[2:])
+    elif not normalized.startswith("/"):
+        normalized = posixpath.join(session.home_dir, normalized)
+    return posixpath.normpath(normalized)
+
+
+def resolve_remote_workspace_path(
+    server_entry: dict, requested_path: str, session: SSHWorkspaceSession
+) -> str:
+    requested = clean_text(requested_path).replace("\\", "/")
+    configured = clean_text(server_entry.get("workspace_root"))
+    if not configured:
+        raise WorkspaceAccessError("SSH 服务器需要配置远程工作区目录")
+    root = _normalize_remote_root(configured, session)
+    if not requested:
+        return root
+    if looks_like_windows_path(requested) or requested.startswith("/") or requested.startswith("~"):
+        raise WorkspaceAccessError("远程路径必须是 workspace_root 下的相对路径")
+    resolved = posixpath.normpath(posixpath.join(root, requested))
+    if resolved != root and not resolved.startswith(f"{root.rstrip('/')}/"):
+        raise WorkspaceAccessError("远程路径越界")
+    return resolved
 
 
 def remote_stat(sftp: paramiko.SFTPClient, path: str):
     try:
         return sftp.stat(path)
-    except (OSError, IOError):
+    except OSError:
         return None
 
 
@@ -440,7 +502,9 @@ def run_remote_exec(
         except Exception:
             peer_name = "remote"
     try:
-        stdin, stdout, stderr = session.client.exec_command(final_command, timeout=max(1, timeout_sec))
+        stdin, stdout, stderr = session.client.exec_command(
+            final_command, timeout=max(1, timeout_sec)
+        )
         try:
             stdin.close()
         except Exception:
@@ -450,7 +514,7 @@ def run_remote_exec(
         out_text = stdout.read().decode("utf-8", errors="replace")
         err_text = stderr.read().decode("utf-8", errors="replace")
         exit_code = channel.recv_exit_status()
-    except socket.timeout as exc:
+    except TimeoutError as exc:
         raise WorkspaceAccessError(f"远程命令执行超时（{timeout_sec}s）") from exc
     except Exception as exc:
         raise WorkspaceAccessError(f"远程命令执行失败: {exc}") from exc
@@ -478,23 +542,38 @@ def _extract_terminal_cwd(text: str) -> tuple[str, str | None]:
         line = lines[idx].strip()
         if line.startswith(TERMINAL_CWD_MARKER):
             marker_index = idx
-            cwd_value = line[len(TERMINAL_CWD_MARKER):].strip() or None
+            cwd_value = line[len(TERMINAL_CWD_MARKER) :].strip() or None
             break
     if marker_index < 0:
         return raw, None
-    cleaned = lines[:marker_index] + lines[marker_index + 1:]
+    cleaned = lines[:marker_index] + lines[marker_index + 1 :]
     return "\n".join(cleaned), cwd_value
 
 
 def remote_git_overview(session: SSHWorkspaceSession, workspace_path: str) -> dict:
     if remote_stat(session.sftp, workspace_path) is None:
         return git_unavailable("远程工作区不存在", available=True)
-    probe = run_remote_exec(session, "git rev-parse --is-inside-work-tree", cwd=workspace_path, timeout_sec=60)
+    probe = run_remote_exec(
+        session, "git rev-parse --is-inside-work-tree", cwd=workspace_path, timeout_sec=60
+    )
     if probe["exit_code"] != 0:
         return git_unavailable("当前目录尚未初始化 Git 仓库", available=True)
-    branch = run_remote_exec(session, "git branch --show-current", cwd=workspace_path, timeout_sec=60)["stdout"].strip() or None
-    remotes = [line.strip() for line in run_remote_exec(session, "git remote", cwd=workspace_path, timeout_sec=60)["stdout"].splitlines() if line.strip()]
-    status_output = run_remote_exec(session, "git status --porcelain=v1", cwd=workspace_path, timeout_sec=60)["stdout"]
+    branch = (
+        run_remote_exec(session, "git branch --show-current", cwd=workspace_path, timeout_sec=60)[
+            "stdout"
+        ].strip()
+        or None
+    )
+    remotes = [
+        line.strip()
+        for line in run_remote_exec(session, "git remote", cwd=workspace_path, timeout_sec=60)[
+            "stdout"
+        ].splitlines()
+        if line.strip()
+    ]
+    status_output = run_remote_exec(
+        session, "git status --porcelain=v1", cwd=workspace_path, timeout_sec=60
+    )["stdout"]
     entries: list[dict] = []
     changed_count = 0
     untracked_count = 0
@@ -505,20 +584,41 @@ def remote_git_overview(session: SSHWorkspaceSession, workspace_path: str) -> di
         path = line[3:].strip()
         if " -> " in path:
             path = path.split(" -> ", 1)[1].strip()
-        entries.append({"path": path, "code": code, "index_status": code[0], "worktree_status": code[1]})
+        entries.append(
+            {"path": path, "code": code, "index_status": code[0], "worktree_status": code[1]}
+        )
         if code == "??":
             untracked_count += 1
         elif code.strip():
             changed_count += 1
-    return {"available": True, "is_repo": True, "branch": branch, "remotes": remotes, "entries": entries, "changed_count": changed_count, "untracked_count": untracked_count, "message": None}
+    return {
+        "available": True,
+        "is_repo": True,
+        "branch": branch,
+        "remotes": remotes,
+        "entries": entries,
+        "changed_count": changed_count,
+        "untracked_count": untracked_count,
+        "message": None,
+    }
 
 
-def build_remote_overview(server_entry: dict, requested_path: str, *, depth: int, max_entries: int | None) -> dict:
+def build_remote_overview(
+    server_entry: dict, requested_path: str, *, depth: int, max_entries: int | None
+) -> dict:
     with open_ssh_session(server_entry) as session:
         workspace_path = resolve_remote_workspace_path(server_entry, requested_path, session)
         root_attr = remote_stat(session.sftp, workspace_path)
         if root_attr is None:
-            return {"workspace_path": workspace_path, "tree": workspace_path, "files": [], "total_entries": 0, "truncated": False, "exists": False, "git": git_unavailable("远程工作区不存在", available=True)}
+            return {
+                "workspace_path": workspace_path,
+                "tree": workspace_path,
+                "files": [],
+                "total_entries": 0,
+                "truncated": False,
+                "exists": False,
+                "git": git_unavailable("远程工作区不存在", available=True),
+            }
         if not remote_is_dir(root_attr):
             raise WorkspaceAccessError(f"远程工作区不是目录: {workspace_path}")
         tree_lines = [workspace_path]
@@ -530,10 +630,15 @@ def build_remote_overview(server_entry: dict, requested_path: str, *, depth: int
         def walk(current_path: str, current_depth: int) -> None:
             nonlocal entry_count, truncated
             if current_depth > depth or (entry_limit is not None and entry_count >= entry_limit):
-                truncated = truncated or bool(entry_limit is not None and entry_count >= entry_limit)
+                truncated = truncated or bool(
+                    entry_limit is not None and entry_count >= entry_limit
+                )
                 return
             try:
-                children = sorted(session.sftp.listdir_attr(current_path), key=lambda item: (not stat.S_ISDIR(item.st_mode), item.filename.lower()))
+                children = sorted(
+                    session.sftp.listdir_attr(current_path),
+                    key=lambda item: (not stat.S_ISDIR(item.st_mode), item.filename.lower()),
+                )
             except OSError:
                 return
             for child in children:
@@ -567,7 +672,9 @@ def build_remote_overview(server_entry: dict, requested_path: str, *, depth: int
         }
 
 
-def remote_read_file(server_entry: dict, requested_path: str, relative_path: str, *, max_chars: int) -> dict:
+def remote_read_file(
+    server_entry: dict, requested_path: str, relative_path: str, *, max_chars: int
+) -> dict:
     with open_ssh_session(server_entry) as session:
         workspace_path = resolve_remote_workspace_path(server_entry, requested_path, session)
         normalized_relative = normalize_relative_remote_path(relative_path)
@@ -642,7 +749,9 @@ def remote_write_file(
             "line_count": content.count("\n") + (0 if not content else 1),
             "sha256": hashlib.sha256(encoded).hexdigest(),
             "preview": trim_output(content, max_chars=2400),
-            "diff_preview": build_diff_preview(previous_text, content) if existed and changed else "",
+            "diff_preview": build_diff_preview(previous_text, content)
+            if existed and changed
+            else "",
         }
 
 
@@ -662,7 +771,11 @@ def remote_restore_file(server_entry: dict, *, path: str, content: str | None) -
                 "deleted": exists_before,
                 "exists": False,
             }
-        if parent_dir and parent_dir not in {"", "."} and remote_stat(session.sftp, parent_dir) is None:
+        if (
+            parent_dir
+            and parent_dir not in {"", "."}
+            and remote_stat(session.sftp, parent_dir) is None
+        ):
             remote_make_dirs(session.sftp, parent_dir)
         encoded = content.encode("utf-8")
         with session.sftp.file(target_path, "wb") as handle:
@@ -691,7 +804,9 @@ def remote_upload_file(
             raise WorkspaceAccessError(f"远程工作区不存在: {workspace_path}")
         if not remote_is_dir(workspace_attr):
             raise WorkspaceAccessError(f"远程工作区不是目录: {workspace_path}")
-        target_rel = normalize_relative_remote_path((relative_path or filename or "upload.bin").strip())
+        target_rel = normalize_relative_remote_path(
+            (relative_path or filename or "upload.bin").strip()
+        )
         target_path = posixpath.join(workspace_path, target_rel)
         parent_dir = posixpath.dirname(target_path)
         if remote_stat(session.sftp, parent_dir) is None:
@@ -711,7 +826,9 @@ def remote_upload_file(
         }
 
 
-def remote_terminal_result(server_entry: dict, *, path: str, command: str, timeout_sec: int) -> dict:
+def remote_terminal_result(
+    server_entry: dict, *, path: str, command: str, timeout_sec: int
+) -> dict:
     with open_ssh_session(server_entry) as session:
         workspace_path = resolve_remote_workspace_path(server_entry, path, session)
         result = run_remote_exec(
@@ -759,7 +876,9 @@ def remote_probe_gpus(server_entry: dict, *, path: str) -> dict:
             "available": result["exit_code"] == 0,
             "success": success,
             "gpus": gpus,
-            "reason": None if success else (trim_output(result["stderr"]) or "gpu inventory unavailable"),
+            "reason": None
+            if success
+            else (trim_output(result["stderr"]) or "gpu inventory unavailable"),
             "stdout": trim_output(result["stdout"]),
             "stderr": trim_output(result["stderr"]),
         }
@@ -859,18 +978,24 @@ def remote_prepare_run_environment(
         git_branch = None
         git_head = None
         if git_available:
-            git_branch = run_remote_exec(
-                session,
-                "git branch --show-current",
-                cwd=workspace_path,
-                timeout_sec=30,
-            )["stdout"].strip() or None
-            git_head = run_remote_exec(
-                session,
-                "git rev-parse HEAD",
-                cwd=workspace_path,
-                timeout_sec=30,
-            )["stdout"].strip() or None
+            git_branch = (
+                run_remote_exec(
+                    session,
+                    "git branch --show-current",
+                    cwd=workspace_path,
+                    timeout_sec=30,
+                )["stdout"].strip()
+                or None
+            )
+            git_head = (
+                run_remote_exec(
+                    session,
+                    "git rev-parse HEAD",
+                    cwd=workspace_path,
+                    timeout_sec=30,
+                )["stdout"].strip()
+                or None
+            )
             worktree_result = run_remote_exec(
                 session,
                 f"git worktree add --detach {shlex.quote(execution_workspace)} HEAD",
@@ -880,7 +1005,9 @@ def remote_prepare_run_environment(
             prepare_steps.append(
                 {
                     "step": "git_worktree_add",
-                    "command": worktree_result["shell_command"][-1] if worktree_result.get("shell_command") else None,
+                    "command": worktree_result["shell_command"][-1]
+                    if worktree_result.get("shell_command")
+                    else None,
                     "exit_code": worktree_result["exit_code"],
                     "stdout": trim_output(worktree_result["stdout"], max_chars=4000),
                     "stderr": trim_output(worktree_result["stderr"], max_chars=4000),
@@ -909,7 +1036,9 @@ def remote_prepare_run_environment(
         prepare_steps.append(
             {
                 "step": "overlay_workspace_state",
-                "command": overlay_result["shell_command"][-1] if overlay_result.get("shell_command") else None,
+                "command": overlay_result["shell_command"][-1]
+                if overlay_result.get("shell_command")
+                else None,
                 "exit_code": overlay_result["exit_code"],
                 "stdout": trim_output(overlay_result["stdout"], max_chars=4000),
                 "stderr": trim_output(overlay_result["stderr"], max_chars=4000),
@@ -964,7 +1093,9 @@ def remote_launch_screen_job(
             raise WorkspaceAccessError("远程服务器缺少 screen，无法后台启动实验")
 
         before = remote_list_screen_sessions(server_entry, session_name=prepared_session_name)
-        already_running = any(item["name"] == prepared_session_name for item in before.get("sessions") or [])
+        already_running = any(
+            item["name"] == prepared_session_name for item in before.get("sessions") or []
+        )
         if already_running:
             return {
                 "workspace_path": workspace_path,
@@ -1039,12 +1170,18 @@ def remote_git_init(server_entry: dict, *, path: str) -> dict:
         return {
             "ok": True,
             "workspace_path": workspace_path,
-            "result": {"stdout": result["stdout"].strip(), "stderr": result["stderr"].strip(), "exit_code": result["exit_code"]},
+            "result": {
+                "stdout": result["stdout"].strip(),
+                "stderr": result["stderr"].strip(),
+                "exit_code": result["exit_code"],
+            },
             "git": remote_git_overview(session, workspace_path),
         }
 
 
-def remote_git_branch(server_entry: dict, *, path: str, branch_name: str, checkout: bool = True) -> dict:
+def remote_git_branch(
+    server_entry: dict, *, path: str, branch_name: str, checkout: bool = True
+) -> dict:
     if not branch_name.strip():
         raise WorkspaceAccessError("分支名不能为空")
     with open_ssh_session(server_entry) as session:
@@ -1053,11 +1190,27 @@ def remote_git_branch(server_entry: dict, *, path: str, branch_name: str, checko
         if not git["is_repo"]:
             raise WorkspaceAccessError("当前目录尚未初始化 Git 仓库")
         ref_name = shlex.quote(f"refs/heads/{branch_name}")
-        exists = run_remote_exec(session, f"git show-ref --verify --quiet {ref_name}", cwd=workspace_path, timeout_sec=60)["exit_code"] == 0
+        exists = (
+            run_remote_exec(
+                session,
+                f"git show-ref --verify --quiet {ref_name}",
+                cwd=workspace_path,
+                timeout_sec=60,
+            )["exit_code"]
+            == 0
+        )
         if exists:
-            command = f"git checkout {shlex.quote(branch_name)}" if checkout else f"git branch --list {shlex.quote(branch_name)}"
+            command = (
+                f"git checkout {shlex.quote(branch_name)}"
+                if checkout
+                else f"git branch --list {shlex.quote(branch_name)}"
+            )
         else:
-            command = f"git checkout -b {shlex.quote(branch_name)}" if checkout else f"git branch {shlex.quote(branch_name)}"
+            command = (
+                f"git checkout -b {shlex.quote(branch_name)}"
+                if checkout
+                else f"git branch {shlex.quote(branch_name)}"
+            )
         result = run_remote_exec(session, command, cwd=workspace_path, timeout_sec=60)
         if result["exit_code"] != 0:
             raise WorkspaceAccessError(result["stderr"].strip() or "分支创建失败")
@@ -1067,17 +1220,30 @@ def remote_git_branch(server_entry: dict, *, path: str, branch_name: str, checko
             "branch": branch_name,
             "created": not exists,
             "checked_out": checkout,
-            "result": {"stdout": result["stdout"].strip(), "stderr": result["stderr"].strip(), "exit_code": result["exit_code"]},
+            "result": {
+                "stdout": result["stdout"].strip(),
+                "stderr": result["stderr"].strip(),
+                "exit_code": result["exit_code"],
+            },
             "git": remote_git_overview(session, workspace_path),
         }
 
 
-def remote_git_diff(server_entry: dict, *, path: str, file_path: str | None = None, max_chars: int = 120000) -> dict:
+def remote_git_diff(
+    server_entry: dict, *, path: str, file_path: str | None = None, max_chars: int = 120000
+) -> dict:
     with open_ssh_session(server_entry) as session:
         workspace_path = resolve_remote_workspace_path(server_entry, path, session)
         git = remote_git_overview(session, workspace_path)
         if not git["available"] or not git["is_repo"]:
-            return {"workspace_path": workspace_path, "file_path": file_path, "diff": "", "truncated": False, "git": git, "message": git.get("message")}
+            return {
+                "workspace_path": workspace_path,
+                "file_path": file_path,
+                "diff": "",
+                "truncated": False,
+                "git": git,
+                "message": git.get("message"),
+            }
         command = "git diff --no-ext-diff"
         normalized_file_path = None
         if file_path:
@@ -1114,7 +1280,11 @@ def _remote_git_response(
     file_path: str | None = None,
 ) -> dict:
     if int(result.get("exit_code") or 0) != 0:
-        raise WorkspaceAccessError(clean_text(result.get("stderr")) or clean_text(result.get("stdout")) or f"Git {action} 失败")
+        raise WorkspaceAccessError(
+            clean_text(result.get("stderr"))
+            or clean_text(result.get("stdout"))
+            or f"Git {action} 失败"
+        )
     return {
         "ok": True,
         "workspace_path": workspace_path,
@@ -1135,12 +1305,26 @@ def _remote_git_unstage(
     file_path: str | None = None,
 ) -> dict:
     target = normalize_relative_remote_path(file_path) if file_path else "."
-    result = run_remote_exec(session, f"git restore --staged -- {shlex.quote(target)}", cwd=workspace_path, timeout_sec=60)
+    result = run_remote_exec(
+        session,
+        f"git restore --staged -- {shlex.quote(target)}",
+        cwd=workspace_path,
+        timeout_sec=60,
+    )
     if result["exit_code"] == 0:
         return result
     stderr = clean_text(result.get("stderr")).lower()
-    if "could not resolve head" in stderr or "unknown revision" in stderr or "did not match any file" in stderr:
-        fallback = run_remote_exec(session, f"git rm --cached -r -- {shlex.quote(target)}", cwd=workspace_path, timeout_sec=60)
+    if (
+        "could not resolve head" in stderr
+        or "unknown revision" in stderr
+        or "did not match any file" in stderr
+    ):
+        fallback = run_remote_exec(
+            session,
+            f"git rm --cached -r -- {shlex.quote(target)}",
+            cwd=workspace_path,
+            timeout_sec=60,
+        )
         if fallback["exit_code"] == 0:
             return fallback
     return result
@@ -1156,7 +1340,9 @@ def remote_git_stage(server_entry: dict, *, path: str, file_path: str | None = N
         else:
             command = "git add -A"
         result = run_remote_exec(session, command, cwd=workspace_path, timeout_sec=60)
-        return _remote_git_response(session, workspace_path, action="stage", result=result, file_path=normalized_file_path)
+        return _remote_git_response(
+            session, workspace_path, action="stage", result=result, file_path=normalized_file_path
+        )
 
 
 def remote_git_unstage(server_entry: dict, *, path: str, file_path: str | None = None) -> dict:
@@ -1165,7 +1351,9 @@ def remote_git_unstage(server_entry: dict, *, path: str, file_path: str | None =
         _ensure_remote_git_repo(session, workspace_path)
         normalized_file_path = normalize_relative_remote_path(file_path) if file_path else None
         result = _remote_git_unstage(session, workspace_path, normalized_file_path)
-        return _remote_git_response(session, workspace_path, action="unstage", result=result, file_path=normalized_file_path)
+        return _remote_git_response(
+            session, workspace_path, action="unstage", result=result, file_path=normalized_file_path
+        )
 
 
 def remote_git_discard(server_entry: dict, *, path: str, file_path: str | None = None) -> dict:
@@ -1173,10 +1361,23 @@ def remote_git_discard(server_entry: dict, *, path: str, file_path: str | None =
     with open_ssh_session(server_entry) as session:
         workspace_path = resolve_remote_workspace_path(server_entry, path, session)
         git = _ensure_remote_git_repo(session, workspace_path)
-        entry = next((item for item in git["entries"] if item.get("path") == normalized_file_path), None)
+        entry = next(
+            (item for item in git["entries"] if item.get("path") == normalized_file_path), None
+        )
         if entry and clean_text(entry.get("code")) == "??":
-            result = run_remote_exec(session, f"git clean -f -- {shlex.quote(normalized_file_path)}", cwd=workspace_path, timeout_sec=60)
-            return _remote_git_response(session, workspace_path, action="discard", result=result, file_path=normalized_file_path)
+            result = run_remote_exec(
+                session,
+                f"git clean -f -- {shlex.quote(normalized_file_path)}",
+                cwd=workspace_path,
+                timeout_sec=60,
+            )
+            return _remote_git_response(
+                session,
+                workspace_path,
+                action="discard",
+                result=result,
+                file_path=normalized_file_path,
+            )
 
         result = run_remote_exec(
             session,
@@ -1189,16 +1390,28 @@ def remote_git_discard(server_entry: dict, *, path: str, file_path: str | None =
             if "could not resolve head" in stderr or "unknown revision" in stderr:
                 unstaged = _remote_git_unstage(session, workspace_path, normalized_file_path)
                 if unstaged["exit_code"] == 0:
-                    cleaned = run_remote_exec(session, f"git clean -f -- {shlex.quote(normalized_file_path)}", cwd=workspace_path, timeout_sec=60)
+                    cleaned = run_remote_exec(
+                        session,
+                        f"git clean -f -- {shlex.quote(normalized_file_path)}",
+                        cwd=workspace_path,
+                        timeout_sec=60,
+                    )
                     if cleaned["exit_code"] == 0:
                         result = cleaned
                     else:
                         result = unstaged
             if result["exit_code"] != 0:
-                fallback = run_remote_exec(session, f"git checkout -- {shlex.quote(normalized_file_path)}", cwd=workspace_path, timeout_sec=60)
+                fallback = run_remote_exec(
+                    session,
+                    f"git checkout -- {shlex.quote(normalized_file_path)}",
+                    cwd=workspace_path,
+                    timeout_sec=60,
+                )
                 if fallback["exit_code"] == 0:
                     result = fallback
-        return _remote_git_response(session, workspace_path, action="discard", result=result, file_path=normalized_file_path)
+        return _remote_git_response(
+            session, workspace_path, action="discard", result=result, file_path=normalized_file_path
+        )
 
 
 def remote_git_commit(server_entry: dict, *, path: str, message: str) -> dict:
@@ -1208,7 +1421,12 @@ def remote_git_commit(server_entry: dict, *, path: str, message: str) -> dict:
     with open_ssh_session(server_entry) as session:
         workspace_path = resolve_remote_workspace_path(server_entry, path, session)
         _ensure_remote_git_repo(session, workspace_path)
-        result = run_remote_exec(session, f"git commit -m {shlex.quote(commit_message)}", cwd=workspace_path, timeout_sec=90)
+        result = run_remote_exec(
+            session,
+            f"git commit -m {shlex.quote(commit_message)}",
+            cwd=workspace_path,
+            timeout_sec=90,
+        )
         return _remote_git_response(session, workspace_path, action="commit", result=result)
 
 
@@ -1218,12 +1436,18 @@ def remote_git_sync(server_entry: dict, *, path: str, action: str) -> dict:
         workspace_path = resolve_remote_workspace_path(server_entry, path, session)
         git = _ensure_remote_git_repo(session, workspace_path)
         if normalized == "fetch":
-            result = run_remote_exec(session, "git fetch --all --prune", cwd=workspace_path, timeout_sec=120)
+            result = run_remote_exec(
+                session, "git fetch --all --prune", cwd=workspace_path, timeout_sec=120
+            )
         elif normalized == "pull":
-            result = run_remote_exec(session, "git pull --ff-only", cwd=workspace_path, timeout_sec=120)
+            result = run_remote_exec(
+                session, "git pull --ff-only", cwd=workspace_path, timeout_sec=120
+            )
         elif normalized == "push":
             result = run_remote_exec(session, "git push", cwd=workspace_path, timeout_sec=120)
-            combined = "\n".join(clean_text(result.get(key)) for key in ("stdout", "stderr")).lower()
+            combined = "\n".join(
+                clean_text(result.get(key)) for key in ("stdout", "stderr")
+            ).lower()
             if (
                 result["exit_code"] != 0
                 and git.get("branch")
@@ -1259,9 +1483,16 @@ def probe_ssh(payload: dict) -> dict:
             workspace_root = None
             workspace_exists = None
             if clean_text(payload.get("workspace_root")):
-                workspace_root = resolve_remote_workspace_path(entry, clean_text(payload.get("workspace_root")), session)
+                workspace_root = resolve_remote_workspace_path(
+                    entry, clean_text(payload.get("workspace_root")), session
+                )
                 workspace_exists = remote_stat(session.sftp, workspace_root) is not None
-            return {"success": True, "message": "SSH 连接成功", "home_dir": home_dir, "workspace_root": workspace_root, "workspace_exists": workspace_exists}
+            return {
+                "success": True,
+                "message": "SSH 连接成功",
+                "home_dir": home_dir,
+                "workspace_root": workspace_root,
+                "workspace_exists": workspace_exists,
+            }
     except Exception as error:
         return {"success": False, "message": str(error)}
-

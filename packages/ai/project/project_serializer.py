@@ -77,4 +77,3 @@ __all__ = [
     "serialize_report",
     "serialize_run_action",
 ]
-

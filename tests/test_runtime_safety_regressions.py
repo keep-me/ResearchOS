@@ -11,7 +11,11 @@ from sqlalchemy.pool import StaticPool
 import apps.api.deps as api_deps
 import packages.storage.db as db
 import packages.timezone as timezone_utils
-from packages.agent.workspace.workspace_executor import get_assistant_exec_policy
+from packages.agent.workspace.workspace_executor import (
+    WorkspaceAccessError,
+    ensure_workspace_operation_allowed,
+    get_assistant_exec_policy,
+)
 from packages.domain.enums import ReadStatus
 from packages.storage.db import Base, session_scope
 from packages.storage.models import Paper
@@ -69,6 +73,33 @@ def test_default_assistant_exec_policy_is_not_full_auto() -> None:
 
     assert policy["command_execution"] == "allowlist"
     assert policy["approval_mode"] == "on_request"
+
+
+def test_default_command_allowlist_allows_read_only_git_status() -> None:
+    ensure_workspace_operation_allowed("run_workspace_command", command="git status --short")
+
+
+def test_default_command_allowlist_rejects_shell_control_operator() -> None:
+    with pytest.raises(WorkspaceAccessError, match="允许列表"):
+        ensure_workspace_operation_allowed(
+            "run_workspace_command", command="git status && git push"
+        )
+
+
+def test_default_command_allowlist_rejects_interpreters_and_package_managers() -> None:
+    for command in ["python -c 'print(1)'", "node -e 'console.log(1)'", "npm run build"]:
+        with pytest.raises(WorkspaceAccessError, match="允许列表"):
+            ensure_workspace_operation_allowed("run_workspace_command", command=command)
+
+
+def test_default_command_allowlist_uses_token_boundaries() -> None:
+    with pytest.raises(WorkspaceAccessError, match="允许列表"):
+        ensure_workspace_operation_allowed("run_workspace_command", command="git-malicious status")
+
+
+def test_default_command_allowlist_rejects_git_push() -> None:
+    with pytest.raises(WorkspaceAccessError, match="允许列表"):
+        ensure_workspace_operation_allowed("run_workspace_command", command="git push")
 
 
 def test_folder_stats_groups_dates_without_rounding_timezone_offset(

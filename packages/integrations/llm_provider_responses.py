@@ -51,7 +51,9 @@ def extract_openai_item_id(client, part: dict[str, Any]) -> str | None:
     return str(openai.get("itemId") or openai.get("item_id") or "").strip() or None
 
 
-def extract_openai_reasoning_metadata(client, part: dict[str, Any]) -> tuple[str | None, str | None]:
+def extract_openai_reasoning_metadata(
+    client, part: dict[str, Any]
+) -> tuple[str | None, str | None]:
     metadata = part.get("metadata")
     if not isinstance(metadata, dict):
         return None, None
@@ -119,7 +121,11 @@ def extract_responses_output_parts(client, response: object) -> list[dict[str, A
                         continue
                     raw_annotations = content_item.get("annotations")
                     annotations = (
-                        [annotation for annotation in raw_annotations if isinstance(annotation, dict)]
+                        [
+                            annotation
+                            for annotation in raw_annotations
+                            if isinstance(annotation, dict)
+                        ]
                         if isinstance(raw_annotations, list)
                         else None
                     )
@@ -149,7 +155,9 @@ def extract_responses_output_parts(client, response: object) -> list[dict[str, A
             encrypted_content = item.get("encrypted_content")
             metadata = build_openai_provider_metadata(
                 item_id=item_id or None,
-                reasoning_encrypted_content=(None if encrypted_content is None else str(encrypted_content)),
+                reasoning_encrypted_content=(
+                    None if encrypted_content is None else str(encrypted_content)
+                ),
             )
             summary = item.get("summary")
             emitted_summary = False
@@ -285,7 +293,9 @@ def extract_responses_tool_calls(client, response: object) -> list[dict[str, Any
                 ),
                 "provider_executed": True,
                 "result": {
-                    "outputs": list(item.get("outputs") or []) if isinstance(item.get("outputs"), list) else None,
+                    "outputs": list(item.get("outputs") or [])
+                    if isinstance(item.get("outputs"), list)
+                    else None,
                 },
             }
         elif item_type == "image_generation_call":
@@ -324,10 +334,28 @@ def extract_responses_tool_calls(client, response: object) -> list[dict[str, Any
         if not isinstance(entry, dict):
             continue
         if entry.get("provider_executed"):
-            status = str(((entry.get("result") or {}) if isinstance(entry.get("result"), dict) else {}).get("status") or "").strip().lower()
-            success = status not in {"failed", "failure", "error", "errored", "cancelled", "canceled"}
+            status = (
+                str(
+                    (
+                        (entry.get("result") or {}) if isinstance(entry.get("result"), dict) else {}
+                    ).get("status")
+                    or ""
+                )
+                .strip()
+                .lower()
+            )
+            success = status not in {
+                "failed",
+                "failure",
+                "error",
+                "errored",
+                "cancelled",
+                "canceled",
+            }
             entry["success"] = success
-            entry["summary"] = f"{str(entry.get('name') or 'tool')} {'completed' if success else 'failed'}"
+            entry["summary"] = (
+                f"{str(entry.get('name') or 'tool')} {'completed' if success else 'failed'}"
+            )
         calls.append(entry)
     return calls
 
@@ -491,7 +519,11 @@ def normalize_responses_tools(tools: list[dict] | None) -> list[dict]:
                 for source_key, target_key in mapping.items():
                     if args.get(source_key) is not None:
                         entry[target_key] = args.get(source_key)
-                input_image_mask = args.get("inputImageMask") if isinstance(args.get("inputImageMask"), dict) else None
+                input_image_mask = (
+                    args.get("inputImageMask")
+                    if isinstance(args.get("inputImageMask"), dict)
+                    else None
+                )
                 if input_image_mask is not None:
                     entry["input_image_mask"] = {
                         "file_id": input_image_mask.get("fileId"),
@@ -542,9 +574,7 @@ def build_responses_input_from_messages(
         content = msg.get("content", "")
         if role == "tool":
             call_id = str(msg.get("tool_call_id") or "")
-            provider_executed = bool(
-                msg.get("provider_executed") or msg.get("providerExecuted")
-            )
+            provider_executed = bool(msg.get("provider_executed") or msg.get("providerExecuted"))
             tool_name = str(msg.get("name") or msg.get("tool_name") or "").strip()
             if call_id:
                 if provider_executed:
@@ -669,10 +699,14 @@ def build_responses_input_from_messages(
                     continue
                 if tool_name == "local_shell":
                     try:
-                        parsed_arguments = json.loads(str(function_payload.get("arguments") or "{}"))
+                        parsed_arguments = json.loads(
+                            str(function_payload.get("arguments") or "{}")
+                        )
                     except json.JSONDecodeError:
                         parsed_arguments = {}
-                    action = parsed_arguments.get("action") if isinstance(parsed_arguments, dict) else {}
+                    action = (
+                        parsed_arguments.get("action") if isinstance(parsed_arguments, dict) else {}
+                    )
                     if isinstance(action, dict):
                         local_shell_payload: dict[str, Any] = {
                             "type": "local_shell_call",
@@ -688,7 +722,9 @@ def build_responses_input_from_messages(
                         if action.get("user") is not None:
                             local_shell_payload["action"]["user"] = action.get("user")
                         if action.get("workingDirectory") is not None:
-                            local_shell_payload["action"]["working_directory"] = action.get("workingDirectory")
+                            local_shell_payload["action"]["working_directory"] = action.get(
+                                "workingDirectory"
+                            )
                         if action.get("env") is not None:
                             local_shell_payload["action"]["env"] = action.get("env")
                         payload.append(local_shell_payload)
@@ -707,7 +743,9 @@ def build_responses_input_from_messages(
         payload.append(
             {
                 "role": role,
-                "content": client._stringify_message_content(content) if role == "user" else str(content or ""),
+                "content": client._stringify_message_content(content)
+                if role == "user"
+                else str(content or ""),
             }
         )
     return payload

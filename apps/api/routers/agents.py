@@ -87,4 +87,3 @@ def test_agent_config(config_id: str, body: AgentConfigTestPayload) -> dict[str,
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"item": item}
-

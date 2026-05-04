@@ -214,7 +214,9 @@ def probe_openai_compatible_chat(client: Any, target: ResolvedModelTarget) -> di
             "message": "聊天测试成功。",
         }
     except Exception as exc:
-        should_try_responses_fallback = getattr(client, "_should_try_openai_responses_fallback", None)
+        should_try_responses_fallback = getattr(
+            client, "_should_try_openai_responses_fallback", None
+        )
         if callable(should_try_responses_fallback) and should_try_responses_fallback(target, exc):
             result = probe_openai_chat(client, target)
             if result.get("ok"):

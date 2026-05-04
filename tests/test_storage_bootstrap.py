@@ -6,6 +6,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+
+def _alembic_head() -> str:
+    root = Path(__file__).resolve().parents[1]
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "infra" / "migrations"))
+    return ScriptDirectory.from_config(config).get_current_head()
+
 
 def _run_python(code: str, *, tmp_path: Path, db_name: str) -> dict:
     env = os.environ.copy()
@@ -87,7 +97,7 @@ print(json.dumps({"tables": tables, "revision": revision}, ensure_ascii=False))
     assert "topic_subscriptions" in payload["tables"]
     assert "analysis_reports" in payload["tables"]
     assert "projects" in payload["tables"]
-    assert payload["revision"] == "20260430_0013_add_research_kg"
+    assert payload["revision"] == _alembic_head()
 
 
 def test_explicit_bootstrap_stamps_legacy_runtime_schema(tmp_path: Path) -> None:
@@ -125,4 +135,4 @@ print(json.dumps({"tables": tables, "revision": revision}, ensure_ascii=False))
 
     assert "alembic_version" in payload["tables"]
     assert "project_runs" in payload["tables"]
-    assert payload["revision"] == "20260430_0013_add_research_kg"
+    assert payload["revision"] == _alembic_head()

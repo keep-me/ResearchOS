@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from packages.domain.enums import ProjectRunActionType, ProjectRunStatus, ProjectWorkflowType
+from packages.storage.json_schema import with_schema_version
 from packages.storage.models import (
     GeneratedContent,
     Paper,
@@ -19,7 +20,6 @@ from packages.storage.models import (
     ProjectRun,
     ProjectRunAction,
 )
-from packages.storage.json_schema import with_schema_version
 
 
 def _normalize_workspace_match_key(value: str | None) -> str:
@@ -34,7 +34,7 @@ def _path_matches_workspace(candidate: str | None, workspace_path: str | None) -
     target = _normalize_workspace_match_key(workspace_path)
     if not base or not target:
         return False
-    return target == base or target.startswith(f'{base}/')
+    return target == base or target.startswith(f"{base}/")
 
 
 class ProjectRepository:
@@ -603,15 +603,12 @@ class ProjectRepository:
         return True
 
     def list_project_papers(self, project_id: str) -> list[tuple[ProjectPaper, Paper]]:
-        rows = (
-            self.session.execute(
-                select(ProjectPaper, Paper)
-                .join(Paper, Paper.id == ProjectPaper.paper_id)
-                .where(ProjectPaper.project_id == project_id)
-                .order_by(ProjectPaper.added_at.desc())
-            )
-            .all()
-        )
+        rows = self.session.execute(
+            select(ProjectPaper, Paper)
+            .join(Paper, Paper.id == ProjectPaper.paper_id)
+            .where(ProjectPaper.project_id == project_id)
+            .order_by(ProjectPaper.added_at.desc())
+        ).all()
         return [(row[0], row[1]) for row in rows]
 
     def list_projects_for_paper(self, paper_id: str) -> list[Project]:
@@ -632,15 +629,12 @@ class ProjectRepository:
         project_id: str,
         limit: int = 50,
     ) -> list[tuple[GeneratedContent, Paper | None]]:
-        rows = (
-            self.session.execute(
-                select(GeneratedContent, Paper)
-                .join(ProjectPaper, ProjectPaper.paper_id == GeneratedContent.paper_id)
-                .join(Paper, Paper.id == GeneratedContent.paper_id, isouter=True)
-                .where(ProjectPaper.project_id == project_id)
-                .order_by(GeneratedContent.created_at.desc())
-                .limit(limit)
-            )
-            .all()
-        )
+        rows = self.session.execute(
+            select(GeneratedContent, Paper)
+            .join(ProjectPaper, ProjectPaper.paper_id == GeneratedContent.paper_id)
+            .join(Paper, Paper.id == GeneratedContent.paper_id, isouter=True)
+            .where(ProjectPaper.project_id == project_id)
+            .order_by(GeneratedContent.created_at.desc())
+            .limit(limit)
+        ).all()
         return [(row[0], row[1]) for row in rows]

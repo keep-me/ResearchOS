@@ -9,85 +9,24 @@ import shutil
 import sys
 import threading
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any, Callable
+from typing import Any
 from uuid import uuid4
 
-from packages.agent.workspace.workspace_remote import (
-    build_remote_overview,
-    remote_capture_screen_session,
-    remote_launch_screen_job,
-    remote_list_screen_sessions,
-    remote_probe_gpus,
-    remote_prepare_run_environment,
-    remote_terminal_result,
-    remote_write_file,
+from packages.agent.runtime.agent_backends import (
+    DEFAULT_AGENT_BACKEND_ID,
+    normalize_agent_backend_id,
 )
-from packages.agent.workspace.workspace_server_registry import get_workspace_server_entry
-from packages.ai.project.aris_skill_templates import render_aris_skill_bundle
-from packages.agent.runtime.agent_service import PromptStreamControl, StreamPersistenceConfig, stream_chat
-from packages.agent.runtime.agent_backends import DEFAULT_AGENT_BACKEND_ID, normalize_agent_backend_id
-from packages.ai.project.amadeus_compat import (
-    build_remote_session_name,
-    build_run_workspace_path,
-    workflow_assistant_skill_id,
+from packages.agent.runtime.agent_service import (
+    PromptStreamControl,
+    StreamPersistenceConfig,
+    stream_chat,
 )
-from packages.ai.project.checkpoint_service import (
-    checkpoint_resume_stage,
-    mark_run_waiting_for_stage_checkpoint,
-)
-from packages.ai.project.gpu_lease_service import (
-    acquire_gpu_lease,
-    list_active_gpu_leases,
-    reconcile_gpu_leases,
-    release_gpu_lease,
-    touch_gpu_lease,
-)
-from packages.ai.project.workflow_catalog import (
-    build_run_orchestration,
-    build_stage_trace,
-)
-from packages.ai.project.experiment_audit_bundle import (
-    _collect_experiment_audit_bundle,
-)
-from packages.ai.project.workflows import literature_review as literature_review_workflow
-from packages.ai.project.paper_artifacts import (
-    build_paper_improvement_bundle,
-    build_figure_bundle,
-    build_paper_compile_bundle,
-    build_paper_write_bundle,
-    build_paper_plan_bundle,
-    parse_review_text,
-    resolve_paper_venue,
-)
-from packages.ai.project.output_sanitizer import (
-    sanitize_project_artifact_content,
-    sanitize_project_markdown,
-)
-from packages.ai.project.report_formatter import (
-    format_auto_review_loop_report,
-    format_experiment_report,
-    format_full_pipeline_report,
-    format_idea_discovery_report,
-    format_novelty_check_report,
-    format_paper_writing_report,
-    format_rebuttal_report,
-    format_research_review_report,
-)
-from packages.ai.project.paper_context import (
-    external_candidate_ref,
-    format_ref_index_for_prompt,
-    load_analysis_reports,
-    merge_refs as merge_paper_refs,
-    normalize_paper_ids,
-    paper_ref_from_model,
-    workspace_pdf_ref,
-)
-from packages.ai.research.research_wiki_service import ResearchWikiService
 from packages.agent.session.session_runtime import (
     append_session_message,
     build_user_message_meta,
@@ -100,11 +39,82 @@ from packages.agent.workspace.workspace_executor import (
     run_workspace_command,
     write_workspace_file,
 )
+from packages.agent.workspace.workspace_remote import (
+    build_remote_overview,
+    remote_capture_screen_session,
+    remote_launch_screen_job,
+    remote_list_screen_sessions,
+    remote_prepare_run_environment,
+    remote_probe_gpus,
+    remote_terminal_result,
+    remote_write_file,
+)
+from packages.agent.workspace.workspace_server_registry import get_workspace_server_entry
+from packages.ai.project.amadeus_compat import (
+    build_remote_session_name,
+    build_run_workspace_path,
+    workflow_assistant_skill_id,
+)
+from packages.ai.project.aris_skill_templates import render_aris_skill_bundle
+from packages.ai.project.checkpoint_service import (
+    checkpoint_resume_stage,
+    mark_run_waiting_for_stage_checkpoint,
+)
+from packages.ai.project.experiment_audit_bundle import (
+    _collect_experiment_audit_bundle,
+)
+from packages.ai.project.gpu_lease_service import (
+    acquire_gpu_lease,
+    list_active_gpu_leases,
+    reconcile_gpu_leases,
+    release_gpu_lease,
+    touch_gpu_lease,
+)
+from packages.ai.project.output_sanitizer import (
+    sanitize_project_artifact_content,
+    sanitize_project_markdown,
+)
+from packages.ai.project.paper_artifacts import (
+    build_figure_bundle,
+    build_paper_compile_bundle,
+    build_paper_improvement_bundle,
+    build_paper_plan_bundle,
+    build_paper_write_bundle,
+    parse_review_text,
+    resolve_paper_venue,
+)
+from packages.ai.project.paper_context import (
+    external_candidate_ref,
+    format_ref_index_for_prompt,
+    load_analysis_reports,
+    normalize_paper_ids,
+    paper_ref_from_model,
+    workspace_pdf_ref,
+)
+from packages.ai.project.paper_context import (
+    merge_refs as merge_paper_refs,
+)
+from packages.ai.project.report_formatter import (
+    format_auto_review_loop_report,
+    format_experiment_report,
+    format_full_pipeline_report,
+    format_idea_discovery_report,
+    format_novelty_check_report,
+    format_paper_writing_report,
+    format_rebuttal_report,
+    format_research_review_report,
+)
+from packages.ai.project.workflow_catalog import (
+    build_run_orchestration,
+    build_stage_trace,
+)
+from packages.ai.project.workflows import literature_review as literature_review_workflow
+from packages.ai.research.research_wiki_service import ResearchWikiService
 from packages.domain.enums import ProjectRunStatus, ProjectWorkflowType
 from packages.domain.task_tracker import TaskCancelledError, TaskPausedError, global_tracker
 from packages.integrations.arxiv_client import ArxivClient
-from packages.integrations.llm_engine_profiles import resolve_llm_engine_profile
 from packages.integrations.llm_client import LLMClient, LLMResult
+from packages.integrations.llm_engine_profiles import resolve_llm_engine_profile
 from packages.path_utils import local_relative_path
 from packages.storage.db import session_scope
 from packages.storage.repositories import (
@@ -189,6 +199,8 @@ def _normalize_role_id(value: str | None) -> str:
     if normalize_agent_backend_id(raw) == DEFAULT_AGENT_BACKEND_ID:
         return "codex"
     return raw or "codex"
+
+
 _WORKFLOW_STAGE_ALIASES: dict[str, dict[str, list[str]]] = {
     ProjectWorkflowType.idea_discovery.value: {
         "collect_context": ["literature_survey"],
@@ -224,11 +236,11 @@ _WORKFLOW_STAGE_INVOCATION_BINDINGS: dict[str, dict[str, str]] = {
 
 @dataclass
 class WorkflowContext:
-    run: "RunSnapshot"
-    project: "ProjectSnapshot"
+    run: RunSnapshot
+    project: ProjectSnapshot
     metadata: dict[str, Any]
-    selected_papers: list["PaperSnapshot"]
-    selected_repos: list["RepoSnapshot"]
+    selected_papers: list[PaperSnapshot]
+    selected_repos: list[RepoSnapshot]
     analysis_contexts: dict[str, str]
 
 
@@ -326,7 +338,9 @@ def submit_project_run(run_id: str, *, resume_stage_id: str | None = None) -> st
 
         task_id = run.task_id or f"project_run_{run.id.replace('-', '')[:12]}"
         metadata = dict(run.metadata_json or {})
-        resolved_resume_stage_id = str(resume_stage_id or checkpoint_resume_stage(metadata) or "").strip() or None
+        resolved_resume_stage_id = (
+            str(resume_stage_id or checkpoint_resume_stage(metadata) or "").strip() or None
+        )
         if not resolved_resume_stage_id:
             metadata = _reset_fresh_submission_metadata(metadata)
         orchestration = build_run_orchestration(
@@ -359,7 +373,9 @@ def submit_project_run(run_id: str, *, resume_stage_id: str | None = None) -> st
             task_id=task_id,
             status=ProjectRunStatus.running,
             active_phase=resolved_resume_stage_id or "initializing",
-            summary="工作流恢复中，正在准备继续执行。" if resolved_resume_stage_id else "工作流已启动，正在准备项目上下文。",
+            summary="工作流恢复中，正在准备继续执行。"
+            if resolved_resume_stage_id
+            else "工作流已启动，正在准备项目上下文。",
             started_at=run.started_at or datetime.now(UTC),
             finished_at=None,
             metadata=metadata,
@@ -463,7 +479,9 @@ def _reconcile_completed_project_run(
             return None
 
     summary = str(metadata.get("workflow_output_excerpt") or "").strip() or "工作流已完成。"
-    artifact_refs = metadata.get("artifact_refs") if isinstance(metadata.get("artifact_refs"), list) else []
+    artifact_refs = (
+        metadata.get("artifact_refs") if isinstance(metadata.get("artifact_refs"), list) else []
+    )
     result: dict[str, Any] = {
         "run_id": run_snapshot.id,
         "workflow_type": run_snapshot.workflow_type.value,
@@ -518,7 +536,9 @@ def run_project_workflow(
                 "checkpoint_resume_stage_id": resume_stage_id,
             },
         )
-        _emit_progress(progress_callback, f"正在恢复阶段：{_stage_label(context, resume_stage_id)}。", 8)
+        _emit_progress(
+            progress_callback, f"正在恢复阶段：{_stage_label(context, resume_stage_id)}。", 8
+        )
     else:
         _patch_run(
             run_id,
@@ -544,7 +564,7 @@ def run_project_workflow(
                 f"# {context.project.name} · {context.run.workflow_type.value}",
                 "",
                 f"- run_id: {context.run.id}",
-                f"- status: running",
+                "- status: running",
                 f"- phase: {resume_stage_id or initial_stage_id}",
                 f"- updated_at: {_iso_now()}",
                 f"- prompt: {context.run.prompt.strip()[:800]}",
@@ -668,10 +688,17 @@ def _execute_idea_discovery(
     resume_stage_id: str | None = None,
 ) -> dict[str, Any]:
     run = context.run
-    later_from_landscape = {"expand_directions", "verify_novelty", "external_review", "rank_and_persist"}
+    later_from_landscape = {
+        "expand_directions",
+        "verify_novelty",
+        "external_review",
+        "rank_and_persist",
+    }
     later_from_ideas = {"verify_novelty", "external_review", "rank_and_persist"}
     later_from_novelty = {"external_review", "rank_and_persist"}
-    paper_id_to_ref = {paper.id: f"P{index}" for index, paper in enumerate(context.selected_papers, start=1)}
+    paper_id_to_ref = {
+        paper.id: f"P{index}" for index, paper in enumerate(context.selected_papers, start=1)
+    }
     idea_stage_output = _stage_output_payload(context, "expand_directions")
     review_stage_output = _stage_output_payload(context, "external_review")
 
@@ -700,7 +727,9 @@ def _execute_idea_discovery(
         )
         literature_markdown = _resolve_generic_markdown(
             landscape_execution["result"],
-            fallback=_build_literature_review_fallback(context, landscape_execution["result"].content or ""),
+            fallback=_build_literature_review_fallback(
+                context, landscape_execution["result"].content or ""
+            ),
         )
         _record_stage_output(
             run.id,
@@ -739,7 +768,9 @@ def _execute_idea_discovery(
         idea_stage_payload = _parse_json_payload_text(idea_json_text)
         idea_stage_output = _stage_output_payload(context, "expand_directions")
     else:
-        _patch_run(run.id, active_phase="expand_directions", summary="正在生成候选想法并做首轮筛选。")
+        _patch_run(
+            run.id, active_phase="expand_directions", summary="正在生成候选想法并做首轮筛选。"
+        )
         _set_stage_state(
             run.id,
             "expand_directions",
@@ -764,7 +795,11 @@ def _execute_idea_discovery(
                 {
                     "title": item["title"],
                     "content": item["content"],
-                    "paper_refs": [paper_id_to_ref[paper_id] for paper_id in item["paper_ids"] if paper_id in paper_id_to_ref],
+                    "paper_refs": [
+                        paper_id_to_ref[paper_id]
+                        for paper_id in item["paper_ids"]
+                        if paper_id in paper_id_to_ref
+                    ],
                 }
                 for item in normalized_ideas
             ]
@@ -808,7 +843,10 @@ def _execute_idea_discovery(
             stage_summary=f"已生成 {len(normalized_ideas)} 条候选想法。",
         )
 
-    idea_llm_result = LLMResult(content=idea_json_text, parsed_json=idea_stage_payload or _parse_json_payload_text(idea_json_text))
+    idea_llm_result = LLMResult(
+        content=idea_json_text,
+        parsed_json=idea_stage_payload or _parse_json_payload_text(idea_json_text),
+    )
     ideas_payload = _resolve_idea_payloads(context, idea_llm_result)
 
     novelty_markdown = ""
@@ -871,7 +909,9 @@ def _execute_idea_discovery(
             raise RuntimeError("恢复想法发现失败：缺少外部评审阶段产物。")
         review_stage_output = _stage_output_payload(context, "external_review")
     else:
-        _patch_run(run.id, active_phase="external_review", summary="正在获取外部 reviewer 视角反馈。")
+        _patch_run(
+            run.id, active_phase="external_review", summary="正在获取外部 reviewer 视角反馈。"
+        )
         _set_stage_state(
             run.id,
             "external_review",
@@ -942,7 +982,8 @@ def _execute_idea_discovery(
                     "title": idea.title,
                     "content": idea.content,
                     "paper_ids": list(idea.paper_ids_json or []),
-                    "pilot_signal": str(item.get("pilot_signal") or "SKIPPED").strip().upper() or "SKIPPED",
+                    "pilot_signal": str(item.get("pilot_signal") or "SKIPPED").strip().upper()
+                    or "SKIPPED",
                     "ranking_reason": str(item.get("ranking_reason") or "").strip(),
                     "origin_skill": "idea-discovery",
                 }
@@ -961,7 +1002,9 @@ def _execute_idea_discovery(
         review_markdown=review_markdown,
     )
     artifact_refs: list[dict[str, Any]] = []
-    idea_report_artifact = _write_run_artifact(context, "IDEA_REPORT.md", final_markdown, kind="report")
+    idea_report_artifact = _write_run_artifact(
+        context, "IDEA_REPORT.md", final_markdown, kind="report"
+    )
     if idea_report_artifact:
         artifact_refs.append(idea_report_artifact)
     summary = f"已完成想法发现流程，生成 {len(created_ideas)} 条研究想法并写入 IDEA_REPORT。"
@@ -1137,9 +1180,13 @@ def _execute_novelty_check(
             "## 结论\n- 建议进一步补齐与最相近工作的定量和机制差异。"
         ),
     )
-    final_markdown = format_novelty_check_report(context.project.name, run.prompt, comparison_markdown, final_markdown)
+    final_markdown = format_novelty_check_report(
+        context.project.name, run.prompt, comparison_markdown, final_markdown
+    )
     artifact_refs: list[dict[str, Any]] = []
-    report_artifact = _write_run_artifact(context, "reports/novelty-check.md", final_markdown, kind="report")
+    report_artifact = _write_run_artifact(
+        context, "reports/novelty-check.md", final_markdown, kind="report"
+    )
     if report_artifact:
         artifact_refs.append(report_artifact)
     excerpt = _markdown_excerpt(final_markdown)
@@ -1295,10 +1342,16 @@ def _execute_research_review(
         max_tokens=2400,
         request_timeout=220,
     )
-    final_markdown = _resolve_generic_markdown(verdict_execution["result"], fallback=review_markdown)
-    final_markdown = format_research_review_report(context.project.name, run.prompt, review_markdown, final_markdown)
+    final_markdown = _resolve_generic_markdown(
+        verdict_execution["result"], fallback=review_markdown
+    )
+    final_markdown = format_research_review_report(
+        context.project.name, run.prompt, review_markdown, final_markdown
+    )
     artifact_refs: list[dict[str, Any]] = []
-    report_artifact = _write_run_artifact(context, "reports/research-review.md", final_markdown, kind="report")
+    report_artifact = _write_run_artifact(
+        context, "reports/research-review.md", final_markdown, kind="report"
+    )
     if report_artifact:
         artifact_refs.append(report_artifact)
     excerpt = _markdown_excerpt(final_markdown)
@@ -1362,9 +1415,7 @@ def _execute_auto_review_loop(
     artifact_refs: list[dict[str, Any]] = []
     review_thread_id = _stable_workflow_thread_id(context, "auto_review_thread_id", "auto-review")
     existing_iteration_reports = [
-        dict(item)
-        for item in context.metadata.get("iterations", [])
-        if isinstance(item, dict)
+        dict(item) for item in context.metadata.get("iterations", []) if isinstance(item, dict)
     ]
     start_iteration = 1
     if resume_stage_id:
@@ -1427,7 +1478,9 @@ def _execute_auto_review_loop(
             "pending_experiments": [],
             "timestamp": _iso_now(),
         }
-        state_artifact = _write_run_json_artifact(context, "REVIEW_STATE.json", initial_state, kind="artifact")
+        state_artifact = _write_run_json_artifact(
+            context, "REVIEW_STATE.json", initial_state, kind="artifact"
+        )
         if state_artifact:
             artifact_refs.append(state_artifact)
         _patch_run(
@@ -1445,7 +1498,9 @@ def _execute_auto_review_loop(
         )
 
     command = _resolve_execution_command(context, allow_default=False)
-    effective_command, runtime_environment = _wrap_command_with_runtime_environment(context, command)
+    effective_command, runtime_environment = _wrap_command_with_runtime_environment(
+        context, command
+    )
     command_workspace_path = _resolve_execution_workspace_path(context)
     runtime_environment = {
         **runtime_environment,
@@ -1454,7 +1509,9 @@ def _execute_auto_review_loop(
     iteration_reports: list[dict[str, Any]] = list(existing_iteration_reports)
     review_markdown_parts = [plan_markdown]
     if existing_iteration_reports:
-        review_markdown_parts.extend(_auto_review_iteration_markdown(item) for item in existing_iteration_reports)
+        review_markdown_parts.extend(
+            _auto_review_iteration_markdown(item) for item in existing_iteration_reports
+        )
     for iteration in range(start_iteration, max_iterations + 1):
         progress_base = 24 + int((iteration - 1) * (48 / max_iterations))
         _patch_run(run.id, active_phase="execute_cycle", summary=f"正在执行第 {iteration} 轮任务。")
@@ -1465,7 +1522,9 @@ def _execute_auto_review_loop(
             message=f"正在执行第 {iteration} 轮任务。",
             progress_pct=min(progress_base + 8, 78),
         )
-        _emit_progress(progress_callback, f"正在执行第 {iteration} 轮任务。", min(progress_base + 8, 78))
+        _emit_progress(
+            progress_callback, f"正在执行第 {iteration} 轮任务。", min(progress_base + 8, 78)
+        )
 
         execution_markdown = ""
         execution_payload: dict[str, Any] = {}
@@ -1503,7 +1562,12 @@ def _execute_auto_review_loop(
             execute_execution = _invoke_role_markdown(
                 context,
                 "execute_cycle",
-                _build_auto_review_execute_prompt(context, plan_markdown, iteration=iteration, previous_reviews=review_markdown_parts[1:]),
+                _build_auto_review_execute_prompt(
+                    context,
+                    plan_markdown,
+                    iteration=iteration,
+                    previous_reviews=review_markdown_parts[1:],
+                ),
                 stage=f"project_auto_review_loop_execute_{iteration}",
                 max_tokens=1800,
                 request_timeout=180,
@@ -1527,21 +1591,29 @@ def _execute_auto_review_loop(
                 "summary": _markdown_excerpt(execution_markdown),
                 "content": execution_markdown,
                 "provider": (
-                    "workspace_executor_remote" if run.workspace_server_id else "workspace_executor_local"
+                    "workspace_executor_remote"
+                    if run.workspace_server_id
+                    else "workspace_executor_local"
                 )
                 if command and command_workspace_path
-                else execute_execution.get("provider") if execute_execution else None,
+                else execute_execution.get("provider")
+                if execute_execution
+                else None,
                 "model": execute_execution.get("model") if execute_execution else None,
                 "variant": execute_execution.get("variant") if execute_execution else None,
                 "model_role": (
                     _stage_model_role(context, "execute_cycle")
                     if command and command_workspace_path
-                    else execute_execution.get("model_role") if execute_execution else _stage_model_role(context, "execute_cycle")
+                    else execute_execution.get("model_role")
+                    if execute_execution
+                    else _stage_model_role(context, "execute_cycle")
                 ),
                 "model_source": (
                     "workspace_executor"
                     if command and command_workspace_path
-                    else execute_execution.get("model_source") if execute_execution else None
+                    else execute_execution.get("model_source")
+                    if execute_execution
+                    else None
                 ),
                 "role_template_id": _stage_role_id(context, "execute_cycle"),
                 "iteration": iteration,
@@ -1567,13 +1639,17 @@ def _execute_auto_review_loop(
         review_execution = _invoke_role_json(
             context,
             "review_cycle",
-            _build_auto_review_json_prompt(context, plan_markdown, execution_markdown, iteration=iteration),
+            _build_auto_review_json_prompt(
+                context, plan_markdown, execution_markdown, iteration=iteration
+            ),
             stage=f"project_auto_review_loop_review_{iteration}",
             max_tokens=1400,
             max_retries=1,
             request_timeout=180,
         )
-        review_payload = _resolve_auto_review_payload(review_execution["result"], iteration=iteration)
+        review_payload = _resolve_auto_review_payload(
+            review_execution["result"], iteration=iteration
+        )
         iteration_report = {
             "iteration": iteration,
             "execution": execution_payload,
@@ -1597,10 +1673,14 @@ def _execute_auto_review_loop(
             "pending_experiments": review_payload.get("pending_experiments") or [],
             "timestamp": _iso_now(),
         }
-        auto_review_artifact = _write_run_artifact(context, "AUTO_REVIEW.md", round_markdown, kind="report")
+        auto_review_artifact = _write_run_artifact(
+            context, "AUTO_REVIEW.md", round_markdown, kind="report"
+        )
         if auto_review_artifact:
             artifact_refs.append(auto_review_artifact)
-        state_artifact = _write_run_json_artifact(context, "REVIEW_STATE.json", state_payload, kind="artifact")
+        state_artifact = _write_run_json_artifact(
+            context, "REVIEW_STATE.json", state_payload, kind="artifact"
+        )
         if state_artifact:
             artifact_refs.append(state_artifact)
         _patch_run(
@@ -1662,10 +1742,14 @@ def _execute_auto_review_loop(
         },
         final_markdown,
     )
-    report_artifact = _write_run_artifact(context, "reports/auto-review-loop.md", report_markdown, kind="report")
+    report_artifact = _write_run_artifact(
+        context, "reports/auto-review-loop.md", report_markdown, kind="report"
+    )
     if report_artifact:
         artifact_refs.append(report_artifact)
-    auto_review_artifact = _write_run_artifact(context, "AUTO_REVIEW.md", final_markdown, kind="report")
+    auto_review_artifact = _write_run_artifact(
+        context, "AUTO_REVIEW.md", final_markdown, kind="report"
+    )
     if auto_review_artifact:
         artifact_refs.append(auto_review_artifact)
     final_state_artifact = _write_run_json_artifact(
@@ -1675,9 +1759,17 @@ def _execute_auto_review_loop(
             "round": len(iteration_reports),
             "threadId": review_thread_id,
             "status": "completed",
-            "last_score": (iteration_reports[-1].get("review") or {}).get("score") if iteration_reports else None,
-            "last_verdict": (iteration_reports[-1].get("review") or {}).get("verdict") if iteration_reports else None,
-            "pending_experiments": (iteration_reports[-1].get("review") or {}).get("pending_experiments") if iteration_reports else [],
+            "last_score": (iteration_reports[-1].get("review") or {}).get("score")
+            if iteration_reports
+            else None,
+            "last_verdict": (iteration_reports[-1].get("review") or {}).get("verdict")
+            if iteration_reports
+            else None,
+            "pending_experiments": (iteration_reports[-1].get("review") or {}).get(
+                "pending_experiments"
+            )
+            if iteration_reports
+            else [],
             "timestamp": _iso_now(),
         },
         kind="artifact",
@@ -1696,7 +1788,9 @@ def _execute_auto_review_loop(
             "model": iteration_reports[-1].get("review_model") if iteration_reports else None,
             "variant": iteration_reports[-1].get("review_variant") if iteration_reports else None,
             "model_role": "reviewer",
-            "model_source": iteration_reports[-1].get("model_source") if iteration_reports else None,
+            "model_source": iteration_reports[-1].get("model_source")
+            if iteration_reports
+            else None,
             "role_template_id": _stage_role_id(context, "review_cycle"),
             "artifact_refs": artifact_refs,
             "iterations": iteration_reports,
@@ -1756,10 +1850,18 @@ def _execute_run_experiment(
 
     command_workspace_path = _resolve_execution_workspace_path(context) or workspace_path
     inspect_payload = _stage_output_payload(context, "inspect_workspace")
-    inspection = inspect_payload.get("inspection") if isinstance(inspect_payload.get("inspection"), dict) else None
-    if resume_stage_id not in {"execute_experiment", "summarize_results"} or not isinstance(inspection, dict):
+    inspection = (
+        inspect_payload.get("inspection")
+        if isinstance(inspect_payload.get("inspection"), dict)
+        else None
+    )
+    if resume_stage_id not in {"execute_experiment", "summarize_results"} or not isinstance(
+        inspection, dict
+    ):
         if command_workspace_path != _resolve_workspace_path(run):
-            inspection = _inspect_workspace_payload(context, workspace_path_override=command_workspace_path)
+            inspection = _inspect_workspace_payload(
+                context, workspace_path_override=command_workspace_path
+            )
         else:
             inspection = _inspect_workspace_payload(context)
         _set_stage_state(
@@ -1787,7 +1889,9 @@ def _execute_run_experiment(
             context,
             "inspect_workspace",
             "execute_experiment",
-            stage_summary=str(inspection.get("message") or inspection.get("tree") or workspace_path)[:600],
+            stage_summary=str(
+                inspection.get("message") or inspection.get("tree") or workspace_path
+            )[:600],
         )
     else:
         _set_stage_state(
@@ -1809,7 +1913,9 @@ def _execute_run_experiment(
     if len(execution_plan) > 1:
         raise RuntimeError("当前批量实验编排仅支持 SSH 工作区，请切换到远程工作区后重试。")
     command = execution_plan[0].command
-    effective_command, runtime_environment = _wrap_command_with_runtime_environment(context, command)
+    effective_command, runtime_environment = _wrap_command_with_runtime_environment(
+        context, command
+    )
     runtime_environment = {
         **runtime_environment,
         "command_workspace_path": command_workspace_path,
@@ -1860,7 +1966,9 @@ def _execute_run_experiment(
         {
             "summary": "实验命令执行完成" if execution.get("success") else "实验命令执行失败",
             "content": _command_result_preview(execution),
-            "provider": "workspace_executor_remote" if run.workspace_server_id else "workspace_executor_local",
+            "provider": "workspace_executor_remote"
+            if run.workspace_server_id
+            else "workspace_executor_local",
             "model_role": _stage_model_role(context, "execute_experiment"),
             "model_source": "workspace_executor",
             "role_template_id": _stage_role_id(context, "execute_experiment"),
@@ -1887,7 +1995,11 @@ def _execute_run_experiment(
 
     if not execution.get("success"):
         raise RuntimeError(
-            str(execution.get("stderr") or execution.get("stdout") or f"命令退出码 {execution.get('exit_code')}")
+            str(
+                execution.get("stderr")
+                or execution.get("stdout")
+                or f"命令退出码 {execution.get('exit_code')}"
+            )
         )
 
     _set_stage_state(
@@ -1920,7 +2032,9 @@ def _execute_run_experiment(
         max_tokens=1800,
         request_timeout=180,
     )
-    summary_markdown = _resolve_experiment_summary_markdown(context, execution, summary_execution["result"])
+    summary_markdown = _resolve_experiment_summary_markdown(
+        context, execution, summary_execution["result"]
+    )
     summary_markdown = format_experiment_report(
         context.project.name,
         run.prompt,
@@ -1942,7 +2056,9 @@ def _execute_run_experiment(
             },
         },
     )
-    summary_artifact = _write_run_artifact(context, "reports/experiment-summary.md", summary_markdown, kind="report")
+    summary_artifact = _write_run_artifact(
+        context, "reports/experiment-summary.md", summary_markdown, kind="report"
+    )
     if summary_artifact:
         artifact_refs.append(summary_artifact)
 
@@ -2029,7 +2145,9 @@ def _execute_experiment_audit(
         bundle = _collect_experiment_audit_bundle(context, workspace_path=workspace_path)
         audit_payload = _resolve_experiment_audit_payload(
             bundle,
-            LLMResult(content=review_json_text, parsed_json=_parse_json_payload_text(review_json_text)),
+            LLMResult(
+                content=review_json_text, parsed_json=_parse_json_payload_text(review_json_text)
+            ),
         )
     else:
         _patch_run(run.id, active_phase="collect_artifacts", summary="正在收集实验审计证据包。")
@@ -2071,7 +2189,9 @@ def _execute_experiment_audit(
             stage_summary=bundle_summary,
         )
 
-        _patch_run(run.id, active_phase="review_integrity", summary="正在执行跨模型实验完整性审计。")
+        _patch_run(
+            run.id, active_phase="review_integrity", summary="正在执行跨模型实验完整性审计。"
+        )
         _set_stage_state(
             run.id,
             "review_integrity",
@@ -2130,8 +2250,12 @@ def _execute_experiment_audit(
         workspace_path=workspace_path,
     )
     artifact_refs: list[dict[str, Any]] = []
-    report_artifact = _write_run_artifact(context, "EXPERIMENT_AUDIT.md", final_markdown, kind="report")
-    json_artifact = _write_run_json_artifact(context, "EXPERIMENT_AUDIT.json", audit_payload, kind="artifact")
+    report_artifact = _write_run_artifact(
+        context, "EXPERIMENT_AUDIT.md", final_markdown, kind="report"
+    )
+    json_artifact = _write_run_json_artifact(
+        context, "EXPERIMENT_AUDIT.json", audit_payload, kind="artifact"
+    )
     report_preview_artifact = _write_run_artifact(
         context,
         "reports/experiment-audit.md",
@@ -2225,7 +2349,9 @@ def _launch_remote_experiment_item(
     item_run_directory = str(runtime["run_directory"])
     item_log_path = str(runtime["log_path"])
     item_planned_execution_workspace = str(runtime.get("planned_execution_workspace") or "").strip()
-    effective_command, runtime_environment = _wrap_command_with_runtime_environment(item_context, item.command)
+    effective_command, runtime_environment = _wrap_command_with_runtime_environment(
+        item_context, item.command
+    )
     selected_gpu: dict[str, Any] | None = None
     gpu_env_vars: dict[str, str] = {}
     gpu_lease: dict[str, Any] | None = None
@@ -2271,12 +2397,18 @@ def _launch_remote_experiment_item(
             session_name=item_session_name,
         )
         execution_workspace = str(
-            prepare_result.get("execution_workspace") or item_planned_execution_workspace or workspace_path
+            prepare_result.get("execution_workspace")
+            or item_planned_execution_workspace
+            or workspace_path
         ).strip()
-        command_workspace_path = _resolve_execution_workspace_path(
-            item_context,
-            workspace_root=execution_workspace or workspace_path,
-        ) or execution_workspace or workspace_path
+        command_workspace_path = (
+            _resolve_execution_workspace_path(
+                item_context,
+                workspace_root=execution_workspace or workspace_path,
+            )
+            or execution_workspace
+            or workspace_path
+        )
         runtime_environment = {
             **runtime_environment,
             "command_workspace_path": command_workspace_path,
@@ -2309,14 +2441,18 @@ def _launch_remote_experiment_item(
                     "selected_gpu": selected_gpu,
                     "execution_command": item.command,
                     "effective_execution_command": effective_command,
-                    "execution_workspace": command_workspace_path or execution_workspace or workspace_path,
+                    "execution_workspace": command_workspace_path
+                    or execution_workspace
+                    or workspace_path,
                     "remote_session_name": item_session_name,
                 },
             )
             if gpu_lease is not None:
                 active_leases = _merge_active_gpu_leases(active_leases, gpu_lease)
         screen_snapshot = remote_list_screen_sessions(server_entry, session_name=item_session_name)
-        screen_capture = remote_capture_screen_session(server_entry, session_name=item_session_name, lines=60)
+        screen_capture = remote_capture_screen_session(
+            server_entry, session_name=item_session_name, lines=60
+        )
         return {
             "ok": True,
             "active_leases": active_leases,
@@ -2328,7 +2464,9 @@ def _launch_remote_experiment_item(
                 "status": "running",
                 "remote_session_name": item_session_name,
                 "remote_execution_workspace": execution_workspace or workspace_path,
-                "command_workspace_path": command_workspace_path or execution_workspace or workspace_path,
+                "command_workspace_path": command_workspace_path
+                or execution_workspace
+                or workspace_path,
                 "remote_isolation_mode": isolation_mode,
                 "run_directory": item_run_directory,
                 "log_path": item_log_path,
@@ -2369,8 +2507,13 @@ def _launch_remote_experiment_item(
                 "status": "failed_to_launch",
                 "error": str(exc),
                 "remote_session_name": item_session_name,
-                "remote_execution_workspace": execution_workspace or item_planned_execution_workspace or workspace_path,
-                "command_workspace_path": command_workspace_path or execution_workspace or item_planned_execution_workspace or workspace_path,
+                "remote_execution_workspace": execution_workspace
+                or item_planned_execution_workspace
+                or workspace_path,
+                "command_workspace_path": command_workspace_path
+                or execution_workspace
+                or item_planned_execution_workspace
+                or workspace_path,
                 "remote_isolation_mode": isolation_mode,
                 "run_directory": item_run_directory,
                 "log_path": item_log_path,
@@ -2498,7 +2641,10 @@ def _execute_remote_run_experiment_batch(
                 )
 
     if not launched_records:
-        failure_text = "; ".join(f"{item['name']}: {item.get('error')}" for item in failed_records[:6]) or "未知错误"
+        failure_text = (
+            "; ".join(f"{item['name']}: {item.get('error')}" for item in failed_records[:6])
+            or "未知错误"
+        )
         _patch_run(
             run.id,
             metadata_updates={
@@ -2543,7 +2689,9 @@ def _finalize_remote_run_experiment_batch(
     progress_callback: ProgressCallback | None,
 ) -> dict[str, Any]:
     run = context.run
-    workspace_path = _resolve_workspace_path(run) or _resolve_execution_workspace_path(context) or ""
+    workspace_path = (
+        _resolve_workspace_path(run) or _resolve_execution_workspace_path(context) or ""
+    )
     first_success = launched_records[0]
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
@@ -2572,7 +2720,9 @@ def _finalize_remote_run_experiment_batch(
         if capture_stdout:
             stdout_lines.extend(["", capture_stdout])
         stdout_lines.append("")
-        error_text = str(record.get("error") or ((record.get("screen_capture") or {}).get("stderr")) or "").strip()
+        error_text = str(
+            record.get("error") or ((record.get("screen_capture") or {}).get("stderr")) or ""
+        ).strip()
         if error_text:
             stderr_lines.append(f"[{record.get('name')}] {error_text}")
         for session_item in record.get("screen_sessions") or []:
@@ -2583,7 +2733,9 @@ def _finalize_remote_run_experiment_batch(
             aggregated_screen_sessions.append(dict(session_item))
 
     launch_execution = {
-        "command": f"batch[{len(execution_plan)}]" if len(execution_plan) > 1 else first_success.get("command"),
+        "command": f"batch[{len(execution_plan)}]"
+        if len(execution_plan) > 1
+        else first_success.get("command"),
         "effective_command": (
             f"batch[{len(execution_plan)}]"
             if len(execution_plan) > 1
@@ -2593,7 +2745,9 @@ def _finalize_remote_run_experiment_batch(
         "stdout": "\n".join(stdout_lines).strip(),
         "stderr": "\n".join(stderr_lines).strip(),
         "success": True,
-        "launch_command": first_success.get("launch", {}).get("launch_command") if len(launched_records) == 1 else None,
+        "launch_command": first_success.get("launch", {}).get("launch_command")
+        if len(launched_records) == 1
+        else None,
         "remote_session_name": first_success.get("remote_session_name"),
         "remote_session_names": [
             str(item.get("remote_session_name") or "").strip()
@@ -2670,9 +2824,8 @@ def _finalize_remote_run_experiment_batch(
     artifact_refs.extend(_collect_run_artifacts(context))
     artifact_refs = _dedupe_artifact_refs(artifact_refs)
 
-    launch_summary = (
-        f"{len(launched_records)}/{len(execution_plan)} 个远程实验已在后台启动"
-        + (f"，{len(failed_records)} 个启动失败" if failed_records else "")
+    launch_summary = f"{len(launched_records)}/{len(execution_plan)} 个远程实验已在后台启动" + (
+        f"，{len(failed_records)} 个启动失败" if failed_records else ""
     )
     _record_stage_output(
         run.id,
@@ -2787,7 +2940,9 @@ def _finalize_remote_run_experiment_batch(
             },
         },
     )
-    summary_artifact = _write_run_artifact(context, "reports/experiment-summary.md", summary_markdown, kind="report")
+    summary_artifact = _write_run_artifact(
+        context, "reports/experiment-summary.md", summary_markdown, kind="report"
+    )
     if summary_artifact:
         artifact_refs.append(summary_artifact)
         artifact_refs = _dedupe_artifact_refs(artifact_refs)
@@ -2919,6 +3074,7 @@ def _execute_remote_run_experiment(
         progress_callback=progress_callback,
     )
 
+
 def _execute_paper_writing(
     context: WorkflowContext,
     progress_callback: ProgressCallback | None,
@@ -2938,7 +3094,12 @@ def _execute_paper_writing(
         "polish_manuscript",
     )
 
-    if resume_stage_id in {"design_figures", "draft_sections", "compile_manuscript", "polish_manuscript"}:
+    if resume_stage_id in {
+        "design_figures",
+        "draft_sections",
+        "compile_manuscript",
+        "polish_manuscript",
+    }:
         plan_markdown = _stage_output_content(context, "gather_materials")
         if not plan_markdown:
             raise RuntimeError("恢复论文流程失败：缺少 PAPER_PLAN 阶段产物。")
@@ -3107,7 +3268,9 @@ def _execute_paper_writing(
         if not draft_markdown:
             raise RuntimeError("恢复论文流程失败：缺少 paper-write 阶段产物。")
     else:
-        _patch_run(run.id, active_phase="draft_sections", summary="正在生成论文正文与 LaTeX 工作区。")
+        _patch_run(
+            run.id, active_phase="draft_sections", summary="正在生成论文正文与 LaTeX 工作区。"
+        )
         _set_stage_state(
             run.id,
             "draft_sections",
@@ -3221,7 +3384,9 @@ def _execute_paper_writing(
                 compile_execution["result"],
                 fallback=_missing_compile_markdown(),
             )
-            artifact = _write_run_artifact(context, "reports/PAPER_COMPILE.md", compile_markdown, kind="report")
+            artifact = _write_run_artifact(
+                context, "reports/PAPER_COMPILE.md", compile_markdown, kind="report"
+            )
             if artifact:
                 stage_artifacts.append(artifact)
         artifact_refs.extend(stage_artifacts)
@@ -3235,7 +3400,9 @@ def _execute_paper_writing(
                 "model": None if compile_command else None,
                 "variant": None,
                 "model_role": _stage_model_role(context, "compile_manuscript"),
-                "model_source": "workspace_executor" if compile_command else "project_paper_compile",
+                "model_source": "workspace_executor"
+                if compile_command
+                else "project_paper_compile",
                 "role_template_id": _stage_role_id(context, "compile_manuscript"),
                 "artifact_refs": stage_artifacts,
             },
@@ -3263,7 +3430,9 @@ def _execute_paper_writing(
         progress_pct=96,
     )
     _emit_progress(progress_callback, "正在执行论文改进循环。", 96)
-    improvement_thread_id = _stable_workflow_thread_id(context, "paper_improvement_thread_id", "paper-improvement")
+    improvement_thread_id = _stable_workflow_thread_id(
+        context, "paper_improvement_thread_id", "paper-improvement"
+    )
     current_draft = draft_markdown
     current_compile = compile_markdown
     score_round_one: float | None = None
@@ -3318,7 +3487,9 @@ def _execute_paper_writing(
             max_tokens=3000,
             request_timeout=260,
         )
-        revised_markdown = _resolve_paper_polish_markdown(current_draft, revision_execution["result"])
+        revised_markdown = _resolve_paper_polish_markdown(
+            current_draft, revision_execution["result"]
+        )
         round_artifacts = _materialize_manuscript_workspace(
             context,
             revised_markdown,
@@ -3501,12 +3672,22 @@ def _execute_paper_writing(
         {
             "summary": excerpt,
             "content": final_markdown,
-            "provider": final_revision_execution.get("provider") if final_revision_execution else None,
+            "provider": final_revision_execution.get("provider")
+            if final_revision_execution
+            else None,
             "model": final_revision_execution.get("model") if final_revision_execution else None,
-            "variant": final_revision_execution.get("variant") if final_revision_execution else None,
-            "model_role": final_revision_execution.get("model_role") if final_revision_execution else None,
-            "model_source": final_revision_execution.get("model_source") if final_revision_execution else None,
-            "role_template_id": final_revision_execution.get("role_template_id") if final_revision_execution else None,
+            "variant": final_revision_execution.get("variant")
+            if final_revision_execution
+            else None,
+            "model_role": final_revision_execution.get("model_role")
+            if final_revision_execution
+            else None,
+            "model_source": final_revision_execution.get("model_source")
+            if final_revision_execution
+            else None,
+            "role_template_id": final_revision_execution.get("role_template_id")
+            if final_revision_execution
+            else None,
             "artifact_refs": final_stage_artifacts,
             "generated_content_id": generated_content_id,
             "thread_id": improvement_thread_id,
@@ -3657,7 +3838,13 @@ def _execute_rebuttal(
     )
 
     normalize_payload = _stage_output_payload(context, "normalize_reviews")
-    if resume_stage_id in {"issue_board", "strategy_plan", "draft_rebuttal", "stress_test", "finalize_package"}:
+    if resume_stage_id in {
+        "issue_board",
+        "strategy_plan",
+        "draft_rebuttal",
+        "stress_test",
+        "finalize_package",
+    }:
         normalize_markdown = str(normalize_payload.get("content") or "").strip()
         if not normalize_markdown:
             raise RuntimeError("恢复 rebuttal 失败：缺少原始 reviews 归档。")
@@ -3668,7 +3855,9 @@ def _execute_rebuttal(
             round_label=round_label,
             character_limit=character_limit,
         )
-        _patch_run(run.id, active_phase="normalize_reviews", summary="正在整理审稿意见与 rebuttal 约束。")
+        _patch_run(
+            run.id, active_phase="normalize_reviews", summary="正在整理审稿意见与 rebuttal 约束。"
+        )
         _set_stage_state(
             run.id,
             "normalize_reviews",
@@ -3677,7 +3866,9 @@ def _execute_rebuttal(
             progress_pct=12,
         )
         _emit_progress(progress_callback, "正在整理审稿意见与 rebuttal 约束。", 12)
-        reviews_artifact = _write_run_artifact(context, "rebuttal/REVIEWS_RAW.md", normalize_markdown, kind="report")
+        reviews_artifact = _write_run_artifact(
+            context, "rebuttal/REVIEWS_RAW.md", normalize_markdown, kind="report"
+        )
         state_markdown = _format_rebuttal_state_markdown(
             venue=venue,
             round_label=round_label,
@@ -3686,7 +3877,9 @@ def _execute_rebuttal(
             current_phase="normalize_reviews",
             status="running",
         )
-        state_artifact = _write_run_artifact(context, "rebuttal/REBUTTAL_STATE.md", state_markdown, kind="report")
+        state_artifact = _write_run_artifact(
+            context, "rebuttal/REBUTTAL_STATE.md", state_markdown, kind="report"
+        )
         stage_artifacts = [artifact for artifact in [reviews_artifact, state_artifact] if artifact]
         artifact_refs.extend(stage_artifacts)
         _record_stage_output(
@@ -3744,7 +3937,9 @@ def _execute_rebuttal(
             issue_execution["result"],
             fallback=_fallback_rebuttal_issue_board(review_bundle),
         )
-        issue_artifact = _write_run_artifact(context, "rebuttal/ISSUE_BOARD.md", issue_board_markdown, kind="report")
+        issue_artifact = _write_run_artifact(
+            context, "rebuttal/ISSUE_BOARD.md", issue_board_markdown, kind="report"
+        )
         stage_artifacts = [artifact for artifact in [issue_artifact] if artifact]
         artifact_refs.extend(stage_artifacts)
         _record_stage_output(
@@ -3806,7 +4001,9 @@ def _execute_rebuttal(
             strategy_execution["result"],
             fallback=_fallback_rebuttal_strategy(issue_board_markdown, venue, character_limit),
         )
-        strategy_artifact = _write_run_artifact(context, "rebuttal/STRATEGY_PLAN.md", strategy_markdown, kind="report")
+        strategy_artifact = _write_run_artifact(
+            context, "rebuttal/STRATEGY_PLAN.md", strategy_markdown, kind="report"
+        )
         stage_artifacts = [artifact for artifact in [strategy_artifact] if artifact]
         artifact_refs.extend(stage_artifacts)
         _record_stage_output(
@@ -3910,7 +4107,9 @@ def _execute_rebuttal(
                 draft_execution["result"],
                 fallback=_fallback_rebuttal_draft(strategy_markdown, venue, character_limit),
             )
-            draft_artifact = _write_run_artifact(context, "rebuttal/REBUTTAL_DRAFT_v1.md", draft_markdown, kind="report")
+            draft_artifact = _write_run_artifact(
+                context, "rebuttal/REBUTTAL_DRAFT_v1.md", draft_markdown, kind="report"
+            )
             stage_artifacts = [artifact for artifact in [draft_artifact] if artifact]
             artifact_refs.extend(stage_artifacts)
             _record_stage_output(
@@ -3942,7 +4141,9 @@ def _execute_rebuttal(
             if not stress_markdown:
                 raise RuntimeError("恢复 rebuttal 失败：缺少 stress test 输出。")
         else:
-            _patch_run(run.id, active_phase="stress_test", summary="正在执行 rebuttal stress test。")
+            _patch_run(
+                run.id, active_phase="stress_test", summary="正在执行 rebuttal stress test。"
+            )
             _set_stage_state(
                 run.id,
                 "stress_test",
@@ -3970,7 +4171,9 @@ def _execute_rebuttal(
                 stress_execution["result"],
                 fallback=_fallback_rebuttal_stress(draft_markdown),
             )
-            stress_artifact = _write_run_artifact(context, "rebuttal/MCP_STRESS_TEST.md", stress_markdown, kind="report")
+            stress_artifact = _write_run_artifact(
+                context, "rebuttal/MCP_STRESS_TEST.md", stress_markdown, kind="report"
+            )
             stage_artifacts = [artifact for artifact in [stress_artifact] if artifact]
             artifact_refs.extend(stage_artifacts)
             _record_stage_output(
@@ -4038,7 +4241,9 @@ def _execute_rebuttal(
             max_tokens=3600,
             request_timeout=260,
         )
-        final_markdown = _resolve_generic_markdown(finalize_execution["result"], fallback=draft_markdown)
+        final_markdown = _resolve_generic_markdown(
+            finalize_execution["result"], fallback=draft_markdown
+        )
         final_provider_payload = {
             "provider": finalize_execution.get("provider"),
             "model": finalize_execution.get("model"),
@@ -4052,7 +4257,9 @@ def _execute_rebuttal(
         paste_ready_text = ""
         character_count = 0
     elif not paste_ready_text:
-        paste_ready_text = _fit_character_limit(_markdown_to_plain_text(final_markdown), character_limit)
+        paste_ready_text = _fit_character_limit(
+            _markdown_to_plain_text(final_markdown), character_limit
+        )
         character_count = len(paste_ready_text)
 
     report_markdown = format_rebuttal_report(
@@ -4079,14 +4286,18 @@ def _execute_rebuttal(
 
     final_stage_artifacts: list[dict[str, Any]] = []
     if not quick_mode:
-        rich_artifact = _write_run_artifact(context, "rebuttal/REBUTTAL_DRAFT_rich.md", final_markdown, kind="report")
+        rich_artifact = _write_run_artifact(
+            context, "rebuttal/REBUTTAL_DRAFT_rich.md", final_markdown, kind="report"
+        )
         paste_artifact = _write_run_artifact(
             context,
             "rebuttal/PASTE_READY.txt",
             paste_ready_text.rstrip() + "\n",
             kind="artifact",
         )
-        final_stage_artifacts.extend(artifact for artifact in [rich_artifact, paste_artifact] if artifact)
+        final_stage_artifacts.extend(
+            artifact for artifact in [rich_artifact, paste_artifact] if artifact
+        )
     state_markdown = _format_rebuttal_state_markdown(
         venue=venue,
         round_label=round_label,
@@ -4096,9 +4307,15 @@ def _execute_rebuttal(
         status="completed",
         character_count=character_count if not quick_mode else None,
     )
-    state_artifact = _write_run_artifact(context, "rebuttal/REBUTTAL_STATE.md", state_markdown, kind="report")
-    report_artifact = _write_run_artifact(context, "reports/rebuttal.md", report_markdown, kind="report")
-    final_stage_artifacts.extend(artifact for artifact in [state_artifact, report_artifact] if artifact)
+    state_artifact = _write_run_artifact(
+        context, "rebuttal/REBUTTAL_STATE.md", state_markdown, kind="report"
+    )
+    report_artifact = _write_run_artifact(
+        context, "reports/rebuttal.md", report_markdown, kind="report"
+    )
+    final_stage_artifacts.extend(
+        artifact for artifact in [state_artifact, report_artifact] if artifact
+    )
     artifact_refs.extend(final_stage_artifacts)
     artifact_refs = _dedupe_artifact_refs(artifact_refs)
 
@@ -4224,7 +4441,9 @@ def _execute_full_pipeline(
                 "## Recommended Idea\n- 建议先选一个最接近现有资源与数据的方案进入实现。\n"
             ),
         )
-        idea_artifact = _write_run_artifact(context, "IDEA_REPORT.md", review_markdown, kind="report")
+        idea_artifact = _write_run_artifact(
+            context, "IDEA_REPORT.md", review_markdown, kind="report"
+        )
         if idea_artifact:
             pipeline_artifact_refs.append(idea_artifact)
         _record_stage_output(
@@ -4257,7 +4476,9 @@ def _execute_full_pipeline(
         )
 
     command = _resolve_execution_command(context)
-    effective_command, runtime_environment = _wrap_command_with_runtime_environment(context, command)
+    effective_command, runtime_environment = _wrap_command_with_runtime_environment(
+        context, command
+    )
     command_workspace_path = _resolve_execution_workspace_path(context) or workspace_path
     runtime_environment = {
         **runtime_environment,
@@ -4273,9 +4494,13 @@ def _execute_full_pipeline(
     )
     _emit_progress(progress_callback, f"正在执行实现与实验：{command}", 46)
     if command_workspace_path and command_workspace_path != workspace_path:
-        inspection = _inspect_workspace_payload(context, workspace_path_override=command_workspace_path)
+        inspection = _inspect_workspace_payload(
+            context, workspace_path_override=command_workspace_path
+        )
     else:
-        inspection = _inspect_workspace_payload(context) if workspace_path else {"workspace_path": None}
+        inspection = (
+            _inspect_workspace_payload(context) if workspace_path else {"workspace_path": None}
+        )
     if command_workspace_path and command_workspace_path != workspace_path:
         execution = _run_workspace_command_for_context(
             context,
@@ -4302,7 +4527,9 @@ def _execute_full_pipeline(
         {
             "summary": "实验命令执行成功" if execution.get("success") else "实验命令执行失败",
             "content": _command_result_preview(execution),
-            "provider": "workspace_executor_remote" if run.workspace_server_id else "workspace_executor_local",
+            "provider": "workspace_executor_remote"
+            if run.workspace_server_id
+            else "workspace_executor_local",
             "model_role": _stage_model_role(context, "implement_and_run"),
             "model_source": "workspace_executor",
             "role_template_id": _stage_role_id(context, "implement_and_run"),
@@ -4316,7 +4543,11 @@ def _execute_full_pipeline(
     )
     if not execution.get("success"):
         raise RuntimeError(
-            str(execution.get("stderr") or execution.get("stdout") or f"命令退出码 {execution.get('exit_code')}")
+            str(
+                execution.get("stderr")
+                or execution.get("stdout")
+                or f"命令退出码 {execution.get('exit_code')}"
+            )
         )
     _set_stage_state(
         run.id,
@@ -4335,7 +4566,9 @@ def _execute_full_pipeline(
         progress_pct=78,
     )
     _emit_progress(progress_callback, "正在执行自动评审循环总结。", 78)
-    synthesis_prompt = _build_pipeline_synthesis_prompt(context, review_markdown, inspection, execution)
+    synthesis_prompt = _build_pipeline_synthesis_prompt(
+        context, review_markdown, inspection, execution
+    )
     synthesis_execution = _invoke_role_markdown(
         context,
         "synthesize_findings",
@@ -4344,8 +4577,12 @@ def _execute_full_pipeline(
         max_tokens=2200,
         request_timeout=200,
     )
-    findings_markdown = _resolve_pipeline_findings_markdown(context, synthesis_execution["result"], review_markdown, execution)
-    auto_review_artifact = _write_run_artifact(context, "AUTO_REVIEW.md", findings_markdown, kind="report")
+    findings_markdown = _resolve_pipeline_findings_markdown(
+        context, synthesis_execution["result"], review_markdown, execution
+    )
+    auto_review_artifact = _write_run_artifact(
+        context, "AUTO_REVIEW.md", findings_markdown, kind="report"
+    )
     auto_review_state_artifact = _write_run_json_artifact(
         context,
         "REVIEW_STATE.json",
@@ -4375,7 +4612,11 @@ def _execute_full_pipeline(
             "model_role": synthesis_execution.get("model_role"),
             "model_source": synthesis_execution.get("model_source"),
             "role_template_id": synthesis_execution.get("role_template_id"),
-            "artifact_refs": [artifact for artifact in [auto_review_artifact, auto_review_state_artifact] if artifact],
+            "artifact_refs": [
+                artifact
+                for artifact in [auto_review_artifact, auto_review_state_artifact]
+                if artifact
+            ],
         },
     )
     _set_stage_state(
@@ -4395,7 +4636,9 @@ def _execute_full_pipeline(
         progress_pct=94,
     )
     _emit_progress(progress_callback, "正在生成最终交付物。", 94)
-    handoff_prompt = _build_pipeline_handoff_prompt(context, review_markdown, findings_markdown, execution)
+    handoff_prompt = _build_pipeline_handoff_prompt(
+        context, review_markdown, findings_markdown, execution
+    )
     handoff_execution = _invoke_role_markdown(
         context,
         "handoff_output",
@@ -4404,7 +4647,9 @@ def _execute_full_pipeline(
         max_tokens=2600,
         request_timeout=220,
     )
-    final_markdown = _resolve_pipeline_handoff_markdown(review_markdown, findings_markdown, handoff_execution["result"])
+    final_markdown = _resolve_pipeline_handoff_markdown(
+        review_markdown, findings_markdown, handoff_execution["result"]
+    )
     final_markdown = format_full_pipeline_report(
         context.project.name,
         run.prompt,
@@ -4430,7 +4675,9 @@ def _execute_full_pipeline(
             },
         },
     )
-    final_artifact = _write_run_artifact(context, "reports/final-handoff.md", final_markdown, kind="report")
+    final_artifact = _write_run_artifact(
+        context, "reports/final-handoff.md", final_markdown, kind="report"
+    )
     if final_artifact:
         artifact_refs.append(final_artifact)
     artifact_refs.extend(pipeline_artifact_refs)
@@ -4515,14 +4762,18 @@ def _execute_full_pipeline(
 def _stage_role_id(context: WorkflowContext, stage_id: str, fallback: str = "codex") -> str:
     stage = _stage_binding_for_invocation(context, stage_id)
     if stage is not None:
-        candidate = str(stage.get("selected_agent_id") or stage.get("default_agent_id") or "").strip()
+        candidate = str(
+            stage.get("selected_agent_id") or stage.get("default_agent_id") or ""
+        ).strip()
         if candidate:
             return _normalize_role_id(candidate)
     return _normalize_role_id(fallback)
 
 
 def _resolve_stage_alias_ids(workflow_type: ProjectWorkflowType | str, stage_id: str) -> list[str]:
-    workflow_key = str(workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type)
+    workflow_key = str(
+        workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type
+    )
     normalized_stage_id = str(stage_id or "").strip()
     if not normalized_stage_id:
         return []
@@ -4567,7 +4818,8 @@ def _stage_binding_for_invocation(context: WorkflowContext, stage_id: str) -> di
 
     workflow_key = context.run.workflow_type.value
     preferred_stage_id = str(
-        (_WORKFLOW_STAGE_INVOCATION_BINDINGS.get(workflow_key, {}) or {}).get(normalized_stage_id) or ""
+        (_WORKFLOW_STAGE_INVOCATION_BINDINGS.get(workflow_key, {}) or {}).get(normalized_stage_id)
+        or ""
     ).strip()
     if preferred_stage_id:
         for stage in stages or []:
@@ -4596,7 +4848,10 @@ def _stage_output_payload(context: WorkflowContext, stage_id: str) -> dict[str, 
     stage_outputs = context.metadata.get("stage_outputs")
     if not isinstance(stage_outputs, dict):
         return {}
-    for candidate in [str(stage_id or "").strip(), *_resolve_stage_alias_ids(context.run.workflow_type, stage_id)]:
+    for candidate in [
+        str(stage_id or "").strip(),
+        *_resolve_stage_alias_ids(context.run.workflow_type, stage_id),
+    ]:
         payload = stage_outputs.get(candidate)
         if isinstance(payload, dict):
             return dict(payload)
@@ -4649,9 +4904,7 @@ def _maybe_pause_after_stage(
     task_id = str(context.run.task_id or "").strip()
     if not task_id:
         raise RuntimeError("阶段确认失败：当前运行缺少任务追踪标识。")
-    message = (
-        f"阶段“{_stage_label(context, completed_stage_id)}”已完成，等待人工确认后继续执行“{_stage_label(context, next_stage_id)}”。"
-    )
+    message = f"阶段“{_stage_label(context, completed_stage_id)}”已完成，等待人工确认后继续执行“{_stage_label(context, next_stage_id)}”。"
     mark_run_waiting_for_stage_checkpoint(
         context.run.id,
         task_id=task_id,
@@ -4741,13 +4994,24 @@ def _resolve_stage_model_target(
             "engine_label": str(stage_engine["engine_label"]),
             "display_model": stage_engine.get("display_model"),
             "provider": stage_engine.get("provider"),
-            "variant_override": stage_engine.get("default_variant") or str(role.get("variant") or "medium"),
+            "variant_override": stage_engine.get("default_variant")
+            or str(role.get("variant") or "medium"),
         }
 
     run_engine = _resolve_engine_binding(
-        str(_engine_binding_snapshot(context.metadata, "reviewer" if model_role == "reviewer" else "executor").get("id") or "").strip() or None,
-        model_source="reviewer_engine_profile" if model_role == "reviewer" else "executor_engine_profile",
-        fallback_payload=_engine_binding_snapshot(context.metadata, "reviewer" if model_role == "reviewer" else "executor"),
+        str(
+            _engine_binding_snapshot(
+                context.metadata, "reviewer" if model_role == "reviewer" else "executor"
+            ).get("id")
+            or ""
+        ).strip()
+        or None,
+        model_source="reviewer_engine_profile"
+        if model_role == "reviewer"
+        else "executor_engine_profile",
+        fallback_payload=_engine_binding_snapshot(
+            context.metadata, "reviewer" if model_role == "reviewer" else "executor"
+        ),
     )
     if run_engine is not None:
         return {
@@ -4758,10 +5022,13 @@ def _resolve_stage_model_target(
             "engine_label": str(run_engine["engine_label"]),
             "display_model": run_engine.get("display_model"),
             "provider": run_engine.get("provider"),
-            "variant_override": run_engine.get("default_variant") or str(role.get("variant") or "medium"),
+            "variant_override": run_engine.get("default_variant")
+            or str(role.get("variant") or "medium"),
         }
 
-    explicit = context.run.reviewer_model if model_role == "reviewer" else context.run.executor_model
+    explicit = (
+        context.run.reviewer_model if model_role == "reviewer" else context.run.executor_model
+    )
     if explicit:
         return {
             "model_role": model_role,
@@ -4933,7 +5200,9 @@ def _resolve_reviewer_agent_workspace_path(context: WorkflowContext) -> str | No
 def _reviewer_agent_artifact_refs(context: WorkflowContext) -> list[dict[str, Any]]:
     refs: list[dict[str, Any]] = []
     if isinstance(context.metadata.get("artifact_refs"), list):
-        refs.extend(item for item in context.metadata.get("artifact_refs") if isinstance(item, dict))
+        refs.extend(
+            item for item in context.metadata.get("artifact_refs") if isinstance(item, dict)
+        )
     stage_outputs = context.metadata.get("stage_outputs")
     if isinstance(stage_outputs, dict):
         for payload in stage_outputs.values():
@@ -5085,7 +5354,9 @@ def _build_reviewer_agent_user_prompt(
     return "\n".join(block for block in blocks if str(block or "").strip()).strip()
 
 
-def _positive_float(value: Any, default: float, *, minimum: float = 0.01, maximum: float = 7200.0) -> float:
+def _positive_float(
+    value: Any, default: float, *, minimum: float = 0.01, maximum: float = 7200.0
+) -> float:
     try:
         parsed = float(value)
     except (TypeError, ValueError):
@@ -5159,7 +5430,9 @@ def _emit_reviewer_agent_heartbeat(
     try:
         _patch_run(context.run.id, active_phase=stage_id, summary=message)
     except Exception:
-        logger.debug("Failed to update reviewer heartbeat for run %s", context.run.id, exc_info=True)
+        logger.debug(
+            "Failed to update reviewer heartbeat for run %s", context.run.id, exc_info=True
+        )
 
 
 def _consume_reviewer_agent_stream(
@@ -5231,7 +5504,13 @@ def _consume_reviewer_agent_stream(
         if kind == "item":
             event_count += 1
             last_event_at = time.monotonic()
-            control.observe(payload, session_id=session_id, lifecycle_kind=stage, step_index=0, publish_bus=False)
+            control.observe(
+                payload,
+                session_id=session_id,
+                lifecycle_kind=stage,
+                step_index=0,
+                publish_bus=False,
+            )
             if last_event_at - last_heartbeat_at >= heartbeat_seconds:
                 _emit_reviewer_agent_heartbeat(
                     context,
@@ -5278,7 +5557,9 @@ def _invoke_reviewer_workspace_agent(
         }
         if str(skill_id or "").strip()
     ]
-    mounted_paper_ids = [paper.id for paper in context.selected_papers if str(paper.id or "").strip()]
+    mounted_paper_ids = [
+        paper.id for paper in context.selected_papers if str(paper.id or "").strip()
+    ]
     mounted_primary_paper_id = mounted_paper_ids[0] if mounted_paper_ids else None
     session_id = (
         f"project_reviewer_{context.run.id.replace('-', '')[:12]}_"
@@ -5311,7 +5592,13 @@ def _invoke_reviewer_workspace_agent(
         "cwd": workspace_path,
         "root": workspace_path,
         "variant": variant,
-        "tokens": {"total": None, "input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+        "tokens": {
+            "total": None,
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {"read": 0, "write": 0},
+        },
         "cost": 0.0,
     }
     model_override = str(target.get("model_override") or "").strip() or None
@@ -5470,12 +5757,16 @@ def _build_remote_execution_runtime(
     if not context.run.run_directory:
         raise RuntimeError("当前运行缺少 run_directory，无法规划批量实验目录。")
     suffix = re.sub(r"[^a-zA-Z0-9]+", "", item.item_id)[:18] or f"exp{item.source_index}"
-    run_directory = posixpath.join(str(context.run.run_directory).rstrip("/"), "experiments", item.item_id)
+    run_directory = posixpath.join(
+        str(context.run.run_directory).rstrip("/"), "experiments", item.item_id
+    )
     return {
         "remote_session_name": f"{base_session_name}-{suffix}",
         "run_directory": run_directory,
         "log_path": posixpath.join(run_directory, "run.log"),
-        "planned_execution_workspace": str(build_run_workspace_path(run_directory, remote=True) or ""),
+        "planned_execution_workspace": str(
+            build_run_workspace_path(run_directory, remote=True) or ""
+        ),
     }
 
 
@@ -5487,11 +5778,7 @@ def _merge_active_gpu_leases(
         target_index = int(lease.get("gpu_index"))
     except (TypeError, ValueError):
         return list(active_leases)
-    merged = [
-        item
-        for item in active_leases
-        if int(item.get("gpu_index", -1)) != target_index
-    ]
+    merged = [item for item in active_leases if int(item.get("gpu_index", -1)) != target_index]
     merged.append(dict(lease))
     return merged
 
@@ -5568,17 +5855,28 @@ def _normalize_parallel_experiment_items(raw: Any) -> list[dict[str, Any]]:
             if nested:
                 return nested
         variants = raw.get("variants")
-        base_command = str(raw.get("base_command") or raw.get("execution_command") or raw.get("command") or "").strip()
+        base_command = str(
+            raw.get("base_command") or raw.get("execution_command") or raw.get("command") or ""
+        ).strip()
         if isinstance(variants, list):
             normalized: list[dict[str, Any]] = []
             for index, item in enumerate(variants, start=1):
-                payload = dict(item) if isinstance(item, dict) else {"name": f"实验 {index}", "command": str(item or "").strip()}
+                payload = (
+                    dict(item)
+                    if isinstance(item, dict)
+                    else {"name": f"实验 {index}", "command": str(item or "").strip()}
+                )
                 has_explicit_command = any(
                     str(payload.get(key) or "").strip()
                     for key in ("command", "execution_command", "run_command")
                 )
                 if not has_explicit_command and base_command:
-                    args = str(payload.get("args") or payload.get("suffix") or payload.get("command_suffix") or "").strip()
+                    args = str(
+                        payload.get("args")
+                        or payload.get("suffix")
+                        or payload.get("command_suffix")
+                        or ""
+                    ).strip()
                     payload["command"] = f"{base_command} {args}".strip() if args else base_command
                 normalized.append(payload)
             return normalized
@@ -5619,7 +5917,12 @@ def _resolve_execution_plan(context: WorkflowContext) -> list[ExecutionPlanItem]
             index,
             seen_ids,
         )
-        name = str(item.get("name") or item.get("label") or item.get("title") or f"实验 {index}").strip() or f"实验 {index}"
+        name = (
+            str(
+                item.get("name") or item.get("label") or item.get("title") or f"实验 {index}"
+            ).strip()
+            or f"实验 {index}"
+        )
         metadata_overrides = {
             key: item[key]
             for key in (
@@ -5755,15 +6058,15 @@ def _select_remote_gpu(
         candidates = [item for item in inventory if int(item.get("index", -1)) in preferred_gpu_ids]
         if not candidates:
             raise RuntimeError(f"未找到指定的 GPU: {preferred_gpu_ids}")
-    candidates = [item for item in candidates if int(item.get("index", -1)) not in leased_gpu_indices]
+    candidates = [
+        item for item in candidates if int(item.get("index", -1)) not in leased_gpu_indices
+    ]
     if not candidates:
         leased_text = ", ".join(str(item) for item in sorted(leased_gpu_indices))
         raise RuntimeError(f"当前没有可分配的 GPU，可用卡已被其他运行锁定: {leased_text or 'N/A'}")
 
     free_candidates = [
-        item
-        for item in candidates
-        if int(item.get("memory_used_mb") or 0) < memory_threshold_mb
+        item for item in candidates if int(item.get("memory_used_mb") or 0) < memory_threshold_mb
     ]
     selected_pool = free_candidates
     selection_reason = "free_gpu"
@@ -5860,12 +6163,16 @@ def _parse_claude_runtime_environment(context: WorkflowContext) -> dict[str, Any
     section_kind = "remote" if context.run.workspace_server_id else "local"
     section_text = _extract_named_markdown_section(
         claude_text,
-        ["远程服务器", "Remote Server"] if section_kind == "remote" else ["本地环境", "Local Environment"],
+        ["远程服务器", "Remote Server"]
+        if section_kind == "remote"
+        else ["本地环境", "Local Environment"],
     )
     search_text = section_text or claude_text
     parsed: dict[str, Any] = {
         "section": section_kind,
-        "source": "metadata" if (override_activate or override_code_dir) else ("claude_md" if search_text.strip() else "none"),
+        "source": "metadata"
+        if (override_activate or override_code_dir)
+        else ("claude_md" if search_text.strip() else "none"),
         "activate_command": override_activate or "",
         "conda_env": "",
         "code_dir": override_code_dir or "",
@@ -5879,25 +6186,25 @@ def _parse_claude_runtime_environment(context: WorkflowContext) -> dict[str, Any
         normalized = line.lstrip("-* ").strip()
         lowered = normalized.lower()
         inline_value = _extract_inline_code_value(normalized)
-        if (lowered.startswith("ssh") or lowered.startswith("ssh：") or lowered.startswith("ssh:")) and inline_value:
+        if (
+            lowered.startswith("ssh") or lowered.startswith("ssh：") or lowered.startswith("ssh:")
+        ) and inline_value:
             parsed["ssh_command"] = parsed["ssh_command"] or inline_value
             continue
-        if any(
-            token in lowered
-            for token in ("激活", "activate", "conda:", "conda：")
-        ):
+        if any(token in lowered for token in ("激活", "activate", "conda:", "conda：")):
             if "conda activate" in inline_value.lower() or "eval " in inline_value.lower():
                 parsed["activate_command"] = parsed["activate_command"] or inline_value
         if any(
             token in lowered
             for token in ("conda env", "conda 环境", "condaenv", "conda environment")
         ):
-            if inline_value and "&&" not in inline_value and "conda activate" not in inline_value.lower():
+            if (
+                inline_value
+                and "&&" not in inline_value
+                and "conda activate" not in inline_value.lower()
+            ):
                 parsed["conda_env"] = parsed["conda_env"] or inline_value
-        if any(
-            token in lowered
-            for token in ("代码目录", "code dir", "code directory")
-        ):
+        if any(token in lowered for token in ("代码目录", "code dir", "code directory")):
             if inline_value:
                 parsed["code_dir"] = parsed["code_dir"] or inline_value
     if not parsed["activate_command"] and parsed["conda_env"]:
@@ -5930,7 +6237,9 @@ def _resolve_execution_workspace_path(
                     return current_root or normalized_code_dir
                 if normalized_code_dir.startswith(f"{original_root}/"):
                     relative_path = normalized_code_dir[len(original_root) + 1 :]
-                    return posixpath.normpath(posixpath.join(current_root or original_root, relative_path))
+                    return posixpath.normpath(
+                        posixpath.join(current_root or original_root, relative_path)
+                    )
             return normalized_code_dir
         if current_root:
             return posixpath.normpath(posixpath.join(current_root, normalized_code_dir))
@@ -6089,14 +6398,18 @@ def _execute_compile_pass(
     compile_bundle = build_paper_compile_bundle(
         project_name=context.project.name,
         compile_command=compile_command,
-        exit_code=int(execution.get("exit_code")) if str(execution.get("exit_code") or "").strip() else None,
+        exit_code=int(execution.get("exit_code"))
+        if str(execution.get("exit_code") or "").strip()
+        else None,
         pdf_paths=_collect_pdf_paths_for_run(context),
         stdout_text=str(execution.get("stdout") or ""),
         stderr_text=str(execution.get("stderr") or ""),
     )
     compile_markdown = str(compile_bundle.get("reports/PAPER_COMPILE.md") or "").strip()
     for relative_path, content in compile_bundle.items():
-        target_relative_path = report_relative_path if relative_path == "reports/PAPER_COMPILE.md" else relative_path
+        target_relative_path = (
+            report_relative_path if relative_path == "reports/PAPER_COMPILE.md" else relative_path
+        )
         artifact = _write_run_artifact(
             context,
             target_relative_path,
@@ -6249,21 +6562,38 @@ def _resolve_experiment_audit_payload(
         return _experiment_audit_fallback_payload(bundle, llm_result.content or "")
 
     raw_checks = parsed.get("checks") if isinstance(parsed.get("checks"), dict) else {}
-    evaluation_type = str(parsed.get("evaluation_type") or parsed.get("eval_type") or "unknown").strip() or "unknown"
+    evaluation_type = (
+        str(parsed.get("evaluation_type") or parsed.get("eval_type") or "unknown").strip()
+        or "unknown"
+    )
     checks = {
         "gt_provenance": {
-            "status": _normalize_audit_status((raw_checks.get("gt_provenance") or {}).get("status")),
-            "evidence": _normalize_string_list((raw_checks.get("gt_provenance") or {}).get("evidence")),
+            "status": _normalize_audit_status(
+                (raw_checks.get("gt_provenance") or {}).get("status")
+            ),
+            "evidence": _normalize_string_list(
+                (raw_checks.get("gt_provenance") or {}).get("evidence")
+            ),
             "details": str((raw_checks.get("gt_provenance") or {}).get("details") or "").strip(),
         },
         "score_normalization": {
-            "status": _normalize_audit_status((raw_checks.get("score_normalization") or {}).get("status")),
-            "evidence": _normalize_string_list((raw_checks.get("score_normalization") or {}).get("evidence")),
-            "details": str((raw_checks.get("score_normalization") or {}).get("details") or "").strip(),
+            "status": _normalize_audit_status(
+                (raw_checks.get("score_normalization") or {}).get("status")
+            ),
+            "evidence": _normalize_string_list(
+                (raw_checks.get("score_normalization") or {}).get("evidence")
+            ),
+            "details": str(
+                (raw_checks.get("score_normalization") or {}).get("details") or ""
+            ).strip(),
         },
         "result_existence": {
-            "status": _normalize_audit_status((raw_checks.get("result_existence") or {}).get("status")),
-            "evidence": _normalize_string_list((raw_checks.get("result_existence") or {}).get("evidence")),
+            "status": _normalize_audit_status(
+                (raw_checks.get("result_existence") or {}).get("status")
+            ),
+            "evidence": _normalize_string_list(
+                (raw_checks.get("result_existence") or {}).get("evidence")
+            ),
             "details": str((raw_checks.get("result_existence") or {}).get("details") or "").strip(),
         },
         "dead_code": {
@@ -6277,15 +6607,21 @@ def _resolve_experiment_audit_payload(
             "details": str((raw_checks.get("scope") or {}).get("details") or "").strip(),
         },
         "eval_type": {
-            "status": _normalize_audit_status((raw_checks.get("eval_type") or {}).get("status"), default="PASS"),
+            "status": _normalize_audit_status(
+                (raw_checks.get("eval_type") or {}).get("status"), default="PASS"
+            ),
             "evidence": _normalize_string_list((raw_checks.get("eval_type") or {}).get("evidence")),
             "details": str((raw_checks.get("eval_type") or {}).get("details") or "").strip(),
         },
     }
     statuses = [item["status"] for item in checks.values()]
     derived_verdict = "FAIL" if "FAIL" in statuses else "WARN" if "WARN" in statuses else "PASS"
-    overall_verdict = _normalize_audit_status(parsed.get("overall_verdict"), default=derived_verdict)
-    integrity_status = str(parsed.get("integrity_status") or "").strip().lower() or overall_verdict.lower()
+    overall_verdict = _normalize_audit_status(
+        parsed.get("overall_verdict"), default=derived_verdict
+    )
+    integrity_status = (
+        str(parsed.get("integrity_status") or "").strip().lower() or overall_verdict.lower()
+    )
     if integrity_status not in {"pass", "warn", "fail"}:
         integrity_status = overall_verdict.lower()
 
@@ -6441,7 +6777,9 @@ def _inspect_workspace_payload(
     *,
     workspace_path_override: str | None = None,
 ) -> dict[str, Any]:
-    workspace_path = str(workspace_path_override or _resolve_workspace_path(context.run) or "").strip()
+    workspace_path = str(
+        workspace_path_override or _resolve_workspace_path(context.run) or ""
+    ).strip()
     if not workspace_path:
         return {
             "workspace_path": None,
@@ -6495,7 +6833,9 @@ def _local_runtime_probe(workspace_path: str, command: str) -> dict[str, Any]:
 
 def _remote_runtime_probe(server_entry: dict, workspace_path: str, command: str) -> dict[str, Any]:
     try:
-        result = remote_terminal_result(server_entry, path=workspace_path, command=command, timeout_sec=20)
+        result = remote_terminal_result(
+            server_entry, path=workspace_path, command=command, timeout_sec=20
+        )
     except Exception as exc:
         return {"available": False, "detail": str(exc)}
     detail = str(result.get("stdout") or result.get("stderr") or "").strip()
@@ -6509,7 +6849,9 @@ def _run_workspace_command_for_context(
     timeout_sec: int,
     workspace_path_override: str | None = None,
 ) -> dict[str, Any]:
-    workspace_path = str(workspace_path_override or _resolve_workspace_path(context.run) or "").strip()
+    workspace_path = str(
+        workspace_path_override or _resolve_workspace_path(context.run) or ""
+    ).strip()
     if not workspace_path:
         raise RuntimeError("工作区路径为空")
     if context.run.workspace_server_id:
@@ -6687,7 +7029,9 @@ def _collect_run_artifacts(context: WorkflowContext, limit: int = 40) -> list[di
     if context.run.workspace_server_id:
         try:
             server_entry = get_workspace_server_entry(context.run.workspace_server_id)
-            overview = build_remote_overview(server_entry, run_directory, depth=3, max_entries=limit)
+            overview = build_remote_overview(
+                server_entry, run_directory, depth=3, max_entries=limit
+            )
         except Exception:
             return []
         items = []
@@ -6702,7 +7046,8 @@ def _collect_run_artifacts(context: WorkflowContext, limit: int = 40) -> list[di
                         workspace_root,
                         absolute_path,
                         remote=True,
-                    ) or str(file_path),
+                    )
+                    or str(file_path),
                 }
             )
         return items
@@ -6723,7 +7068,8 @@ def _collect_run_artifacts(context: WorkflowContext, limit: int = 40) -> list[di
                     workspace_root,
                     file_path,
                     remote=False,
-                ) or file_path.relative_to(target).as_posix(),
+                )
+                or file_path.relative_to(target).as_posix(),
                 "size_bytes": file_path.stat().st_size,
             }
         )
@@ -6757,7 +7103,8 @@ def _collect_workspace_artifacts_for_path(
                         normalized_workspace,
                         absolute_path,
                         remote=True,
-                    ) or str(file_path),
+                    )
+                    or str(file_path),
                 }
             )
         return items
@@ -6779,7 +7126,8 @@ def _collect_workspace_artifacts_for_path(
                     target_path,
                     file_path,
                     remote=False,
-                ) or file_path.relative_to(root).as_posix(),
+                )
+                or file_path.relative_to(root).as_posix(),
                 "size_bytes": file_path.stat().st_size,
             }
         )
@@ -6815,11 +7163,14 @@ def _build_experiment_summary_prompt(
 ) -> str:
     effective_command_line = (
         f"实际执行命令: {execution.get('effective_command')}\n"
-        if execution.get("effective_command") and execution.get("effective_command") != execution.get("command")
+        if execution.get("effective_command")
+        and execution.get("effective_command") != execution.get("command")
         else ""
     )
     remote_lines: list[str] = []
-    batch_items = [item for item in (execution.get("batch_experiments") or []) if isinstance(item, dict)]
+    batch_items = [
+        item for item in (execution.get("batch_experiments") or []) if isinstance(item, dict)
+    ]
     if len(batch_items) > 1:
         remote_lines.extend(
             [
@@ -6876,12 +7227,15 @@ def _resolve_experiment_summary_markdown(
         f"- 执行命令: `{execution.get('command')}`",
         *(
             [f"- 实际执行命令: `{execution.get('effective_command')}`"]
-            if execution.get("effective_command") and execution.get("effective_command") != execution.get("command")
+            if execution.get("effective_command")
+            and execution.get("effective_command") != execution.get("command")
             else []
         ),
         f"- 退出码: `{execution.get('exit_code')}`",
     ]
-    batch_items = [item for item in (execution.get("batch_experiments") or []) if isinstance(item, dict)]
+    batch_items = [
+        item for item in (execution.get("batch_experiments") or []) if isinstance(item, dict)
+    ]
     if len(batch_items) > 1:
         lines.extend(["", "## 批量实验状态"])
         lines.extend(
@@ -7142,14 +7496,22 @@ def _resolve_auto_review_payload(llm_result: LLMResult, *, iteration: int) -> di
         score = 0.0
     summary = str(payload.get("summary") or f"第 {iteration} 轮评审已完成。").strip()
     verdict = str(payload.get("verdict") or "").strip().lower()
-    issues = [str(item).strip() for item in payload.get("issues", []) if str(item).strip()] if isinstance(payload.get("issues"), list) else []
-    next_actions = [str(item).strip() for item in payload.get("next_actions", []) if str(item).strip()] if isinstance(payload.get("next_actions"), list) else []
+    issues = (
+        [str(item).strip() for item in payload.get("issues", []) if str(item).strip()]
+        if isinstance(payload.get("issues"), list)
+        else []
+    )
+    next_actions = (
+        [str(item).strip() for item in payload.get("next_actions", []) if str(item).strip()]
+        if isinstance(payload.get("next_actions"), list)
+        else []
+    )
     raw_review = str(payload.get("raw_review") or "").strip()
-    pending_experiments = [
-        str(item).strip()
-        for item in payload.get("pending_experiments", [])
-        if str(item).strip()
-    ] if isinstance(payload.get("pending_experiments"), list) else []
+    pending_experiments = (
+        [str(item).strip() for item in payload.get("pending_experiments", []) if str(item).strip()]
+        if isinstance(payload.get("pending_experiments"), list)
+        else []
+    )
     if "continue" in payload:
         continue_flag = bool(payload.get("continue"))
     else:
@@ -7309,9 +7671,7 @@ def _project_workflow_output_summaries(
             ).strip()
         if not markdown:
             continue
-        summaries.append(
-            f"- {workflow_type.value}: {markdown[:1600]}"
-        )
+        summaries.append(f"- {workflow_type.value}: {markdown[:1600]}")
     return summaries
 
 
@@ -7389,7 +7749,9 @@ def _build_project_reviewer_evidence_block(
     )
     report_limit = max(0, 6 - len(blocks))
     if report_limit:
-        blocks.extend(_project_report_excerpts(context.project.id, limit=report_limit, max_chars=2200))
+        blocks.extend(
+            _project_report_excerpts(context.project.id, limit=report_limit, max_chars=2200)
+        )
     return "\n\n".join(blocks).strip()
 
 
@@ -7406,7 +7768,9 @@ def _build_paper_plan_phase_prompt(context: WorkflowContext, materials: str) -> 
     )
 
 
-def _build_paper_figure_phase_prompt(context: WorkflowContext, plan_markdown: str, materials: str) -> str:
+def _build_paper_figure_phase_prompt(
+    context: WorkflowContext, plan_markdown: str, materials: str
+) -> str:
     return _build_aris_guided_prompt(
         context,
         skill_ids=["paper-writing", "paper-figure"],
@@ -7461,7 +7825,10 @@ def _build_paper_compile_phase_prompt(
         ),
         context_blocks=[
             ("Draft Manuscript", draft_markdown),
-            ("Compile Command", compile_command or "未提供 compile command，需要输出待执行的编译检查清单。"),
+            (
+                "Compile Command",
+                compile_command or "未提供 compile command，需要输出待执行的编译检查清单。",
+            ),
         ],
     )
 
@@ -7574,7 +7941,10 @@ def _build_pipeline_synthesis_prompt(
 ) -> str:
     context_blocks: list[tuple[str, str]] = [
         ("IDEA_REPORT", review_markdown[:5000]),
-        ("Workspace Snapshot", str(inspection.get("tree") or inspection.get("message") or "")[:2500]),
+        (
+            "Workspace Snapshot",
+            str(inspection.get("tree") or inspection.get("message") or "")[:2500],
+        ),
         (
             "Execution Result",
             (
@@ -7645,7 +8015,10 @@ def _build_pipeline_handoff_prompt(
         context_blocks=[
             ("IDEA_REPORT", review_markdown[:4000]),
             ("AUTO_REVIEW", findings_markdown[:4500]),
-            ("Execution Command", f"{execution.get('command')}\nexit_code={execution.get('exit_code')}"),
+            (
+                "Execution Command",
+                f"{execution.get('command')}\nexit_code={execution.get('exit_code')}",
+            ),
         ],
     )
 
@@ -7681,7 +8054,9 @@ def _record_stage_output(run_id: str, stage_id: str, payload: dict[str, Any]) ->
             engine_binding: dict[str, Any] | None = None
             if model_source == "stage_engine_profile":
                 orchestration = metadata.get("orchestration")
-                for stage in (orchestration.get("stages") if isinstance(orchestration, dict) else []) or []:
+                for stage in (
+                    orchestration.get("stages") if isinstance(orchestration, dict) else []
+                ) or []:
                     if isinstance(stage, dict) and str(stage.get("id")) in target_stage_ids:
                         engine_binding = _resolve_engine_binding(
                             str(stage.get("selected_engine_id") or "").strip() or None,
@@ -7690,13 +8065,15 @@ def _record_stage_output(run_id: str, stage_id: str, payload: dict[str, Any]) ->
                         break
             elif model_source == "executor_engine_profile":
                 engine_binding = _resolve_engine_binding(
-                    str(_engine_binding_snapshot(metadata, "executor").get("id") or "").strip() or None,
+                    str(_engine_binding_snapshot(metadata, "executor").get("id") or "").strip()
+                    or None,
                     model_source=model_source,
                     fallback_payload=_engine_binding_snapshot(metadata, "executor"),
                 )
             elif model_source == "reviewer_engine_profile":
                 engine_binding = _resolve_engine_binding(
-                    str(_engine_binding_snapshot(metadata, "reviewer").get("id") or "").strip() or None,
+                    str(_engine_binding_snapshot(metadata, "reviewer").get("id") or "").strip()
+                    or None,
                     model_source=model_source,
                     fallback_payload=_engine_binding_snapshot(metadata, "reviewer"),
                 )
@@ -7717,10 +8094,12 @@ def _record_stage_output(run_id: str, stage_id: str, payload: dict[str, Any]) ->
                         "provider": resolved_payload.get("provider"),
                         "model": resolved_payload.get("model"),
                         "variant": resolved_payload.get("variant"),
-                        "model_role": resolved_payload.get("model_role") or current.get("model_role"),
+                        "model_role": resolved_payload.get("model_role")
+                        or current.get("model_role"),
                         "model_source": resolved_payload.get("model_source"),
                         "engine_id": resolved_payload.get("engine_id") or current.get("engine_id"),
-                        "engine_label": resolved_payload.get("engine_label") or current.get("engine_label"),
+                        "engine_label": resolved_payload.get("engine_label")
+                        or current.get("engine_label"),
                     }
                 )
             updated_trace.append(current)
@@ -7743,8 +8122,12 @@ def _load_context(run_id: str) -> WorkflowContext:
         metadata = dict(run.metadata_json or {})
         paper_rows = project_repo.list_project_papers(project.id)
         paper_by_id = {paper.id: paper for _link, paper in paper_rows}
-        selected_paper_ids = normalize_paper_ids(metadata.get("paper_ids") if isinstance(metadata.get("paper_ids"), list) else [])
-        missing_selected_ids = [paper_id for paper_id in selected_paper_ids if paper_id not in paper_by_id]
+        selected_paper_ids = normalize_paper_ids(
+            metadata.get("paper_ids") if isinstance(metadata.get("paper_ids"), list) else []
+        )
+        missing_selected_ids = [
+            paper_id for paper_id in selected_paper_ids if paper_id not in paper_by_id
+        ]
         if missing_selected_ids:
             for paper in PaperRepository(session).list_by_ids(missing_selected_ids):
                 paper_by_id[str(paper.id)] = paper
@@ -7761,7 +8144,9 @@ def _load_context(run_id: str) -> WorkflowContext:
                 prompt=run.prompt,
                 title=run.title,
                 max_iterations=run.max_iterations,
-                executor_model=getattr(run, "executor_model", None) or str(metadata.get("executor_model") or "").strip() or None,
+                executor_model=getattr(run, "executor_model", None)
+                or str(metadata.get("executor_model") or "").strip()
+                or None,
                 reviewer_model=(
                     str(run.reviewer_model or "").strip()
                     or str(metadata.get("reviewer_model") or "").strip()
@@ -7794,7 +8179,11 @@ def _pick_selected_papers(
     selected_ids: list[str],
 ) -> list[PaperSnapshot]:
     if selected_ids:
-        ordered = [_paper_snapshot(paper_by_id[paper_id]) for paper_id in selected_ids if paper_id in paper_by_id]
+        ordered = [
+            _paper_snapshot(paper_by_id[paper_id])
+            for paper_id in selected_ids
+            if paper_id in paper_by_id
+        ]
         if ordered:
             return ordered
     return [_paper_snapshot(paper) for _link, paper in paper_rows]
@@ -7851,11 +8240,7 @@ def _resolve_literature_sources(context: WorkflowContext) -> set[str]:
     )
     if not raw_value:
         return {"project", "library", "local"}
-    values = {
-        item.strip().lower()
-        for item in raw_value.split(",")
-        if str(item or "").strip()
-    }
+    values = {item.strip().lower() for item in raw_value.split(",") if str(item or "").strip()}
     if "all" in values:
         return {"project", "library", "local", "web"}
     mapping = {
@@ -7932,7 +8317,9 @@ def _resolve_paper_library_override(context: WorkflowContext) -> str | None:
         if not line:
             continue
         backtick_match = re.search(r"`([^`]+)`", line)
-        candidate = backtick_match.group(1).strip() if backtick_match else line.lstrip("-* ").strip()
+        candidate = (
+            backtick_match.group(1).strip() if backtick_match else line.lstrip("-* ").strip()
+        )
         if "/" in candidate or "\\" in candidate:
             return candidate
     return None
@@ -7940,9 +8327,7 @@ def _resolve_paper_library_override(context: WorkflowContext) -> str | None:
 
 def _library_match_score(query: str, *parts: str) -> float:
     tokens = [
-        token
-        for token in re.findall(r"[a-z0-9]+", str(query or "").lower())
-        if len(token) >= 2
+        token for token in re.findall(r"[a-z0-9]+", str(query or "").lower()) if len(token) >= 2
     ]
     if not tokens:
         return 0.0
@@ -7970,7 +8355,9 @@ def _paper_index_from_context(context: WorkflowContext) -> list[dict[str, Any]]:
         for index, paper_id in enumerate(paper_ids, start=1):
             paper = paper_by_id.get(paper_id)
             if paper is None:
-                snapshot = next((item for item in context.selected_papers if item.id == paper_id), None)
+                snapshot = next(
+                    (item for item in context.selected_papers if item.id == paper_id), None
+                )
                 if snapshot is None:
                     continue
                 refs.append(
@@ -8002,10 +8389,16 @@ def _paper_index_from_context(context: WorkflowContext) -> list[dict[str, Any]]:
         return refs
 
 
-def _persist_literature_candidates(context: WorkflowContext, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _persist_literature_candidates(
+    context: WorkflowContext, candidates: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     if not candidates:
         existing = context.metadata.get("literature_candidates")
-        return [dict(item) for item in existing if isinstance(item, dict)] if isinstance(existing, list) else []
+        return (
+            [dict(item) for item in existing if isinstance(item, dict)]
+            if isinstance(existing, list)
+            else []
+        )
     with session_scope() as session:
         project_repo = ProjectRepository(session)
         run = project_repo.get_run(context.run.id)
@@ -8013,7 +8406,9 @@ def _persist_literature_candidates(context: WorkflowContext, candidates: list[di
             return candidates
         metadata = dict(run.metadata_json or {})
         merged = merge_paper_refs(
-            metadata.get("literature_candidates") if isinstance(metadata.get("literature_candidates"), list) else [],
+            metadata.get("literature_candidates")
+            if isinstance(metadata.get("literature_candidates"), list)
+            else [],
             candidates,
         )
         metadata["literature_candidates"] = merged
@@ -8046,7 +8441,9 @@ def _collect_library_paper_candidates(
                 continue
             seen_ids.add(paper_id)
             candidate_rows.append(paper)
-        analysis_by_id = load_analysis_reports(session, [str(getattr(paper, "id", "") or "") for paper in candidate_rows])
+        analysis_by_id = load_analysis_reports(
+            session, [str(getattr(paper, "id", "") or "") for paper in candidate_rows]
+        )
         ranked: list[tuple[float, Any]] = []
         seen_ranked_ids: set[str] = set()
         for paper in candidate_rows:
@@ -8108,10 +8505,7 @@ def _scan_local_workspace_pdf_candidates(
             normalized = str(relative_path).replace("\\", "/")
             if not normalized.lower().endswith(".pdf"):
                 continue
-            if not (
-                normalized.startswith("papers/")
-                or normalized.startswith("literature/")
-            ):
+            if not (normalized.startswith("papers/") or normalized.startswith("literature/")):
                 continue
             file_name = Path(normalized).name
             score = _library_match_score(query, file_name, normalized)
@@ -8202,7 +8596,9 @@ def _collect_arxiv_candidate_refs(
                 pdf_url=f"https://arxiv.org/pdf/{paper.arxiv_id}" if paper.arxiv_id else None,
                 authors=authors,
                 categories=metadata.get("categories") or [],
-                publication_date=paper.publication_date.isoformat() if paper.publication_date else None,
+                publication_date=paper.publication_date.isoformat()
+                if paper.publication_date
+                else None,
                 publication_year=paper.publication_date.year if paper.publication_date else None,
                 citation_count=int(metadata.get("citation_count") or 0),
                 match_reason=f"外部 arXiv 按 `{query[:80]}` 自动检索",
@@ -8258,7 +8654,9 @@ def _build_literature_review_prompt(context: WorkflowContext) -> str:
         for repo in context.selected_repos
     ]
     context_blocks = _build_literature_context_blocks(context)
-    context_blocks.append(("Code Repositories", "\n".join(repo_blocks) or "当前项目还没有关联仓库。"))
+    context_blocks.append(
+        ("Code Repositories", "\n".join(repo_blocks) or "当前项目还没有关联仓库。")
+    )
 
     return _build_aris_guided_prompt(
         context,
@@ -8304,7 +8702,9 @@ def _project_research_wiki_context_block(
             limit=limit,
         )
     except Exception:
-        logger.exception("Failed to build research wiki query pack for project %s", context.project.id)
+        logger.exception(
+            "Failed to build research wiki query pack for project %s", context.project.id
+        )
         return None
     query_pack = str(payload.get("query_pack") or "").strip()
     if not query_pack:
@@ -8313,7 +8713,10 @@ def _project_research_wiki_context_block(
 
 
 def _build_idea_generation_prompt(context: WorkflowContext, literature_markdown: str) -> str:
-    refs_hint = ", ".join(f"P{index}" for index, _paper in enumerate(context.selected_papers, start=1)) or "无"
+    refs_hint = (
+        ", ".join(f"P{index}" for index, _paper in enumerate(context.selected_papers, start=1))
+        or "无"
+    )
     context_blocks: list[tuple[str, str]] = []
     wiki_block = _project_research_wiki_context_block(context, query=context.run.prompt, limit=6)
     if wiki_block is not None:
@@ -8388,7 +8791,13 @@ def _build_full_pipeline_gate_prompt(context: WorkflowContext) -> str:
     context_blocks.append(("Project Materials", materials))
     return _build_aris_guided_prompt(
         context,
-        skill_ids=["research-pipeline", "idea-discovery", "research-lit", "novelty-check", "research-review"],
+        skill_ids=[
+            "research-pipeline",
+            "idea-discovery",
+            "research-lit",
+            "novelty-check",
+            "research-review",
+        ],
         phase_label="Research Pipeline Stage 1 - Idea Discovery (Gate 1)",
         output_contract=(
             "输出完整的中文 Markdown IDEA_REPORT。至少包含：Executive Summary、Literature Landscape、"
@@ -8478,7 +8887,9 @@ def _resolve_idea_payloads(
     context: WorkflowContext,
     llm_result: LLMResult,
 ) -> list[dict[str, Any]]:
-    paper_ref_to_id = {f"P{index}": paper.id for index, paper in enumerate(context.selected_papers, start=1)}
+    paper_ref_to_id = {
+        f"P{index}": paper.id for index, paper in enumerate(context.selected_papers, start=1)
+    }
     parsed = llm_result.parsed_json or {}
     raw_items = parsed.get("ideas")
     if not isinstance(raw_items, list):
@@ -8498,13 +8909,19 @@ def _resolve_idea_payloads(
         pilot_signal = str(item.get("pilot_signal") or "SKIPPED").strip().upper() or "SKIPPED"
         ranking_reason = str(item.get("ranking_reason") or "").strip()
         refs = item.get("paper_refs")
-        paper_ids = [
-            paper_ref_to_id[ref]
-            for ref in refs
-            if isinstance(ref, str) and ref in paper_ref_to_id
-        ] if isinstance(refs, list) else []
+        paper_ids = (
+            [
+                paper_ref_to_id[ref]
+                for ref in refs
+                if isinstance(ref, str) and ref in paper_ref_to_id
+            ]
+            if isinstance(refs, list)
+            else []
+        )
         if not paper_ids and context.selected_papers:
-            paper_ids = [context.selected_papers[min(index - 1, len(context.selected_papers) - 1)].id]
+            paper_ids = [
+                context.selected_papers[min(index - 1, len(context.selected_papers) - 1)].id
+            ]
         normalized.append(
             {
                 "title": title,
@@ -8526,7 +8943,9 @@ def _build_idea_fallback(context: WorkflowContext, llm_message: str) -> list[dic
     prompt = context.run.prompt.strip() or "围绕当前项目做一个可快速验证的研究闭环。"
     paper_ids = [paper.id for paper in context.selected_papers]
     primary_paper = context.selected_papers[0].title if context.selected_papers else "现有项目材料"
-    secondary_paper = context.selected_papers[1].title if len(context.selected_papers) > 1 else primary_paper
+    secondary_paper = (
+        context.selected_papers[1].title if len(context.selected_papers) > 1 else primary_paper
+    )
     repo_hint = context.selected_repos[0].repo_url if context.selected_repos else "当前工作区"
     note_suffix = ""
     if llm_message and _looks_like_llm_error(llm_message):
@@ -8984,7 +9403,10 @@ def _format_rebuttal_state_markdown(
 
 def _fallback_rebuttal_issue_board(review_bundle: str) -> str:
     anchor = str(review_bundle or "").strip().splitlines()
-    anchor_text = next((line.strip() for line in anchor if line.strip()), "Reviewer concerns pending manual normalization.")
+    anchor_text = next(
+        (line.strip() for line in anchor if line.strip()),
+        "Reviewer concerns pending manual normalization.",
+    )
     return (
         "# ISSUE_BOARD\n\n"
         "## R1-C1\n"
@@ -9061,7 +9483,10 @@ def _build_rebuttal_issue_board_prompt(
         ),
         context_blocks=[
             ("Project Materials", materials),
-            ("Venue Rules", f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}"),
+            (
+                "Venue Rules",
+                f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}",
+            ),
             ("Raw Reviews", normalize_markdown),
         ],
     )
@@ -9088,7 +9513,10 @@ def _build_rebuttal_strategy_prompt(
         ),
         context_blocks=[
             ("Project Materials", materials),
-            ("Venue Rules", f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}\nQuick Mode: {quick_mode}"),
+            (
+                "Venue Rules",
+                f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}\nQuick Mode: {quick_mode}",
+            ),
             ("Raw Reviews", normalize_markdown),
             ("Issue Board", issue_board_markdown),
         ],
@@ -9115,7 +9543,10 @@ def _build_rebuttal_draft_prompt(
         ),
         context_blocks=[
             ("Project Materials", materials),
-            ("Venue Rules", f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}"),
+            (
+                "Venue Rules",
+                f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}",
+            ),
             ("Issue Board", issue_board_markdown),
             ("Strategy Plan", strategy_markdown),
         ],
@@ -9168,7 +9599,10 @@ def _build_rebuttal_finalize_prompt(
             "over-commitment 和 tone 问题。"
         ),
         context_blocks=[
-            ("Venue Rules", f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}"),
+            (
+                "Venue Rules",
+                f"Venue: {venue}\nRound: {round_label}\nCharacter Limit: {character_limit}",
+            ),
             ("Issue Board", issue_board_markdown),
             ("Strategy Plan", strategy_markdown),
             ("Draft", draft_markdown),

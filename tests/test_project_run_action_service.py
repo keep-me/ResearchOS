@@ -133,11 +133,15 @@ def test_submit_project_run_action_registers_tracker_metadata(monkeypatch, tmp_p
         assert action is not None
         assert action.task_id == task_id
         assert action.status == ProjectRunStatus.running
-        assert action.result_path == build_action_result_path(run_directory, action_id, remote=False)
+        assert action.result_path == build_action_result_path(
+            run_directory, action_id, remote=False
+        )
         assert action.log_path == build_action_log_path(run_directory, action_id, remote=False)
 
 
-def test_run_project_run_action_writes_remote_files_and_updates_task_metadata(monkeypatch, tmp_path: Path):
+def test_run_project_run_action_writes_remote_files_and_updates_task_metadata(
+    monkeypatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     project_id, run_id, action_id, run_directory = _seed_action(tmp_path, remote=True)
     tracker = _TrackerStub()
@@ -145,7 +149,9 @@ def test_run_project_run_action_writes_remote_files_and_updates_task_metadata(mo
 
     captured_writes: list[dict] = []
 
-    def _fake_remote_write_file(server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True):
+    def _fake_remote_write_file(
+        server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True
+    ):
         captured_writes.append(
             {
                 "server_entry": server_entry,
@@ -174,7 +180,9 @@ def test_run_project_run_action_writes_remote_files_and_updates_task_metadata(mo
             )
         return "task-child-run-1"
 
-    monkeypatch.setattr(action_service, "get_workspace_server_entry", lambda server_id: {"id": server_id})
+    monkeypatch.setattr(
+        action_service, "get_workspace_server_entry", lambda server_id: {"id": server_id}
+    )
     monkeypatch.setattr(action_service, "remote_write_file", _fake_remote_write_file)
     monkeypatch.setattr(action_service, "submit_project_run", _fake_submit_project_run)
 
@@ -187,8 +195,14 @@ def test_run_project_run_action_writes_remote_files_and_updates_task_metadata(mo
     assert result["result_path"].endswith(f"{action_id}.md")
     assert len(captured_writes) == 2
     assert captured_writes[0]["path"] == "/srv/research/action-remote-test"
-    assert captured_writes[0]["relative_path"] == f".auto-researcher/aris-runs/run-001/actions/{action_id}.md"
-    assert captured_writes[1]["relative_path"] == f".auto-researcher/aris-runs/run-001/actions/{action_id}.log"
+    assert (
+        captured_writes[0]["relative_path"]
+        == f".auto-researcher/aris-runs/run-001/actions/{action_id}.md"
+    )
+    assert (
+        captured_writes[1]["relative_path"]
+        == f".auto-researcher/aris-runs/run-001/actions/{action_id}.log"
+    )
 
     assert tracker.metadata_updates
     updated_task_id, metadata = tracker.metadata_updates[-1]

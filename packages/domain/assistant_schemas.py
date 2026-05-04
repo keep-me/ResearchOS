@@ -125,10 +125,18 @@ def session_diff_entry_from_value(value: Any) -> AssistantSessionDiffEntry:
         status=_clean_text(source.get("status")),
         before=None if source.get("before") is None else str(source.get("before")),
         after=None if source.get("after") is None else str(source.get("after")),
-        exists_before=source.get("exists_before") if isinstance(source.get("exists_before"), bool) else None,
-        exists_after=source.get("exists_after") if isinstance(source.get("exists_after"), bool) else None,
-        additions=int(source.get("additions")) if source.get("additions") not in {None, ""} else None,
-        deletions=int(source.get("deletions")) if source.get("deletions") not in {None, ""} else None,
+        exists_before=source.get("exists_before")
+        if isinstance(source.get("exists_before"), bool)
+        else None,
+        exists_after=source.get("exists_after")
+        if isinstance(source.get("exists_after"), bool)
+        else None,
+        additions=int(source.get("additions"))
+        if source.get("additions") not in {None, ""}
+        else None,
+        deletions=int(source.get("deletions"))
+        if source.get("deletions") not in {None, ""}
+        else None,
         workspace_path=_clean_text(source.get("workspace_path")),
         workspace_server_id=_clean_text(source.get("workspace_server_id")),
     )
@@ -137,11 +145,7 @@ def session_diff_entry_from_value(value: Any) -> AssistantSessionDiffEntry:
 def session_diff_entries_from_value(value: Any) -> list[AssistantSessionDiffEntry]:
     if not isinstance(value, list):
         return []
-    items = [
-        session_diff_entry_from_value(item)
-        for item in value
-        if isinstance(item, dict)
-    ]
+    items = [session_diff_entry_from_value(item) for item in value if isinstance(item, dict)]
     return [item for item in items if item.file or item.path]
 
 
@@ -182,8 +186,16 @@ def session_info_from_record(record: dict[str, Any]) -> AssistantSessionInfo:
     time_payload = source.get("time") if isinstance(source.get("time"), dict) else {}
     created = int(time_payload.get("created") or 0)
     updated = int(time_payload.get("updated") or created)
-    compacting = int(time_payload.get("compacting")) if time_payload.get("compacting") not in {None, ""} else None
-    archived = int(time_payload.get("archived")) if time_payload.get("archived") not in {None, ""} else None
+    compacting = (
+        int(time_payload.get("compacting"))
+        if time_payload.get("compacting") not in {None, ""}
+        else None
+    )
+    archived = (
+        int(time_payload.get("archived"))
+        if time_payload.get("archived") not in {None, ""}
+        else None
+    )
     permission = source.get("permission") if isinstance(source.get("permission"), list) else None
     return AssistantSessionInfo(
         id=str(source.get("id") or ""),
@@ -225,13 +237,25 @@ def session_state_from_values(
     )
 
 
-def conversation_list_from_records(records: list[dict[str, Any]]) -> AssistantConversationListResponse:
+def conversation_list_from_records(
+    records: list[dict[str, Any]],
+) -> AssistantConversationListResponse:
     conversations = [
         AssistantConversationSummary(
             id=str(record.get("id") or ""),
             title=str(record.get("title") or "未命名对话"),
-            created_at=int(((record.get("time") or {}) if isinstance(record.get("time"), dict) else {}).get("created") or 0),
-            updated_at=int(((record.get("time") or {}) if isinstance(record.get("time"), dict) else {}).get("updated") or 0),
+            created_at=int(
+                ((record.get("time") or {}) if isinstance(record.get("time"), dict) else {}).get(
+                    "created"
+                )
+                or 0
+            ),
+            updated_at=int(
+                ((record.get("time") or {}) if isinstance(record.get("time"), dict) else {}).get(
+                    "updated"
+                )
+                or 0
+            ),
         )
         for record in records
         if isinstance(record, dict) and str(record.get("id") or "").strip()
@@ -243,7 +267,9 @@ def conversation_messages_from_values(
     conversation_record: dict[str, Any],
     messages: list[dict[str, Any]],
 ) -> AssistantConversationMessagesResponse:
-    time_payload = conversation_record.get("time") if isinstance(conversation_record.get("time"), dict) else {}
+    time_payload = (
+        conversation_record.get("time") if isinstance(conversation_record.get("time"), dict) else {}
+    )
     items = []
     for message in messages:
         if not isinstance(message, dict):
@@ -260,7 +286,12 @@ def conversation_messages_from_values(
                 id=str(info.get("id") or ""),
                 role=str(info.get("role") or ""),
                 content=content,
-                created_at=int(((info.get("time") or {}) if isinstance(info.get("time"), dict) else {}).get("created") or 0),
+                created_at=int(
+                    ((info.get("time") or {}) if isinstance(info.get("time"), dict) else {}).get(
+                        "created"
+                    )
+                    or 0
+                ),
             )
         )
     return AssistantConversationMessagesResponse(

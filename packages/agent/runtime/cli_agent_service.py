@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import posixpath
@@ -9,7 +10,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import hashlib
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +20,16 @@ try:  # pragma: no cover - Python 3.11+ uses tomllib
 except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore[no-redef]
 
+from packages.agent.mcp.mcp_service import get_mcp_registry_service
+from packages.agent.mcp.researchos_mcp_registry import (
+    RESEARCHOS_CONTEXT_MODE_ENV,
+    RESEARCHOS_CONTEXT_SESSION_ID_ENV,
+    RESEARCHOS_CONTEXT_WORKSPACE_PATH_ENV,
+    RESEARCHOS_CONTEXT_WORKSPACE_SERVER_ID_ENV,
+    RESEARCHOS_MCP_SERVER_NAME,
+    bridge_qualified_tool_names,
+)
+from packages.agent.runtime.acp_service import get_acp_registry_service
 from packages.agent.workspace.workspace_remote import (
     clean_text,
     mask_secret,
@@ -30,25 +40,15 @@ from packages.agent.workspace.workspace_remote import (
     remote_write_file,
     resolve_remote_workspace_path,
 )
-from packages.agent.runtime.acp_service import get_acp_registry_service
-from packages.agent.mcp.researchos_mcp_registry import (
-    RESEARCHOS_CONTEXT_MODE_ENV,
-    RESEARCHOS_CONTEXT_SESSION_ID_ENV,
-    RESEARCHOS_CONTEXT_WORKSPACE_PATH_ENV,
-    RESEARCHOS_CONTEXT_WORKSPACE_SERVER_ID_ENV,
-    RESEARCHOS_MCP_SERVER_NAME,
-    bridge_qualified_tool_names,
-)
+from packages.ai.project.workflow_catalog import list_project_agent_templates
+from packages.config import get_settings
+from packages.integrations.llm_provider_schema import resolve_provider_protocol
 from packages.path_utils import (
     is_foreign_windows_path,
     join_path_string,
     parent_path_string,
     sqlite_url_for_path,
 )
-from packages.agent.mcp.mcp_service import get_mcp_registry_service
-from packages.ai.project.workflow_catalog import list_project_agent_templates
-from packages.config import get_settings
-from packages.integrations.llm_provider_schema import resolve_provider_protocol
 
 _SUPPORTED_EXECUTION_AGENT_TYPES = {"codex", "claude_code", "claw"}
 _AGENT_BINARY_CANDIDATES: dict[str, list[str]] = {
@@ -85,7 +85,10 @@ def _repo_root() -> Path:
 
 
 def _is_repo_root(path: Path) -> bool:
-    return path.joinpath("pyproject.toml").exists() and path.joinpath("apps", "desktop", "server.py").exists()
+    return (
+        path.joinpath("pyproject.toml").exists()
+        and path.joinpath("apps", "desktop", "server.py").exists()
+    )
 
 
 def _candidate_repo_roots() -> list[Path]:
@@ -211,17 +214,9 @@ def _append_claw_binary_names(candidates: list[Path], directory: Path) -> None:
     if not directory.exists():
         return
     if os.name == "nt":
-        candidates.extend(
-            path
-            for path in sorted(directory.glob("claw*.exe"))
-            if path.is_file()
-        )
+        candidates.extend(path for path in sorted(directory.glob("claw*.exe")) if path.is_file())
         return
-    candidates.extend(
-        path
-        for path in sorted(directory.glob("claw*"))
-        if path.is_file()
-    )
+    candidates.extend(path for path in sorted(directory.glob("claw*")) if path.is_file())
 
 
 def _claw_binary_candidates() -> list[Path]:
@@ -303,9 +298,7 @@ def _infer_claw_provider(
     provider_value = (clean_text(provider_hint) or "").lower()
     model_value = (clean_text(model) or "").lower()
     base_url_value = (clean_text(base_url) or "").lower()
-    combined_hint = " ".join(
-        part for part in (provider_value, model_value, base_url_value) if part
-    )
+    combined_hint = " ".join(part for part in (provider_value, model_value, base_url_value) if part)
 
     if provider_value in {"openai", "openai-compatible", "openai_compatible"}:
         return "openai"
@@ -327,30 +320,29 @@ def _infer_claw_provider(
         or "xai" in provider_value
     ):
         return "xai"
-    if (
-        model_value.startswith(("gpt", "o1", "o3", "o4", "gemini", "glm", "qwen", "kimi", "minimax"))
-        or any(
-            token in combined_hint
-            for token in (
-                "openai",
-                "openai-compatible",
-                "openai_compatible",
-                "google",
-                "googleapis",
-                "generativelanguage",
-                "zhipu",
-                "bigmodel",
-                "dashscope",
-                "aliyuncs",
-                "aliyun",
-                "bailian",
-                "moonshot",
-                "minimax",
-                "siliconflow",
-                "openrouter",
-                "deepseek",
-                "venice",
-            )
+    if model_value.startswith(
+        ("gpt", "o1", "o3", "o4", "gemini", "glm", "qwen", "kimi", "minimax")
+    ) or any(
+        token in combined_hint
+        for token in (
+            "openai",
+            "openai-compatible",
+            "openai_compatible",
+            "google",
+            "googleapis",
+            "generativelanguage",
+            "zhipu",
+            "bigmodel",
+            "dashscope",
+            "aliyuncs",
+            "aliyun",
+            "bailian",
+            "moonshot",
+            "minimax",
+            "siliconflow",
+            "openrouter",
+            "deepseek",
+            "venice",
         )
     ):
         return "openai"
@@ -366,7 +358,13 @@ def _normalize_claw_base_url(base_url: str | None, provider_kind: str) -> str | 
     suffixes = (
         ("/chat/completions", "/responses")
         if provider_kind in {"openai", "xai"}
-        else ("/v1/messages/count_tokens", "/v1/messages", "/messages/count_tokens", "/messages", "/v1")
+        else (
+            "/v1/messages/count_tokens",
+            "/v1/messages",
+            "/messages/count_tokens",
+            "/messages",
+            "/v1",
+        )
     )
     for suffix in suffixes:
         if lowered.endswith(suffix):
@@ -462,7 +460,7 @@ def _ensure_claw_bridge_workspace(
     workspace_value = clean_text(workspace_path).replace("\\", "/")
     label_source = workspace_value.rstrip("/").split("/")[-1] if workspace_value else server_id
     label = _slugify(label_source) or "workspace"
-    digest = hashlib.sha1(f"{server_id}::{workspace_value}".encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(f"{server_id}::{workspace_value}".encode()).hexdigest()[:16]
     workspace_dir = _claw_bridge_root() / f"{_slugify(server_id)}-{label}-{digest}"
     workspace_dir.mkdir(parents=True, exist_ok=True)
     return workspace_dir
@@ -483,7 +481,9 @@ def _session_mode_for_claw(session_id: str | None) -> str:
 
 def _chunk_items(items: list[str], size: int) -> list[list[str]]:
     normalized_size = max(1, int(size or 1))
-    return [items[index : index + normalized_size] for index in range(0, len(items), normalized_size)]
+    return [
+        items[index : index + normalized_size] for index in range(0, len(items), normalized_size)
+    ]
 
 
 def _researchos_data_dir_value() -> str | None:
@@ -538,18 +538,24 @@ def _researchos_runtime_env_overrides() -> dict[str, str]:
     if data_dir is None:
         return inherited_env
     explicit_database_url = clean_text(os.environ.get("DATABASE_URL"))
-    configured_database_url = explicit_database_url or clean_text(getattr(settings, "database_url", None))
+    configured_database_url = explicit_database_url or clean_text(
+        getattr(settings, "database_url", None)
+    )
     if explicit_database_url:
         database_url = explicit_database_url
-    elif clean_text(os.environ.get("RESEARCHOS_DATA_DIR")) and configured_database_url.lower().startswith("sqlite:///"):
+    elif clean_text(
+        os.environ.get("RESEARCHOS_DATA_DIR")
+    ) and configured_database_url.lower().startswith("sqlite:///"):
         database_url = sqlite_url_for_path(join_path_string(data_dir, "researchos.db"))
     else:
         database_url = configured_database_url
     resolved_env = {
         "RESEARCHOS_DATA_DIR": data_dir,
         "DATABASE_URL": database_url,
-        "PDF_STORAGE_ROOT": clean_text(os.environ.get("PDF_STORAGE_ROOT")) or join_path_string(data_dir, "papers"),
-        "BRIEF_OUTPUT_ROOT": clean_text(os.environ.get("BRIEF_OUTPUT_ROOT")) or join_path_string(data_dir, "briefs"),
+        "PDF_STORAGE_ROOT": clean_text(os.environ.get("PDF_STORAGE_ROOT"))
+        or join_path_string(data_dir, "papers"),
+        "BRIEF_OUTPUT_ROOT": clean_text(os.environ.get("BRIEF_OUTPUT_ROOT"))
+        or join_path_string(data_dir, "briefs"),
     }
     env_file = clean_text(os.environ.get("RESEARCHOS_ENV_FILE"))
     if env_file:
@@ -948,7 +954,9 @@ class CliAgentService:
             "enabled": bool(payload.get("enabled", True)),
             "command": clean_text(payload.get("command"))
             or (_AGENT_BINARY_CANDIDATES.get(agent_type) or [""])[0],
-            "args": [str(item).strip() for item in (payload.get("args") or []) if str(item).strip()],
+            "args": [
+                str(item).strip() for item in (payload.get("args") or []) if str(item).strip()
+            ],
             "provider": clean_text(payload.get("provider")) or None,
             "base_url": clean_text(payload.get("base_url")) or None,
             "api_key": payload.get("api_key"),
@@ -963,7 +971,9 @@ class CliAgentService:
         existing = next((item for item in current_items if item["id"] == agent_type), None)
         if existing is not None:
             incoming["created_at"] = existing.get("created_at") or now
-            incoming["api_key"] = self._merge_secret(payload.get("api_key"), existing.get("api_key"))
+            incoming["api_key"] = self._merge_secret(
+                payload.get("api_key"), existing.get("api_key")
+            )
             current_items = [item for item in current_items if item["id"] != agent_type]
         else:
             incoming["api_key"] = clean_text(payload.get("api_key")) or None
@@ -988,7 +998,11 @@ class CliAgentService:
             config = configs.get(agent_type) or self._normalize_config({"agent_type": agent_type})
             detected = self._resolve_config(config)
             capability = self._build_chat_capability(detected)
-            acp_summary = get_acp_registry_service().get_backend_summary() if agent_type == "custom_acp" else {}
+            acp_summary = (
+                get_acp_registry_service().get_backend_summary()
+                if agent_type == "custom_acp"
+                else {}
+            )
             items.append(
                 {
                     "agent_type": agent_type,
@@ -1007,12 +1021,12 @@ class CliAgentService:
                     "acp_transport": acp_summary.get("default_transport"),
                     "acp_connected": acp_summary.get("default_connected"),
                     "binary_path": detected.get("command_path"),
-            "command": detected.get("command"),
-            "provider": detected.get("provider"),
-            "protocol": detected.get("protocol"),
-            "base_url": detected.get("base_url"),
-            "default_model": detected.get("default_model"),
-            "config_source": detected.get("config_source"),
+                    "command": detected.get("command"),
+                    "provider": detected.get("provider"),
+                    "protocol": detected.get("protocol"),
+                    "base_url": detected.get("base_url"),
+                    "default_model": detected.get("default_model"),
+                    "config_source": detected.get("config_source"),
                     "has_api_key": bool(detected.get("api_key")),
                     "api_key_masked": mask_secret(detected.get("api_key")),
                     "message": self._detect_message(agent_type, detected),
@@ -1058,7 +1072,9 @@ class CliAgentService:
         resolved = self._resolve_config(config)
         capability = self._build_chat_capability(resolved)
         if not capability["chat_ready"]:
-            raise ValueError(capability["chat_blocked_reason"] or f"{resolved['label']} 当前不可用于聊天")
+            raise ValueError(
+                capability["chat_blocked_reason"] or f"{resolved['label']} 当前不可用于聊天"
+            )
         if not clean_text(prompt):
             raise ValueError("prompt 不能为空")
 
@@ -1072,7 +1088,9 @@ class CliAgentService:
             )
 
         configured_mode = self._normalize_execution_mode(resolved.get("execution_mode"))
-        execution_mode = self._resolve_execution_mode(resolved, workspace_server_id=workspace_server_id)
+        execution_mode = self._resolve_execution_mode(
+            resolved, workspace_server_id=workspace_server_id
+        )
         target_workspace_path = clean_text(workspace_path) or None
 
         def _auto_fallback_to_local(reason: str) -> dict[str, Any]:
@@ -1096,7 +1114,9 @@ class CliAgentService:
             if not target_workspace_path:
                 if configured_mode != "auto":
                     raise ValueError("远程执行需要提供 workspace_path")
-                return _auto_fallback_to_local("远程执行需要提供 workspace_path，已自动回退本地执行。")
+                return _auto_fallback_to_local(
+                    "远程执行需要提供 workspace_path，已自动回退本地执行。"
+                )
             try:
                 return self._execute_remote(
                     resolved,
@@ -1121,18 +1141,23 @@ class CliAgentService:
                 timeout_sec=timeout_sec,
                 session_id=session_id,
                 requested_workspace_path=target_workspace_path,
-                requested_workspace_server_id=workspace_server_id or resolved.get("workspace_server_id"),
+                requested_workspace_server_id=workspace_server_id
+                or resolved.get("workspace_server_id"),
             )
         except ValueError as exc:
             if configured_mode != "auto" or not self._looks_like_local_workspace_error(exc):
                 raise
             return _auto_fallback_to_local(f"{exc}；已自动回退到可用本地工作目录。")
 
-    def _resolve_execution_mode(self, config: dict[str, Any], *, workspace_server_id: str | None) -> str:
+    def _resolve_execution_mode(
+        self, config: dict[str, Any], *, workspace_server_id: str | None
+    ) -> str:
         if clean_text(config.get("agent_type")) == "claw":
             return "local"
         mode = self._normalize_execution_mode(config.get("execution_mode"))
-        remote_server_id = clean_text(workspace_server_id) or clean_text(config.get("workspace_server_id"))
+        remote_server_id = clean_text(workspace_server_id) or clean_text(
+            config.get("workspace_server_id")
+        )
         if mode == "ssh":
             if not remote_server_id:
                 raise ValueError("当前配置未绑定 SSH 服务器")
@@ -1180,7 +1205,9 @@ class CliAgentService:
             bound_server_id = clean_text(requested_workspace_server_id)
             target_workspace_path = clean_text(requested_workspace_path) or workspace_path or None
             if bound_server_id and bound_server_id.lower() != "local":
-                workspace_dir = _ensure_claw_bridge_workspace(target_workspace_path, bound_server_id)
+                workspace_dir = _ensure_claw_bridge_workspace(
+                    target_workspace_path, bound_server_id
+                )
             else:
                 workspace_dir = Path(workspace_path or Path.cwd()).expanduser()
                 if not workspace_dir.exists():
@@ -1207,14 +1234,18 @@ class CliAgentService:
         workspace_server_id: str | None = None,
         timeout_sec: int,
     ) -> dict[str, Any]:
-        bound_server_id = clean_text(workspace_server_id) or clean_text(config.get("workspace_server_id"))
+        bound_server_id = clean_text(workspace_server_id) or clean_text(
+            config.get("workspace_server_id")
+        )
         server_entry = self._find_workspace_server_entry(bound_server_id)
         if server_entry is None:
             raise ValueError("未找到绑定的 SSH 工作区服务器")
 
         remote_claw_repo_root: str | None = None
         with open_ssh_session(server_entry) as session:
-            remote_workspace_path = resolve_remote_workspace_path(server_entry, workspace_path, session)
+            remote_workspace_path = resolve_remote_workspace_path(
+                server_entry, workspace_path, session
+            )
             remote_attr = remote_stat(session.sftp, remote_workspace_path)
             if remote_attr is None:
                 raise ValueError(f"远程工作区不存在：{remote_workspace_path}")
@@ -1239,9 +1270,13 @@ class CliAgentService:
 
         started_at = time.perf_counter()
         if config["agent_type"] == "codex":
-            command = self._build_remote_codex_command(config, prompt_rel=prompt_rel, output_rel=output_rel)
+            command = self._build_remote_codex_command(
+                config, prompt_rel=prompt_rel, output_rel=output_rel
+            )
         elif config["agent_type"] == "claude_code":
-            command = self._build_remote_claude_command(config, prompt_rel=prompt_rel, output_rel=output_rel)
+            command = self._build_remote_claude_command(
+                config, prompt_rel=prompt_rel, output_rel=output_rel
+            )
         elif config["agent_type"] == "claw":
             bridge_session_ref = _slugify(f"researchos-remote-{bound_server_id}-{int(time.time())}")
             remote_settings_path = _ensure_remote_claw_workspace_settings(
@@ -1265,9 +1300,8 @@ class CliAgentService:
             command=command,
             timeout_sec=max(10, timeout_sec),
         )
-        if (
-            result.get("exit_code") != 0
-            and self._looks_like_remote_command_missing(result, str(config.get("command") or ""))
+        if result.get("exit_code") != 0 and self._looks_like_remote_command_missing(
+            result, str(config.get("command") or "")
         ):
             login_script = f"cd {shlex.quote(remote_workspace_path)} && {command}"
             login_command = f"bash -lc {shlex.quote(login_script)}"
@@ -1279,9 +1313,17 @@ class CliAgentService:
             )
             if retry_result.get("exit_code") == 0:
                 result = retry_result
-            elif self._looks_like_remote_command_missing(retry_result, str(config.get("command") or "")):
-                missing_command = clean_text(config.get("command")) or clean_text(config.get("label")) or "CLI"
-                server_name = clean_text(server_entry.get("label")) or clean_text(server_entry.get("id")) or "远程服务器"
+            elif self._looks_like_remote_command_missing(
+                retry_result, str(config.get("command") or "")
+            ):
+                missing_command = (
+                    clean_text(config.get("command")) or clean_text(config.get("label")) or "CLI"
+                )
+                server_name = (
+                    clean_text(server_entry.get("label"))
+                    or clean_text(server_entry.get("id"))
+                    or "远程服务器"
+                )
                 raise RemoteCliCommandMissingError(
                     f"{server_name} 上未找到命令 `{missing_command}`。"
                     "请先在该 SSH 服务器安装并配置该 CLI，或将该智能体执行模式改为 local。"
@@ -1308,7 +1350,9 @@ class CliAgentService:
         else:
             parsed = _parse_json_object(str((output_payload or {}).get("content") or ""))
             if config["agent_type"] == "claw":
-                content = str((parsed or {}).get("message") or (parsed or {}).get("result") or "").strip()
+                content = str(
+                    (parsed or {}).get("message") or (parsed or {}).get("result") or ""
+                ).strip()
             else:
                 content = str((parsed or {}).get("result") or "").strip()
 
@@ -1617,7 +1661,9 @@ class CliAgentService:
             env["ANTHROPIC_MODEL"] = str(config["default_model"])
         env[RESEARCHOS_CONTEXT_SESSION_ID_ENV] = clean_text(session_id) or bridge_session_ref
         env[RESEARCHOS_CONTEXT_MODE_ENV] = _session_mode_for_claw(session_id)
-        env[RESEARCHOS_CONTEXT_WORKSPACE_PATH_ENV] = clean_text(requested_workspace_path) or str(workspace_dir)
+        env[RESEARCHOS_CONTEXT_WORKSPACE_PATH_ENV] = clean_text(requested_workspace_path) or str(
+            workspace_dir
+        )
         if clean_text(requested_workspace_server_id):
             env[RESEARCHOS_CONTEXT_WORKSPACE_SERVER_ID_ENV] = str(requested_workspace_server_id)
         else:
@@ -1676,7 +1722,9 @@ class CliAgentService:
             "claw_settings_path": str(settings_path),
         }
 
-    def _build_remote_codex_command(self, config: dict[str, Any], *, prompt_rel: str, output_rel: str) -> str:
+    def _build_remote_codex_command(
+        self, config: dict[str, Any], *, prompt_rel: str, output_rel: str
+    ) -> str:
         env_parts: list[str] = []
         if clean_text(config.get("api_key")):
             env_parts.append(f"OPENAI_API_KEY={shlex.quote(str(config['api_key']))}")
@@ -1706,7 +1754,9 @@ class CliAgentService:
         command_parts.extend(["-o", shlex.quote(output_rel), "-"])
         return f"{' '.join(env_parts + command_parts)} < {shlex.quote(prompt_rel)}"
 
-    def _build_remote_claude_command(self, config: dict[str, Any], *, prompt_rel: str, output_rel: str) -> str:
+    def _build_remote_claude_command(
+        self, config: dict[str, Any], *, prompt_rel: str, output_rel: str
+    ) -> str:
         env_parts: list[str] = []
         if clean_text(config.get("api_key")):
             env_parts.append(f"ANTHROPIC_AUTH_TOKEN={shlex.quote(str(config['api_key']))}")
@@ -1770,18 +1820,23 @@ class CliAgentService:
     def _build_local_command_prefix(self, config: dict[str, Any]) -> list[str]:
         executable = clean_text(config.get("command_path")) or clean_text(config.get("command"))
         if not executable:
-            raise ValueError(f"{config.get('label') or config.get('agent_type') or 'CLI'} 未配置可执行命令")
-        return [executable, *[str(item) for item in (config.get("args") or []) if str(item).strip()]]
+            raise ValueError(
+                f"{config.get('label') or config.get('agent_type') or 'CLI'} 未配置可执行命令"
+            )
+        return [
+            executable,
+            *[str(item) for item in (config.get("args") or []) if str(item).strip()],
+        ]
 
     def _build_remote_command_prefix(self, config: dict[str, Any]) -> list[str]:
         executable = clean_text(config.get("command")) or clean_text(config.get("command_path"))
         if not executable:
-            raise ValueError(f"{config.get('label') or config.get('agent_type') or 'CLI'} 未配置可执行命令")
+            raise ValueError(
+                f"{config.get('label') or config.get('agent_type') or 'CLI'} 未配置可执行命令"
+            )
         parts = [shlex.quote(executable)]
         parts.extend(
-            shlex.quote(str(item))
-            for item in (config.get("args") or [])
-            if str(item).strip()
+            shlex.quote(str(item)) for item in (config.get("args") or []) if str(item).strip()
         )
         return parts
 
@@ -1873,7 +1928,11 @@ class CliAgentService:
     def _serialize_config(self, config: dict[str, Any]) -> dict[str, Any]:
         resolved = self._resolve_config(config)
         capability = self._build_chat_capability(resolved)
-        acp_summary = get_acp_registry_service().get_backend_summary() if resolved["agent_type"] == "custom_acp" else {}
+        acp_summary = (
+            get_acp_registry_service().get_backend_summary()
+            if resolved["agent_type"] == "custom_acp"
+            else {}
+        )
         return {
             "id": resolved["id"],
             "agent_type": resolved["agent_type"],
@@ -1920,7 +1979,9 @@ class CliAgentService:
             or (_AGENT_BINARY_CANDIDATES.get(normalized["agent_type"]) or [""])[0]
         )
         command_path = self._resolve_command_path(normalized["agent_type"], command_name)
-        claw_bootstrap_available = normalized["agent_type"] == "claw" and _claw_bootstrap_available()
+        claw_bootstrap_available = (
+            normalized["agent_type"] == "claw" and _claw_bootstrap_available()
+        )
         template = self._template_map.get(normalized["agent_type"], {})
         provider = (
             clean_text(normalized.get("provider"))
@@ -1960,17 +2021,22 @@ class CliAgentService:
             or None
         )
         config_source = (
-            clean_text(active_llm_defaults.get("config_source"))
-            if normalized["agent_type"] == "claw" and not clean_text(normalized.get("provider"))
-            else None
-        ) or clean_text(detected.get("config_source")) or None
+            (
+                clean_text(active_llm_defaults.get("config_source"))
+                if normalized["agent_type"] == "claw" and not clean_text(normalized.get("provider"))
+                else None
+            )
+            or clean_text(detected.get("config_source"))
+            or None
+        )
         return {
             **normalized,
             "label": normalized.get("label") or template.get("label") or normalized["agent_type"],
             "kind": template.get("kind") or "cli",
             "description": template.get("description") or "",
             "command": command_name,
-            "command_path": command_path or (str(_preferred_claw_binary_candidate()) if claw_bootstrap_available else None),
+            "command_path": command_path
+            or (str(_preferred_claw_binary_candidate()) if claw_bootstrap_available else None),
             "installed": bool(command_path) or claw_bootstrap_available,
             "provider": provider,
             "protocol": protocol,
@@ -1998,8 +2064,14 @@ class CliAgentService:
             except Exception:
                 data = {}
         provider = clean_text(data.get("model_provider")) or None
-        provider_details = data.get("model_providers") if isinstance(data.get("model_providers"), dict) else {}
-        provider_config = provider_details.get(provider) if isinstance(provider_details, dict) and provider else {}
+        provider_details = (
+            data.get("model_providers") if isinstance(data.get("model_providers"), dict) else {}
+        )
+        provider_config = (
+            provider_details.get(provider)
+            if isinstance(provider_details, dict) and provider
+            else {}
+        )
         return {
             "command": "codex",
             "provider": provider,
@@ -2014,11 +2086,20 @@ class CliAgentService:
         env = payload.get("env") if isinstance(payload, dict) else {}
         if not isinstance(env, dict):
             env = {}
-        api_key = clean_text(env.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get("ANTHROPIC_AUTH_TOKEN")) or None
+        api_key = (
+            clean_text(env.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+            or None
+        )
         return {
             "command": "claude",
-            "base_url": clean_text(env.get("ANTHROPIC_BASE_URL") or os.environ.get("ANTHROPIC_BASE_URL")) or None,
-            "default_model": clean_text(env.get("ANTHROPIC_MODEL") or os.environ.get("ANTHROPIC_MODEL")) or None,
+            "base_url": clean_text(
+                env.get("ANTHROPIC_BASE_URL") or os.environ.get("ANTHROPIC_BASE_URL")
+            )
+            or None,
+            "default_model": clean_text(
+                env.get("ANTHROPIC_MODEL") or os.environ.get("ANTHROPIC_MODEL")
+            )
+            or None,
             "api_key": api_key,
             "config_source": str(path) if path.exists() else None,
         }
@@ -2030,12 +2111,17 @@ class CliAgentService:
         base_url = claude_defaults.get("base_url")
         return {
             "command": str(_preferred_claw_binary_candidate()),
-            "provider": _infer_claw_provider(default_model, None, None, clean_text(base_url) or None),
-            "protocol": resolve_provider_protocol(None, clean_text(base_url) or None) or "anthropic",
+            "provider": _infer_claw_provider(
+                default_model, None, None, clean_text(base_url) or None
+            ),
+            "protocol": resolve_provider_protocol(None, clean_text(base_url) or None)
+            or "anthropic",
             "base_url": base_url,
             "default_model": default_model,
             "api_key": claude_defaults.get("api_key"),
-            "config_source": str(runtime_root) if runtime_root.exists() else claude_defaults.get("config_source"),
+            "config_source": str(runtime_root)
+            if runtime_root.exists()
+            else claude_defaults.get("config_source"),
         }
 
     def _resolve_command_path(self, agent_type: str, command_name: str) -> str | None:
@@ -2091,7 +2177,8 @@ class CliAgentService:
             "agent_type": agent_type,
             "label": clean_text(raw.get("label")) or template.get("label") or agent_type,
             "enabled": bool(raw.get("enabled", True)),
-            "command": clean_text(raw.get("command")) or (_AGENT_BINARY_CANDIDATES.get(agent_type) or [""])[0],
+            "command": clean_text(raw.get("command"))
+            or (_AGENT_BINARY_CANDIDATES.get(agent_type) or [""])[0],
             "args": [str(item).strip() for item in (raw.get("args") or []) if str(item).strip()],
             "provider": clean_text(raw.get("provider")) or None,
             "base_url": clean_text(raw.get("base_url")) or None,
@@ -2169,7 +2256,9 @@ class CliAgentService:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            current_id = _slugify(str(item.get("id") or item.get("label") or item.get("host") or ""))
+            current_id = _slugify(
+                str(item.get("id") or item.get("label") or item.get("host") or "")
+            )
             if current_id != normalized_id:
                 continue
             return item

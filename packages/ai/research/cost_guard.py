@@ -1,6 +1,7 @@
 """
 LLM 成本守卫 - 自动降级模型选择
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -47,9 +48,7 @@ class CostGuardService:
             output_tokens=expected_out,
         )
 
-        day_cost = float(
-            self.trace_repo.summarize_costs(days=1)["total_cost_usd"]
-        )
+        day_cost = float(self.trace_repo.summarize_costs(days=1)["total_cost_usd"])
         fallback = (
             (fallback_model or "").strip()
             or getattr(self.llm._config(), "model_fallback", "").strip()

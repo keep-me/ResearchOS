@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
 import { Document, Page } from "@/components/PdfDocument";
-import { useSignedApiAssetUrl } from "@/hooks/useSignedApiAssetUrl";
+import { useSignedApiAssetUrlState } from "@/hooks/useSignedApiAssetUrl";
 import Markdown from "@/components/Markdown";
 import { timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -670,9 +670,12 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
   const mobileSheetVisualHeightRef = useRef(0);
   const autoOcrAttemptedRef = useRef(false);
   const ocrRunRef = useRef(false);
+  const loadDocumentRequestRef = useRef(0);
+  const loadNotesRequestRef = useRef(0);
+  const regionDragRef = useRef<RegionDrag | null>(null);
 
   const basePdfUrl = useMemo(() => paperApi.pdfUrl(paperId, paperArxivId), [paperArxivId, paperId]);
-  const pdfUrl = useSignedApiAssetUrl(basePdfUrl);
+  const { url: pdfUrl, loading: pdfUrlLoading, error: pdfUrlError } = useSignedApiAssetUrlState(basePdfUrl);
   const pages = useMemo(() => Array.from({ length: numPages }, (_, i) => i + 1), [numPages]);
   const sectionsById = useMemo(() => {
     const map = new Map<string, { title: string; level: number; order: number; page_start?: number | null }>();
@@ -935,27 +938,35 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
   }, []);
 
   const loadDocument = useCallback(async (silent = false) => {
+    const requestId = loadDocumentRequestRef.current + 1;
+    loadDocumentRequestRef.current = requestId;
     if (!silent) setDocumentLoading(true);
     try {
       const [doc, status] = await Promise.all([
         paperApi.getReaderDocument(paperId).catch(() => null),
         paperApi.getOcrStatus(paperId).catch(() => null),
       ]);
+      if (loadDocumentRequestRef.current !== requestId) return;
       setReaderDocument(doc);
       setOcrStatus(status);
     } finally {
-      setDocumentChecked(true);
-      if (!silent) setDocumentLoading(false);
+      if (loadDocumentRequestRef.current === requestId) {
+        setDocumentChecked(true);
+        if (!silent) setDocumentLoading(false);
+      }
     }
   }, [paperId]);
 
   const loadNotes = useCallback(async (silent = false) => {
+    const requestId = loadNotesRequestRef.current + 1;
+    loadNotesRequestRef.current = requestId;
     if (!silent) setNotesLoading(true);
     try {
       const response = await paperApi.getReaderNotes(paperId);
+      if (loadNotesRequestRef.current !== requestId) return;
       setNotes(response.items || []);
     } finally {
-      if (!silent) setNotesLoading(false);
+      if (loadNotesRequestRef.current === requestId && !silent) setNotesLoading(false);
     }
   }, [paperId]);
 
@@ -1070,16 +1081,20 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
 
   const finalizeRegion = useCallback((drag: RegionDrag) => {
     if (drag.width < 12 || drag.height < 12) {
+      regionDragRef.current = null;
       setRegionDrag(null);
       return;
     }
     const cropped = cropRegion(drag);
     if (!cropped) {
+      regionDragRef.current = null;
       setRegionDrag(null);
       return;
     }
     setRegionSelection({ page: drag.page, x: drag.x, y: drag.y, width: drag.width, height: drag.height, ...cropped });
-    setRegionDrag(null);
+    regionDragRef.current = null;
+    regionDragRef.current = null;
+                  setRegionDrag(null);
     setRegionMode(false);
     ensureWorkspaceTab("results");
   }, [cropRegion, ensureWorkspaceTab]);
@@ -1089,7 +1104,7 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
     const bounds = event.currentTarget.getBoundingClientRect();
     const originX = clamp(event.clientX - bounds.left, 0, bounds.width);
     const originY = clamp(event.clientY - bounds.top, 0, bounds.height);
-    setRegionDrag({
+    const drag = {
       page,
       x: originX,
       y: originY,
@@ -1101,7 +1116,9 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
       pageTop: bounds.top,
       pageWidth: bounds.width,
       pageHeight: bounds.height,
-    });
+    };
+    regionDragRef.current = drag;
+    setRegionDrag(drag);
     event.preventDefault();
     event.stopPropagation();
   }, [regionMode]);
@@ -1636,17 +1653,24 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
   useEffect(() => {
     if (!regionDrag) return;
     const onMove = (event: MouseEvent) => {
-      const currentX = clamp(event.clientX - regionDrag.pageLeft, 0, regionDrag.pageWidth);
-      const currentY = clamp(event.clientY - regionDrag.pageTop, 0, regionDrag.pageHeight);
-      setRegionDrag((current) => current ? {
+      const current = regionDragRef.current;
+      if (!current) return;
+      const currentX = clamp(event.clientX - current.pageLeft, 0, current.pageWidth);
+      const currentY = clamp(event.clientY - current.pageTop, 0, current.pageHeight);
+      const next = {
         ...current,
         x: Math.min(current.originX, currentX),
         y: Math.min(current.originY, currentY),
         width: Math.abs(currentX - current.originX),
         height: Math.abs(currentY - current.originY),
-      } : current);
+      };
+      regionDragRef.current = next;
+      setRegionDrag(next);
     };
-    const onUp = () => finalizeRegion(regionDrag);
+    const onUp = () => {
+      const current = regionDragRef.current;
+      if (current) finalizeRegion(current);
+    };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp, { once: true });
     return () => {
@@ -1660,7 +1684,8 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
       if (event.key === "Escape") {
         if (regionMode) {
           setRegionMode(false);
-          setRegionDrag(null);
+          regionDragRef.current = null;
+                  setRegionDrag(null);
         } else {
           onClose();
         }
@@ -1992,7 +2017,8 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
               助手 · 框选区域
             </div>
             <div className="flex gap-2">
-              <ActionButton onClick={() => { setRegionMode((value) => !value); setRegionDrag(null); }}>{regionMode ? "取消" : "开始框选"}</ActionButton>
+              <ActionButton onClick={() => { setRegionMode((value) => !value); regionDragRef.current = null;
+                  setRegionDrag(null); }}>{regionMode ? "取消" : "开始框选"}</ActionButton>
               {regionSelection ? <ActionButton onClick={() => { setRegionSelection(null); setRegionQuestion(""); }}>清除</ActionButton> : null}
             </div>
           </div>
@@ -2147,7 +2173,8 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
             {isMobileViewport ? (
               <button onClick={() => setScale((value) => Math.min(value + 0.15, 3))} className="toolbar-btn"><ZoomIn className="h-4 w-4" /></button>
             ) : null}
-            <button onClick={() => { setRegionMode((value) => !value); setRegionDrag(null); }} className={cn("toolbar-btn", regionMode && "bg-primary/30 text-primary")}><ImageIcon className="h-4 w-4" /></button>
+            <button onClick={() => { setRegionMode((value) => !value); regionDragRef.current = null;
+                  setRegionDrag(null); }} className={cn("toolbar-btn", regionMode && "bg-primary/30 text-primary")}><ImageIcon className="h-4 w-4" /></button>
             <button onClick={() => !isFullscreen ? containerRef.current?.requestFullscreen?.() : document.exitFullscreen?.()} className="toolbar-btn">
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
@@ -2174,8 +2201,10 @@ export default function PdfReader({ paperId, paperTitle, paperArxivId, onOcrUpda
             onTouchEnd={handlePdfTouchEnd}
             onTouchCancel={handlePdfTouchEnd}
           >
-            {loadError ? (
-              <div className="flex h-full items-center justify-center text-red-300">{loadError}</div>
+            {loadError || pdfUrlError ? (
+              <div className="flex h-full items-center justify-center text-red-300">{loadError || `PDF 签名失败: ${pdfUrlError}`}</div>
+            ) : pdfUrlLoading || !pdfUrl ? (
+              <div className="flex h-96 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
             ) : (
               <Document
                 file={pdfUrl}

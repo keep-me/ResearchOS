@@ -96,7 +96,11 @@ def main() -> int:
                         "sessionId": pending_session_id,
                         "options": [
                             {"optionId": "allow_once", "name": "Allow once", "kind": "allow_once"},
-                            {"optionId": "allow_always", "name": "Always allow", "kind": "allow_always"},
+                            {
+                                "optionId": "allow_always",
+                                "name": "Always allow",
+                                "kind": "allow_always",
+                            },
                             {"optionId": "reject_once", "name": "Reject", "kind": "reject_once"},
                         ],
                         "toolCall": {
@@ -113,13 +117,15 @@ def main() -> int:
             )
             continue
 
-        if pending_prompt_request_id is not None and request_id == permission_request_id and not method:
-            outcome = (
-                message.get("result")
-                if isinstance(message.get("result"), dict)
-                else {}
+        if (
+            pending_prompt_request_id is not None
+            and request_id == permission_request_id
+            and not method
+        ):
+            outcome = message.get("result") if isinstance(message.get("result"), dict) else {}
+            outcome_payload = (
+                outcome.get("outcome") if isinstance(outcome.get("outcome"), dict) else {}
             )
-            outcome_payload = outcome.get("outcome") if isinstance(outcome.get("outcome"), dict) else {}
             option_id = str(outcome_payload.get("optionId") or "").strip()
             selected = option_id or "cancelled"
             send(

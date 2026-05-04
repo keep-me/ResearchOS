@@ -10,7 +10,6 @@ if str(ROOT) not in sys.path:
 from packages.agent import acp_service
 from tests.fixtures.mock_acp_http_permission_server import serve_mock_acp_http_permission_server
 
-
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 MOCK_SERVER = FIXTURE_DIR / "mock_acp_server.py"
 MOCK_PERMISSION_SERVER = FIXTURE_DIR / "mock_acp_permission_server.py"

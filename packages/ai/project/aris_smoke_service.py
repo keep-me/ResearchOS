@@ -51,7 +51,9 @@ def extract_aris_smoke_items(output: str) -> list[dict[str, Any]]:
 def build_aris_smoke_report_path(task_id: str, mode: ARISSmokeMode = "quick") -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     TMP_ROOT.mkdir(parents=True, exist_ok=True)
-    safe_task_id = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(task_id or "aris-smoke"))
+    safe_task_id = "".join(
+        ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(task_id or "aris-smoke")
+    )
     return TMP_ROOT / f"{timestamp}-{mode}-{safe_task_id}.json"
 
 
@@ -90,8 +92,10 @@ def run_aris_smoke(
     output_text = "".join(output_lines)
     items = extract_aris_smoke_items(output_text)
     failed_items = [
-        item for item in items
-        if str(item.get("status") or "").strip().lower() not in {"completed", "succeeded", "success"}
+        item
+        for item in items
+        if str(item.get("status") or "").strip().lower()
+        not in {"completed", "succeeded", "success"}
     ]
     success = return_code == 0 and not failed_items
     duration_seconds = round((finished_at - started_at).total_seconds(), 2)
@@ -133,6 +137,8 @@ def run_aris_smoke(
     if return_code != 0:
         raise RuntimeError(f"项目工作流回归检查失败，退出码 {return_code}")
     if failed_items:
-        names = ", ".join(str(item.get("workflow") or "") for item in failed_items[:5] if item.get("workflow"))
+        names = ", ".join(
+            str(item.get("workflow") or "") for item in failed_items[:5] if item.get("workflow")
+        )
         raise RuntimeError(f"项目工作流回归检查存在失败工作流: {names or 'unknown'}")
     return result

@@ -1,6 +1,7 @@
 """
 通知服务 - 邮件发送 + HTML 存储
 """
+
 from __future__ import annotations
 
 import smtplib
@@ -15,9 +16,7 @@ class NotificationService:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def send_email_html(
-        self, recipient: str, subject: str, html: str
-    ) -> bool:
+    def send_email_html(self, recipient: str, subject: str, html: str) -> bool:
         smtp = self.settings
         if not smtp.smtp_host or not smtp.smtp_user or not smtp.smtp_password:
             return False
@@ -28,17 +27,13 @@ class NotificationService:
         msg["To"] = recipient
         msg.attach(MIMEText(html, "html", "utf-8"))
 
-        with smtplib.SMTP(
-            smtp.smtp_host, smtp.smtp_port
-        ) as server:
+        with smtplib.SMTP(smtp.smtp_host, smtp.smtp_port) as server:
             server.starttls()
             server.login(smtp.smtp_user, smtp.smtp_password)
             server.send_message(msg)
         return True
 
-    def save_brief_html(
-        self, filename: str, html: str
-    ) -> str:
+    def save_brief_html(self, filename: str, html: str) -> str:
         target = self.settings.brief_output_root / filename
         Path(target).write_text(html, encoding="utf-8")
         return str(target)

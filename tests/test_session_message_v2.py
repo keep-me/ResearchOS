@@ -63,7 +63,9 @@ def test_message_v2_page_stream_get_and_parts(monkeypatch: pytest.MonkeyPatch):
     assert [item["info"]["id"] for item in next_page["items"]] == ["msg_1"]
     assert next_page["more"] is False
 
-    streamed_ids = [item["info"]["id"] for item in session_message_v2.stream("message_v2_page_session")]
+    streamed_ids = [
+        item["info"]["id"] for item in session_message_v2.stream("message_v2_page_session")
+    ]
     assert streamed_ids == ["msg_3", "msg_2", "msg_1"]
 
     fetched = session_message_v2.get("message_v2_page_session", "msg_2")
@@ -99,7 +101,9 @@ def test_message_v2_filter_compacted_and_to_model_messages():
         "parts": [{"id": "p_old", "type": "text", "text": "should be hidden"}],
     }
 
-    filtered = session_message_v2.filter_compacted([newest_user, assistant_summary, compacted_user, old_assistant])
+    filtered = session_message_v2.filter_compacted(
+        [newest_user, assistant_summary, compacted_user, old_assistant]
+    )
     assert [item["info"]["id"] for item in filtered] == ["u_compact", "a_summary", "u_latest"]
 
     converted = session_message_v2.to_model_messages(
@@ -144,7 +148,7 @@ def test_message_v2_filter_compacted_and_to_model_messages():
                         "state": {
                             "status": "completed",
                             "input": {"command": "pwd"},
-                            "raw": "{\"command\":\"pwd\"}",
+                            "raw": '{"command":"pwd"}',
                         },
                     },
                 ],
@@ -204,7 +208,10 @@ def test_message_v2_runtime_info_aligns_user_and_assistant_shapes(monkeypatch: p
         meta={
             "agent": "build",
             "model": {"providerID": "openai", "modelID": "gpt-5"},
-            "format": {"type": "json_schema", "schema": {"type": "object", "properties": {"answer": {"type": "string"}}}},
+            "format": {
+                "type": "json_schema",
+                "schema": {"type": "object", "properties": {"answer": {"type": "string"}}},
+            },
             "tools": {"bash": False},
             "system": "只返回 JSON",
             "variant": "high",
@@ -238,7 +245,10 @@ def test_message_v2_runtime_info_aligns_user_and_assistant_shapes(monkeypatch: p
         "time": {"created": user["info"]["time"]["created"]},
         "agent": "build",
         "model": {"providerID": "openai", "modelID": "gpt-5"},
-        "format": {"type": "json_schema", "schema": {"type": "object", "properties": {"answer": {"type": "string"}}}},
+        "format": {
+            "type": "json_schema",
+            "schema": {"type": "object", "properties": {"answer": {"type": "string"}}},
+        },
         "tools": {"bash": False},
         "system": "只返回 JSON",
         "variant": "high",
@@ -258,8 +268,13 @@ def test_message_v2_runtime_info_aligns_user_and_assistant_shapes(monkeypatch: p
         "agent": "build",
         "path": {"cwd": "D:/workspace", "root": "D:/workspace"},
         "cost": 0.25,
-        "tokens": {"total": None, "input": 10, "output": 6, "reasoning": 2, "cache": {"read": 1, "write": 0}},
+        "tokens": {
+            "total": None,
+            "input": 10,
+            "output": 6,
+            "reasoning": 2,
+            "cache": {"read": 1, "write": 0},
+        },
         "structured": {"answer": "ok"},
         "finish": "stop",
     }
-

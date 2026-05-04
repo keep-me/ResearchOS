@@ -50,8 +50,14 @@ def test_upsert_skim_uses_first_innovation_when_one_liner_missing():
         ).scalar_one()
 
     assert stored.summary_md is not None
-    assert "- One-liner: 提出统一训练策略，整合描述生成、自监督损失与在线数据整理。" in stored.summary_md
-    assert stored.key_insights["one_liner"] == "提出统一训练策略，整合描述生成、自监督损失与在线数据整理。"
+    assert (
+        "- One-liner: 提出统一训练策略，整合描述生成、自监督损失与在线数据整理。"
+        in stored.summary_md
+    )
+    assert (
+        stored.key_insights["one_liner"]
+        == "提出统一训练策略，整合描述生成、自监督损失与在线数据整理。"
+    )
     assert stored.key_insights["skim_innovations"] == [
         "提出统一训练策略，整合描述生成、自监督损失与在线数据整理。",
         "在多语种视觉语义任务上取得稳健提升。",

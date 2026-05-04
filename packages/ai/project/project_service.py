@@ -33,4 +33,3 @@ class ProjectService:
 
 
 __all__ = ["ProjectNotFoundError", "ProjectService", "ProjectServiceError"]
-

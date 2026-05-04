@@ -141,9 +141,7 @@ def raw_openai_compatible_post(
     try:
         return json.loads(response_body)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Invalid JSON response from {path}: {response_body[:240]}"
-        ) from exc
+        raise RuntimeError(f"Invalid JSON response from {path}: {response_body[:240]}") from exc
 
 
 def call_openai_responses_raw_http(

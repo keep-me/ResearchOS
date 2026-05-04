@@ -10,21 +10,35 @@ from typing import Any
 from uuid import uuid4
 
 from packages.agent import (
+    session_bus,
+    session_message_v2,
     session_snapshot,
+)
+from packages.agent import (
     session_runtime as runtime,
 )
-from packages.agent import session_bus
-from packages.agent import session_message_v2
 from packages.agent.runtime.agent_runtime_policy import (
     build_repeated_tool_call_notice as _shared_build_repeated_tool_call_notice,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     build_step_limit_reached_notice as _shared_build_step_limit_reached_notice,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     is_tool_progress_placeholder_text as _shared_is_tool_progress_placeholder_text,
-    should_hard_stop_after_tool_request as _shared_should_hard_stop_after_tool_request,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     should_hard_stop_after_repeated_tool_calls as _shared_should_hard_stop_after_repeated_tool_calls,
+)
+from packages.agent.runtime.agent_runtime_policy import (
+    should_hard_stop_after_tool_request as _shared_should_hard_stop_after_tool_request,
+)
+from packages.agent.runtime.agent_runtime_policy import (
     tool_call_signature as _shared_tool_call_signature,
 )
 from packages.agent.runtime.agent_transcript import (
     collect_tool_result_items_from_messages as _shared_collect_tool_result_items_from_messages,
+)
+from packages.agent.runtime.agent_transcript import (
     resolve_tool_result_followup_text as _shared_resolve_tool_result_followup_text,
 )
 from packages.agent.session.session_bus import SessionBusEvent
@@ -111,7 +125,9 @@ class PromptStreamControl:
                         "sessionID": session_id,
                         "step": int(data.get("step") or 0),
                         "reason": str(data.get("reason") or "stop"),
-                        "usage": dict(data.get("usage") or {}) if isinstance(data.get("usage"), dict) else {},
+                        "usage": dict(data.get("usage") or {})
+                        if isinstance(data.get("usage"), dict)
+                        else {},
                     },
                 )
             return
@@ -134,7 +150,11 @@ class PromptStreamControl:
             if not content:
                 return
             part_id = str(data.get("id") or "").strip()
-            metadata = copy.deepcopy(data.get("metadata")) if isinstance(data.get("metadata"), dict) else None
+            metadata = (
+                copy.deepcopy(data.get("metadata"))
+                if isinstance(data.get("metadata"), dict)
+                else None
+            )
             part: dict[str, Any] | None = None
             if part_id:
                 for candidate in reversed(self.text_parts):
@@ -258,7 +278,9 @@ class _DeltaPersistenceBuffer:
         metadata = data.get("metadata")
         return copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None
 
-    def _matches(self, event_name: str, part_id: str | None, metadata: dict[str, Any] | None) -> bool:
+    def _matches(
+        self, event_name: str, part_id: str | None, metadata: dict[str, Any] | None
+    ) -> bool:
         return (
             self.active_event_name == event_name
             and self.active_part_id == part_id
@@ -273,7 +295,9 @@ class _DeltaPersistenceBuffer:
         self.chars = 0
         self.events = 0
 
-    def _reset_active(self, event_name: str, part_id: str | None, metadata: dict[str, Any] | None) -> None:
+    def _reset_active(
+        self, event_name: str, part_id: str | None, metadata: dict[str, Any] | None
+    ) -> None:
         self.active_event_name = event_name
         self.active_part_id = part_id
         self.active_metadata = copy.deepcopy(metadata) if isinstance(metadata, dict) else None
@@ -299,7 +323,10 @@ class _DeltaPersistenceBuffer:
         if not self.active_first_persisted:
             self.active_first_persisted = True
             emitted.extend(self.flush())
-        elif self.chars >= _DELTA_PERSIST_CHAR_THRESHOLD or self.events >= _DELTA_PERSIST_EVENT_THRESHOLD:
+        elif (
+            self.chars >= _DELTA_PERSIST_CHAR_THRESHOLD
+            or self.events >= _DELTA_PERSIST_EVENT_THRESHOLD
+        ):
             emitted.extend(self.flush())
         return emitted
 
@@ -417,9 +444,7 @@ class PromptLifecycleSession:
         self.session_processor = session_processor
         self.event_driver = event_driver
         self._delta_persistence_buffer = (
-            _DeltaPersistenceBuffer(session_processor)
-            if session_processor is not None
-            else None
+            _DeltaPersistenceBuffer(session_processor) if session_processor is not None else None
         )
 
     @classmethod
@@ -470,7 +495,10 @@ class PromptLifecycleSession:
         if not event_name:
             return [serialized]
         return [
-            *[prompt_event(name, payload) for name, payload in self.session_processor.apply_event(event_name, data)],
+            *[
+                prompt_event(name, payload)
+                for name, payload in self.session_processor.apply_event(event_name, data)
+            ],
             prompt_event(event_name, data),
         ]
 
@@ -645,7 +673,10 @@ class PromptLoopCallbacks:
     publish_step_start: Callable[[int], None] | None
     prepare_loop_messages: Callable[[list[dict[str, Any]], int, int], list[dict[str, Any]]]
     run_model_turn: Callable[[list[dict[str, Any]]], Iterator[Any]]
-    process_tool_calls: Callable[[list[dict[str, Any]], list[Any], int, str | None, dict[str, Any] | None, str], Iterator[Any]]
+    process_tool_calls: Callable[
+        [list[dict[str, Any]], list[Any], int, str | None, dict[str, Any] | None, str],
+        Iterator[Any],
+    ]
     step_limit_summary: Callable[[list[dict[str, Any]], int], Iterator[Any]]
     emit_step_finish: Callable[[int, str, dict[str, Any] | None, str | None], Iterator[Any]]
     build_assistant_message: Callable[..., dict[str, Any]]
@@ -765,7 +796,9 @@ class ToolCallProcessingCallbacks:
     build_tool_message: Callable[[Any, Any], dict[str, Any]]
     execute_tool: Callable[[Any, Any], Iterator[PromptEvent]]
     make_tool_result: Callable[[bool, str, Any], Any]
-    emit_step_finish: Callable[[int, str, dict[str, Any] | None, str | None], Iterator[PromptEvent]] | None = None
+    emit_step_finish: (
+        Callable[[int, str, dict[str, Any] | None, str | None], Iterator[PromptEvent]] | None
+    ) = None
     assistant_checkpoint_meta: Callable[[str, dict[str, Any] | None], dict[str, Any]] | None = None
     next_assistant_message_id: Callable[[], str] | None = None
 
@@ -875,7 +908,9 @@ def stream_model_turn_events(
             if normalized_next and open_content_part != normalized_next:
                 open_content_part = normalized_next
                 open_content_part_id = normalized_id or _runtime_part_id()
-                open_content_part_metadata = copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None
+                open_content_part_metadata = (
+                    copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None
+                )
                 start_payload: dict[str, Any] = {"id": open_content_part_id}
                 if open_content_part_metadata:
                     start_payload["metadata"] = copy.deepcopy(open_content_part_metadata)
@@ -891,7 +926,9 @@ def stream_model_turn_events(
                 open_content_part_metadata = copy.deepcopy(metadata)
             return payloads
 
-        def _remember_reasoning_part(metadata: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        def _remember_reasoning_part(
+            metadata: dict[str, Any] | None = None,
+        ) -> dict[str, Any] | None:
             if not open_content_part_id:
                 return None
             record = reasoning_part_by_id.get(open_content_part_id)
@@ -904,7 +941,11 @@ def stream_model_turn_events(
                     record["metadata"] = copy.deepcopy(metadata)
                 reasoning_part_by_id[open_content_part_id] = record
                 reasoning_part_records.append(record)
-            elif isinstance(metadata, dict) and metadata and not isinstance(record.get("metadata"), dict):
+            elif (
+                isinstance(metadata, dict)
+                and metadata
+                and not isinstance(record.get("metadata"), dict)
+            ):
                 record["metadata"] = copy.deepcopy(metadata)
             return record
 
@@ -921,7 +962,11 @@ def stream_model_turn_events(
                     record["metadata"] = copy.deepcopy(metadata)
                 text_part_by_id[open_content_part_id] = record
                 text_part_records.append(record)
-            elif isinstance(metadata, dict) and metadata and not isinstance(record.get("metadata"), dict):
+            elif (
+                isinstance(metadata, dict)
+                and metadata
+                and not isinstance(record.get("metadata"), dict)
+            ):
                 record["metadata"] = copy.deepcopy(metadata)
             return record
 
@@ -1031,13 +1076,16 @@ def stream_model_turn_events(
                     config.latest_user_tools,
                 ),
                 variant_override=getattr(config.options, "reasoning_level", None),
-                model_override=str(getattr(config.options, "model_override", "") or "").strip() or None,
+                model_override=str(getattr(config.options, "model_override", "") or "").strip()
+                or None,
                 session_cache_key=session_id or None,
             )
             for event in stream:
                 if _abort_requested():
                     yield from _abort_turn(stream)
-                    return ModelTurnResult(status="error", error_message="会话已中止", error_emitted=True)
+                    return ModelTurnResult(
+                        status="error", error_message="会话已中止", error_emitted=True
+                    )
                 event_type = str(getattr(event, "type", "") or "")
                 event_metadata = getattr(event, "metadata", None)
                 event_content = str(getattr(event, "content", "") or "")
@@ -1045,7 +1093,9 @@ def stream_model_turn_events(
                     if delay_content_stream:
                         assistant_parts.append(event_content)
                         continue
-                    normalized_metadata = event_metadata if isinstance(event_metadata, dict) else None
+                    normalized_metadata = (
+                        event_metadata if isinstance(event_metadata, dict) else None
+                    )
                     preferred_id = getattr(event, "part_id", None)
                     buffered_tool_candidate = buffered_tool_preamble_content + event_content
                     if _can_buffer_tool_preamble(buffered_tool_candidate):
@@ -1093,7 +1143,9 @@ def stream_model_turn_events(
                     if event_content:
                         reasoning_parts.append(event_content)
                     record = _remember_reasoning_part(
-                        event_metadata if isinstance(event_metadata, dict) else open_content_part_metadata,
+                        event_metadata
+                        if isinstance(event_metadata, dict)
+                        else open_content_part_metadata,
                     )
                     if record is not None and event_content:
                         record["text"] = session_message_v2.append_reasoning_fragment(
@@ -1106,7 +1158,9 @@ def stream_model_turn_events(
                     }
                     if isinstance(event_metadata, dict) and event_metadata:
                         delta_payload["metadata"] = copy.deepcopy(event_metadata)
-                    elif isinstance(open_content_part_metadata, dict) and open_content_part_metadata:
+                    elif (
+                        isinstance(open_content_part_metadata, dict) and open_content_part_metadata
+                    ):
                         delta_payload["metadata"] = copy.deepcopy(open_content_part_metadata)
                     yield prompt_event("reasoning_delta", delta_payload)
                 elif event_type == "tool_call":
@@ -1146,7 +1200,9 @@ def stream_model_turn_events(
                     if bool(_runtime_item_value(call, "provider_executed", False)):
                         tool_input_end_payload["providerExecuted"] = True
                     yield prompt_event("tool-input-end", tool_input_end_payload)
-                elif event_type == "tool_result" and bool(getattr(event, "provider_executed", False)):
+                elif event_type == "tool_result" and bool(
+                    getattr(event, "provider_executed", False)
+                ):
                     if buffered_tool_preamble:
                         _drop_buffered_tool_preamble()
                     if buffered_mirrored_text:
@@ -1164,7 +1220,11 @@ def stream_model_turn_events(
                         )
                         assistant_tool_calls.append(call)
                     result = callbacks.make_tool_result(
-                        bool(True if getattr(event, "tool_success", None) is None else getattr(event, "tool_success", None)),
+                        bool(
+                            True
+                            if getattr(event, "tool_success", None) is None
+                            else getattr(event, "tool_success", None)
+                        ),
                         str(getattr(event, "tool_summary", "") or ""),
                         copy.deepcopy(getattr(event, "tool_result", None)),
                     )
@@ -1214,14 +1274,20 @@ def stream_model_turn_events(
                     if isinstance(event_metadata, dict) and event_metadata:
                         error_value = {"message": message, **copy.deepcopy(event_metadata)}
                     error_payload = normalize_error(error_value)
-                    if not assistant_parts and not assistant_tool_calls and (
-                        str(error_payload.get("name") or "") == "ContextOverflowError"
-                        or callbacks.detect_overflow_error(message)
+                    if (
+                        not assistant_parts
+                        and not assistant_tool_calls
+                        and (
+                            str(error_payload.get("name") or "") == "ContextOverflowError"
+                            or callbacks.detect_overflow_error(message)
+                        )
                     ):
                         return ModelTurnResult(status="compact", error_message=message)
                     retry_message = (
                         callbacks.retryable(error_value)
-                        if not assistant_parts and not assistant_tool_calls and attempt < config.max_attempts
+                        if not assistant_parts
+                        and not assistant_tool_calls
+                        and attempt < config.max_attempts
                         else None
                     )
                     if retry_message is not None:
@@ -1252,10 +1318,14 @@ def stream_model_turn_events(
                     for payload in _transition_content_part(None):
                         yield payload
                     yield prompt_event("error", {"message": message})
-                    return ModelTurnResult(status="error", error_message=message, error_emitted=True)
+                    return ModelTurnResult(
+                        status="error", error_message=message, error_emitted=True
+                    )
                 if _abort_requested():
                     yield from _abort_turn(stream)
-                    return ModelTurnResult(status="error", error_message="会话已中止", error_emitted=True)
+                    return ModelTurnResult(
+                        status="error", error_message="会话已中止", error_emitted=True
+                    )
             else:
                 if buffered_tool_preamble and not assistant_tool_calls:
                     yield from _flush_buffered_tool_preamble()
@@ -1322,7 +1392,9 @@ def stream_model_turn_events(
                 elif appended_tool_followup_summary:
                     content_part_id = _runtime_part_id()
                     yield prompt_event("text-start", {"id": content_part_id})
-                    for chunk in callbacks.iter_text_chunks(f"\n\n{appended_tool_followup_summary}"):
+                    for chunk in callbacks.iter_text_chunks(
+                        f"\n\n{appended_tool_followup_summary}"
+                    ):
                         yield prompt_event(
                             "text_delta",
                             {
@@ -1357,14 +1429,20 @@ def stream_model_turn_events(
                 callbacks.on_exception(exc)
             error_payload = normalize_error(exc)
             message = str(error_payload.get("message") or str(exc))
-            if not assistant_parts and not assistant_tool_calls and (
-                str(error_payload.get("name") or "") == "ContextOverflowError"
-                or callbacks.detect_overflow_error(message)
+            if (
+                not assistant_parts
+                and not assistant_tool_calls
+                and (
+                    str(error_payload.get("name") or "") == "ContextOverflowError"
+                    or callbacks.detect_overflow_error(message)
+                )
             ):
                 return ModelTurnResult(status="compact", error_message=message)
             retry_message = (
                 callbacks.retryable(exc)
-                if not assistant_parts and not assistant_tool_calls and attempt < config.max_attempts
+                if not assistant_parts
+                and not assistant_tool_calls
+                and attempt < config.max_attempts
                 else None
             )
             if retry_message is not None:
@@ -1455,7 +1533,11 @@ def stream_tool_execution_events(
     yield prompt_event("tool_result", tool_result_payload)
 
     if isinstance(internal_data, dict):
-        patch_data = {key: copy.deepcopy(value) for key, value in internal_data.items() if key != "display_data"}
+        patch_data = {
+            key: copy.deepcopy(value)
+            for key, value in internal_data.items()
+            if key != "display_data"
+        }
     else:
         patch_data = {}
     if patch_data:
@@ -1536,7 +1618,9 @@ def stream_tool_call_processing(
             )
             previous_assistant_message_id = str(config.assistant_message_id or "").strip() or None
             persisted_message_id = (
-                str(_runtime_item_value(decision_request, "tool", {}).get("messageID") or "").strip()
+                str(
+                    _runtime_item_value(decision_request, "tool", {}).get("messageID") or ""
+                ).strip()
                 if isinstance(_runtime_item_value(decision_request, "tool", None), dict)
                 else ""
             )
@@ -1558,14 +1642,26 @@ def stream_tool_call_processing(
                         ),
                     },
                 )
-                persisted_message_id = str(callbacks.next_assistant_message_id() or "").strip() or f"message_{uuid4().hex}"
+                persisted_message_id = (
+                    str(callbacks.next_assistant_message_id() or "").strip()
+                    or f"message_{uuid4().hex}"
+                )
                 yield prompt_event(
                     "assistant_message_id",
                     {"message_id": persisted_message_id},
                 )
-            action_id = str(_runtime_item_value(decision_request, "id", "") or "").strip() or uuid4().hex[:12]
-            request_tool_value = _runtime_item_value(decision_request, "tool", {}) if decision_request is not None else {}
-            request_tool = dict(request_tool_value or {}) if isinstance(request_tool_value, dict) else {}
+            action_id = (
+                str(_runtime_item_value(decision_request, "id", "") or "").strip()
+                or uuid4().hex[:12]
+            )
+            request_tool_value = (
+                _runtime_item_value(decision_request, "tool", {})
+                if decision_request is not None
+                else {}
+            )
+            request_tool = (
+                dict(request_tool_value or {}) if isinstance(request_tool_value, dict) else {}
+            )
             persisted_message_id = (
                 persisted_message_id
                 or str(request_tool.get("messageID") or "").strip()
@@ -1585,7 +1681,9 @@ def stream_tool_call_processing(
                         remaining_calls=remaining,
                         step_index=config.step_index,
                         step_snapshot=config.step_snapshot,
-                        step_usage=copy.deepcopy(config.step_usage) if isinstance(config.step_usage, dict) else config.step_usage,
+                        step_usage=copy.deepcopy(config.step_usage)
+                        if isinstance(config.step_usage, dict)
+                        else config.step_usage,
                         assistant_message_id=persisted_message_id,
                     )
                 )
@@ -1679,7 +1777,9 @@ class PromptLoopExecutor:
         )
 
     def _capture_step_snapshot(self) -> str | None:
-        if not callable(self.callbacks.snapshot_root) or not callable(self.callbacks.capture_snapshot):
+        if not callable(self.callbacks.snapshot_root) or not callable(
+            self.callbacks.capture_snapshot
+        ):
             return None
         workspace_root = self.callbacks.snapshot_root()
         if not workspace_root:
@@ -1783,16 +1883,17 @@ class PromptLoopExecutor:
         current_step = self.step_index
         auto_compaction_attempts = 0
         previous_tool_signatures: tuple[str, ...] | None = None
-        current_assistant_message_id = str(self.assistant_message_id or "").strip() or self.callbacks.next_assistant_message_id()
+        current_assistant_message_id = (
+            str(self.assistant_message_id or "").strip()
+            or self.callbacks.next_assistant_message_id()
+        )
         assistant_message_announced = False
 
         while True:
             if current_step > self.max_steps:
                 yield from self.callbacks.emit_event(
                     "text_delta",
-                    {
-                        "content": _shared_build_step_limit_reached_notice(self.max_steps) + "\n\n"
-                    },
+                    {"content": _shared_build_step_limit_reached_notice(self.max_steps) + "\n\n"},
                     publish_bus=True,
                 )
                 yield from self.callbacks.emit_stream(
@@ -1804,7 +1905,9 @@ class PromptLoopExecutor:
 
             current_messages = self._reload_messages_if_needed(current_messages, current_step)
 
-            if auto_compaction_attempts == 0 and callable(self.callbacks.latest_auto_compaction_target):
+            if auto_compaction_attempts == 0 and callable(
+                self.callbacks.latest_auto_compaction_target
+            ):
                 target = self.callbacks.latest_auto_compaction_target()
                 if target is not None:
                     try:
@@ -1856,10 +1959,16 @@ class PromptLoopExecutor:
             )
 
             if turn.status == "compact":
-                if not str(getattr(self.options, "session_id", "") or "").strip() or auto_compaction_attempts >= 2:
+                if (
+                    not str(getattr(self.options, "session_id", "") or "").strip()
+                    or auto_compaction_attempts >= 2
+                ):
                     yield from self.callbacks.emit_event(
                         "error",
-                        {"message": turn.error_message or "上下文超出模型限制，且自动压缩未能继续执行"},
+                        {
+                            "message": turn.error_message
+                            or "上下文超出模型限制，且自动压缩未能继续执行"
+                        },
                         publish_bus=True,
                     )
                     yield from self.callbacks.emit_done(publish_bus=True)
@@ -1933,9 +2042,7 @@ class PromptLoopExecutor:
                     current_messages.append(self.callbacks.build_tool_message(call, result))
                 yield from self.callbacks.emit_event(
                     "text_delta",
-                    {
-                        "content": _shared_build_step_limit_reached_notice(self.max_steps) + "\n\n"
-                    },
+                    {"content": _shared_build_step_limit_reached_notice(self.max_steps) + "\n\n"},
                     publish_bus=True,
                 )
                 yield from self.callbacks.emit_stream(
@@ -2126,25 +2233,33 @@ class PermissionResponseCallbacks:
     pending_tool_calls: Callable[[Any], list[Any]]
     pending_messages: Callable[[Any], list[dict[str, Any]]]
     build_rejected_tool_result: Callable[[Any, str | None], tuple[dict[str, Any], dict[str, Any]]]
-    build_question_tool_result: Callable[[Any, list[dict[str, Any]], list[list[str]], str | None, str], tuple[dict[str, Any], dict[str, Any]]]
+    build_question_tool_result: Callable[
+        [Any, list[dict[str, Any]], list[list[str]], str | None, str],
+        tuple[dict[str, Any], dict[str, Any]],
+    ]
     emit_step_finish: Callable[[int, str, dict[str, Any] | None, str | None], Iterator[PromptEvent]]
     assistant_checkpoint_meta: Callable[[str, dict[str, Any] | None], dict[str, Any]]
-    process_tool_calls_stream: Callable[[list[dict[str, Any]], list[Any], int, str | None, dict[str, Any] | None, str | None], Iterator[str]]
+    process_tool_calls_stream: Callable[
+        [list[dict[str, Any]], list[Any], int, str | None, dict[str, Any] | None, str | None],
+        Iterator[str],
+    ]
     resume_stream: Callable[[list[dict[str, Any]], int, str | None, bool], Iterator[str]]
     next_assistant_message_id: Callable[[], str] | None = None
 
 
 def _pending_question_items(pending: Any) -> list[dict[str, Any]]:
     permission_request = (
-        _runtime_item_value(pending, "permission_request", None)
-        if pending is not None
-        else None
+        _runtime_item_value(pending, "permission_request", None) if pending is not None else None
     )
     if not isinstance(permission_request, dict):
         return []
     if str(permission_request.get("permission") or "").strip() != "question":
         return []
-    metadata = permission_request.get("metadata") if isinstance(permission_request.get("metadata"), dict) else {}
+    metadata = (
+        permission_request.get("metadata")
+        if isinstance(permission_request.get("metadata"), dict)
+        else {}
+    )
     questions = metadata.get("questions") if isinstance(metadata.get("questions"), list) else []
     return [dict(item) for item in questions if isinstance(item, dict)]
 
@@ -2156,7 +2271,11 @@ def _normalize_question_answers(
     raw_answers = answers if isinstance(answers, list) else []
     normalized: list[list[str]] = []
     for index, _question in enumerate(questions):
-        value = raw_answers[index] if index < len(raw_answers) and isinstance(raw_answers[index], list) else []
+        value = (
+            raw_answers[index]
+            if index < len(raw_answers) and isinstance(raw_answers[index], list)
+            else []
+        )
         entry: list[str] = []
         for item in value:
             cleaned = runtime._clean_text(item)
@@ -2189,13 +2308,18 @@ def stream_permission_response_runtime(
     callbacks.pop_pending_action(config.action_id)
     pending_tool_calls = callbacks.pending_tool_calls(config.pending)
     step_index = int(_runtime_item_value(config.resume_state, "step_index", 0) or 0)
-    step_snapshot = runtime._clean_text(_runtime_item_value(config.resume_state, "step_snapshot", None)) or None
+    step_snapshot = (
+        runtime._clean_text(_runtime_item_value(config.resume_state, "step_snapshot", None)) or None
+    )
     step_usage = (
         dict(_runtime_item_value(config.resume_state, "step_usage", None) or {})
         if isinstance(_runtime_item_value(config.resume_state, "step_usage", None), dict)
         else None
     )
-    assistant_message_id = runtime._clean_text(_runtime_item_value(config.resume_state, "assistant_message_id", None)) or None
+    assistant_message_id = (
+        runtime._clean_text(_runtime_item_value(config.resume_state, "assistant_message_id", None))
+        or None
+    )
     question_items = _pending_question_items(config.pending)
 
     def _commit_current_assistant(finish_reason: str) -> Iterator[str]:
@@ -2261,7 +2385,9 @@ def stream_permission_response_runtime(
             yield from callbacks.emit_done()
             return
         first_call = pending_tool_calls[0]
-        tool_result_payload, tool_message = callbacks.build_rejected_tool_result(first_call, config.message)
+        tool_result_payload, tool_message = callbacks.build_rejected_tool_result(
+            first_call, config.message
+        )
         yield from callbacks.emit_event(
             "tool_result",
             tool_result_payload,
@@ -2373,7 +2499,10 @@ def synthetic_prompt_result_message(
         return payload
     if not isinstance(control, PromptStreamControl):
         return payload
-    message_id = str(payload.get("messageID") or "").strip() or str(control.assistant_message_id or "").strip()
+    message_id = (
+        str(payload.get("messageID") or "").strip()
+        or str(control.assistant_message_id or "").strip()
+    )
     parts: list[dict[str, Any]] = []
     for part in control.text_parts:
         if not isinstance(part, dict):
@@ -2415,7 +2544,9 @@ def iter_prompt_pause_events(
 ) -> Iterator[str]:
     if not isinstance(control, PromptStreamControl):
         return
-    payload = copy.deepcopy(control.action_confirm) if isinstance(control.action_confirm, dict) else {}
+    payload = (
+        copy.deepcopy(control.action_confirm) if isinstance(control.action_confirm, dict) else {}
+    )
     if not payload:
         return
     message_id = (
@@ -2425,7 +2556,12 @@ def iter_prompt_pause_events(
     )
     if include_message_id and message_id:
         yield runtime._format_sse_event("assistant_message_id", {"message_id": message_id})
-    if message_id and not str(payload.get("assistant_message_id") or payload.get("assistantMessageID") or "").strip():
+    if (
+        message_id
+        and not str(
+            payload.get("assistant_message_id") or payload.get("assistantMessageID") or ""
+        ).strip()
+    ):
         payload["assistant_message_id"] = message_id
     yield runtime._format_sse_event("action_confirm", payload)
 
@@ -2478,7 +2614,9 @@ def iter_callback_stream(callback: Any) -> Iterator[str]:
                 if parsed[0] == "action_confirm":
                     saw_action_confirm = True
             yield item
-    fallback_message_id = observed.assistant_message_id or str(callback_result.get("messageID") or "").strip() or None
+    fallback_message_id = (
+        observed.assistant_message_id or str(callback_result.get("messageID") or "").strip() or None
+    )
     if fallback_message_id and not saw_message_id:
         yield runtime._format_sse_event("assistant_message_id", {"message_id": fallback_message_id})
         saw_message_id = True
@@ -2598,7 +2736,9 @@ class _ProcessorState:
             publish=publish,
         )
 
-    def commit_current_message(self, *, finish: str | None = None, meta: dict[str, Any] | None = None) -> None:
+    def commit_current_message(
+        self, *, finish: str | None = None, meta: dict[str, Any] | None = None
+    ) -> None:
         if self.current_message_id is None:
             return
         message, parts = runtime._load_message_parts(self.session_id, self.current_message_id)
@@ -2756,7 +2896,9 @@ class SessionProcessor:
         if created:
             self.state.save_parts(parts, meta=self.state.current_message_meta)
         if part_type == "reasoning":
-            part["text"] = session_message_v2.append_reasoning_fragment(str(part.get("text") or ""), delta)
+            part["text"] = session_message_v2.append_reasoning_fragment(
+                str(part.get("text") or ""), delta
+            )
         else:
             part["text"] = str(part.get("text") or "") + delta
         time_payload = dict(part.get("time") or {})
@@ -2876,7 +3018,11 @@ class SessionProcessor:
         call_id = runtime._clean_text(data.get("id"))
         success = bool(True if data.get("success") is None else data.get("success"))
         base_data = copy.deepcopy(data.get("data") or {})
-        display_data = copy.deepcopy(data.get("display_data") or {}) if isinstance(data.get("display_data"), dict) else {}
+        display_data = (
+            copy.deepcopy(data.get("display_data") or {})
+            if isinstance(data.get("display_data"), dict)
+            else {}
+        )
         if isinstance(base_data, dict) and display_data:
             resolved_data: dict[str, Any] = {**base_data, **display_data}
         elif isinstance(base_data, dict):
@@ -2981,12 +3127,19 @@ class SessionProcessor:
             if not isinstance(patch, dict):
                 continue
             payload = copy.deepcopy(patch)
-            if isinstance(payload.get("hash"), str) and runtime._clean_text(payload.get("workspace_path")):
+            if isinstance(payload.get("hash"), str) and runtime._clean_text(
+                payload.get("workspace_path")
+            ):
                 try:
                     payload["diffs"] = session_snapshot.diff_current_full(
                         payload["workspace_path"],
                         payload["hash"],
-                        files=[str(item) for item in (payload.get("files") or []) if runtime._clean_text(item)] or None,
+                        files=[
+                            str(item)
+                            for item in (payload.get("files") or [])
+                            if runtime._clean_text(item)
+                        ]
+                        or None,
                     )
                 except Exception:
                     runtime.logger.exception("Failed to materialize session patch diffs")
@@ -3008,7 +3161,9 @@ class SessionProcessor:
         meta = copy.deepcopy(self.state.current_message_meta)
         if isinstance(data.get("meta"), dict):
             meta.update(copy.deepcopy(data["meta"]))
-        finish = runtime._clean_text(meta.get("finish")) or self.state.pending_finish or "tool-calls"
+        finish = (
+            runtime._clean_text(meta.get("finish")) or self.state.pending_finish or "tool-calls"
+        )
         meta["finish"] = finish
         self.state.commit_current_message(finish=finish, meta=meta)
 
@@ -3017,7 +3172,9 @@ class SessionProcessor:
         self.state.ensure_message()
         call_id = runtime._clean_text(data.get("call_id"))
         assistant_message_id_payload = runtime._clean_text(data.get("assistant_message_id"))
-        previous_assistant_message_id = runtime._clean_text(data.get("previous_assistant_message_id"))
+        previous_assistant_message_id = runtime._clean_text(
+            data.get("previous_assistant_message_id")
+        )
         if (
             previous_assistant_message_id
             and previous_assistant_message_id != assistant_message_id_payload
@@ -3031,7 +3188,10 @@ class SessionProcessor:
                 removed_ids: list[str] = []
                 remaining_parts: list[dict[str, Any]] = []
                 for part in previous_parts:
-                    if str(part.get("type") or "") == "tool" and str(part.get("callID") or "") == call_id:
+                    if (
+                        str(part.get("type") or "") == "tool"
+                        and str(part.get("callID") or "") == call_id
+                    ):
                         removed_ids.append(str(part.get("id") or "").strip())
                         continue
                     remaining_parts.append(part)
@@ -3063,7 +3223,9 @@ class SessionProcessor:
         if isinstance(data.get("args"), dict):
             tool_state["input"] = copy.deepcopy(data["args"])
         if "raw" not in tool_state and isinstance(tool_state.get("input"), dict):
-            tool_state["raw"] = json.dumps(tool_state["input"], ensure_ascii=False, separators=(",", ":"))
+            tool_state["raw"] = json.dumps(
+                tool_state["input"], ensure_ascii=False, separators=(",", ":")
+            )
         time_payload = dict(tool_state.get("time") or {})
         time_payload.setdefault("start", runtime._now_ms())
         time_payload["end"] = runtime._now_ms()
@@ -3091,12 +3253,16 @@ class SessionProcessor:
         part_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        normalized_type = "reasoning" if str(part_type or "").strip().lower() == "reasoning" else "text"
+        normalized_type = (
+            "reasoning" if str(part_type or "").strip().lower() == "reasoning" else "text"
+        )
         self._handle_part_start(
             f"{normalized_type}-start",
             {
                 "id": runtime._clean_text(part_id) or None,
-                "metadata": copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None,
+                "metadata": copy.deepcopy(metadata)
+                if isinstance(metadata, dict) and metadata
+                else None,
             },
         )
 
@@ -3108,18 +3274,24 @@ class SessionProcessor:
         content: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        normalized_type = "reasoning" if str(part_type or "").strip().lower() == "reasoning" else "text"
+        normalized_type = (
+            "reasoning" if str(part_type or "").strip().lower() == "reasoning" else "text"
+        )
         self._handle_part_delta(
             f"{normalized_type}_delta",
             {
                 "id": runtime._clean_text(part_id) or None,
                 "content": str(content or ""),
-                "metadata": copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None,
+                "metadata": copy.deepcopy(metadata)
+                if isinstance(metadata, dict) and metadata
+                else None,
             },
         )
 
     def end_stream_part(self, part_type: str, *, part_id: str | None = None) -> None:
-        normalized_type = "reasoning" if str(part_type or "").strip().lower() == "reasoning" else "text"
+        normalized_type = (
+            "reasoning" if str(part_type or "").strip().lower() == "reasoning" else "text"
+        )
         self._handle_part_end(
             f"{normalized_type}-end",
             {
@@ -3179,7 +3351,9 @@ class SessionProcessor:
                 "id": runtime._clean_text(call_id),
                 "name": runtime._clean_text(name),
                 "args": copy.deepcopy(args) if isinstance(args, dict) else {},
-                "metadata": copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None,
+                "metadata": copy.deepcopy(metadata)
+                if isinstance(metadata, dict) and metadata
+                else None,
                 "providerExecuted": bool(provider_executed),
             }
         )
@@ -3203,8 +3377,12 @@ class SessionProcessor:
                 "success": bool(success),
                 "summary": summary,
                 "data": copy.deepcopy(data) if isinstance(data, dict) else data,
-                "display_data": copy.deepcopy(display_data) if isinstance(display_data, dict) and display_data else None,
-                "metadata": copy.deepcopy(metadata) if isinstance(metadata, dict) and metadata else None,
+                "display_data": copy.deepcopy(display_data)
+                if isinstance(display_data, dict) and display_data
+                else None,
+                "metadata": copy.deepcopy(metadata)
+                if isinstance(metadata, dict) and metadata
+                else None,
                 "providerExecuted": bool(provider_executed),
             }
         )
@@ -3242,12 +3420,22 @@ class SessionProcessor:
         if runtime.is_session_aborted(self.session_id):
             self._apply_error("会话已中止")
             synthetic_events.append(("error", {"message": "会话已中止"}))
-        elif self.state.current_message_id and not self.state.seen_action_confirm and self.state.pending_error is None:
-            finish = self.state.pending_finish or runtime._clean_text(self.state.current_message_meta.get("finish")) or "stop"
+        elif (
+            self.state.current_message_id
+            and not self.state.seen_action_confirm
+            and self.state.pending_error is None
+        ):
+            finish = (
+                self.state.pending_finish
+                or runtime._clean_text(self.state.current_message_meta.get("finish"))
+                or "stop"
+            )
             self.state.commit_current_message(finish=finish)
         return synthetic_events
 
-    def apply_event(self, event_name: str, data: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    def apply_event(
+        self, event_name: str, data: dict[str, Any]
+    ) -> list[tuple[str, dict[str, Any]]]:
         synthetic_events: list[tuple[str, dict[str, Any]]] = []
         if event_name == "assistant_message_id":
             self.set_assistant_message_id(data.get("message_id") or data.get("messageID"))
@@ -3306,7 +3494,9 @@ class SessionProcessor:
                 success=bool(True if data.get("success") is None else data.get("success")),
                 summary=data.get("summary"),
                 data=data.get("data"),
-                display_data=data.get("display_data") if isinstance(data.get("display_data"), dict) else None,
+                display_data=data.get("display_data")
+                if isinstance(data.get("display_data"), dict)
+                else None,
                 metadata=data.get("metadata") if isinstance(data.get("metadata"), dict) else None,
                 provider_executed=bool(data.get("providerExecuted")),
             )
@@ -3335,7 +3525,10 @@ class SessionProcessor:
         if parsed is None:
             return []
         event_name, data = parsed
-        return [runtime._format_sse_event(name, payload) for name, payload in self.apply_event(event_name, data)]
+        return [
+            runtime._format_sse_event(name, payload)
+            for name, payload in self.apply_event(event_name, data)
+        ]
 
     def stream(
         self,
@@ -3405,10 +3598,13 @@ class SessionProcessor:
             )
 
     def finalize(self, *, manage_lifecycle: bool = True, handed_off: bool = False) -> None:
-        if runtime.is_session_aborted(self.session_id) and self.state.pending_error is None and self.state.current_message_id:
+        if (
+            runtime.is_session_aborted(self.session_id)
+            and self.state.pending_error is None
+            and self.state.current_message_id
+        ):
             self._apply_error("会话已中止")
         if manage_lifecycle and not handed_off:
             runtime.set_session_status(self.session_id, {"type": "idle"})
         if manage_lifecycle:
             runtime.clear_session_abort(self.session_id)
-

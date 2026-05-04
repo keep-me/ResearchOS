@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -28,9 +27,11 @@ def main() -> int:
         console_errors: list[str] = []
         page.on(
             "console",
-            lambda msg: console_errors.append(f"{msg.type}: {msg.text}")
-            if msg.type in {"error", "warning"}
-            else None,
+            lambda msg: (
+                console_errors.append(f"{msg.type}: {msg.text}")
+                if msg.type in {"error", "warning"}
+                else None
+            ),
         )
 
         page.goto(f"{base_url}/assistant", wait_until="domcontentloaded")
@@ -43,7 +44,11 @@ def main() -> int:
         textarea.press("Enter")
 
         try:
-            assistant_block = page.locator("text=你好").locator("xpath=ancestor::div[contains(@class,'py-3')]").last
+            assistant_block = (
+                page.locator("text=你好")
+                .locator("xpath=ancestor::div[contains(@class,'py-3')]")
+                .last
+            )
             assistant_block.wait_for(timeout=15_000)
         except PlaywrightTimeoutError:
             pass
@@ -54,7 +59,9 @@ def main() -> int:
             if "网络连接失败" not in content and "后端暂未就绪" not in content:
                 assistant_cards = page.locator("div").filter(has_text="You")
                 if assistant_cards.count() >= 1:
-                    report["assistant_reply_received"] = "你好" in content and ("内部推理" in content or "模型正在整理思路" in content or len(content) > 0)
+                    report["assistant_reply_received"] = "你好" in content and (
+                        "内部推理" in content or "模型正在整理思路" in content or len(content) > 0
+                    )
             reply_candidates = page.locator("div.prose-custom, div.whitespace-pre-wrap")
             if reply_candidates.count() > 0:
                 report["assistant_reply_preview"] = reply_candidates.last.inner_text()[:240]
@@ -65,7 +72,10 @@ def main() -> int:
         page.wait_for_timeout(4_000)
         content = page.content()
         report["paper_loaded"] = True
-        report["paper_has_title"] = "Multi-View Feature Fusion and Visual Prompt for Remote Sensing Image Captioning" in content
+        report["paper_has_title"] = (
+            "Multi-View Feature Fusion and Visual Prompt for Remote Sensing Image Captioning"
+            in content
+        )
         report["paper_has_action_buttons"] = all(
             label in content for label in ("粗读", "精读", "推理链", "三轮分析")
         )

@@ -3,8 +3,8 @@
 支持桌面模式通过 RESEARCHOS_ENV_FILE / RESEARCHOS_DATA_DIR 环境变量注入路径。
 """
 
-from functools import lru_cache
 import os
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     auth_password_hash: str = ""  # 推荐使用 bcrypt 哈希
     auth_secret_key: str = ""  # JWT 密钥，开启认证时必须显式配置
     allow_unauthenticated: bool = False  # 非 dev 环境必须显式允许无认证
+    allow_sensitive_settings: bool = False  # 显式允许单密码模式修改敏感设置
     expose_api_docs: bool = True  # 生产环境可关闭 /docs 和 /openapi.json
 
     database_url: str = Field(default_factory=_default_database_url)
@@ -94,9 +95,7 @@ class Settings(BaseSettings):
     dashboard_trend_cron: str = "0 16 * * *"
     daily_cron: str = "0 21 * * *"
     weekly_cron: str = "0 22 * * 0"
-    cors_allow_origins: str = (
-        "http://localhost:3002,http://127.0.0.1:3002"  # 本地前端
-    )
+    cors_allow_origins: str = "http://localhost:3002,http://127.0.0.1:3002"  # 本地前端
 
     # LLM Provider: openai / anthropic / zhipu / gemini
     llm_provider: str = "zhipu"
@@ -168,7 +167,12 @@ def _sqlite_database_path(database_url: str) -> Path | None:
         path_text = unquote(raw[len("sqlite:///") :])
         if not path_text:
             return None
-        if os.name == "nt" and path_text.startswith("/") and len(path_text) >= 3 and path_text[2] == ":":
+        if (
+            os.name == "nt"
+            and path_text.startswith("/")
+            and len(path_text) >= 3
+            and path_text[2] == ":"
+        ):
             path_text = path_text[1:]
         return Path(path_text).expanduser()
     if raw.startswith("sqlite://"):

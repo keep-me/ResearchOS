@@ -10,7 +10,11 @@ from sqlalchemy.pool import StaticPool
 
 from packages.ai.project import (
     multi_agent_runner as project_multi_agent_runner,
+)
+from packages.ai.project import (
     run_action_service as project_run_action_service,
+)
+from packages.ai.project import (
     workflow_runner as project_workflow_runner,
 )
 from packages.ai.project.amadeus_compat import (
@@ -153,9 +157,13 @@ def _seed_project_run(
         )
 
         run_workspace_path = target.remote_workdir if target.workspace_server_id else target.workdir
-        run_directory = build_run_directory(run_workspace_path, run.id, remote=bool(target.workspace_server_id))
+        run_directory = build_run_directory(
+            run_workspace_path, run.id, remote=bool(target.workspace_server_id)
+        )
         log_path = build_run_log_path(run_directory, remote=bool(target.workspace_server_id))
-        project_repo.update_run(run.id, run_directory=run_directory, log_path=log_path, metadata=metadata)
+        project_repo.update_run(
+            run.id, run_directory=run_directory, log_path=log_path, metadata=metadata
+        )
 
         return {
             "project_id": project.id,
@@ -246,17 +254,9 @@ def _install_llm_and_workspace_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
                 "- 建议继续扩展指标与误差分析\n"
             )
         elif stage_text == "project_paper_writing_plan":
-            content = (
-                "# PAPER_PLAN\n\n"
-                "## Claims-Evidence Matrix\n"
-                "Claim A -> Evidence A\n"
-            )
+            content = "# PAPER_PLAN\n\n## Claims-Evidence Matrix\nClaim A -> Evidence A\n"
         elif stage_text == "project_paper_writing_figure":
-            content = (
-                "# FIGURE_PLAN\n\n"
-                "- Fig 1: Main comparison\n"
-                "- Fig 2: Ablation\n"
-            )
+            content = "# FIGURE_PLAN\n\n- Fig 1: Main comparison\n- Fig 2: Ablation\n"
         elif stage_text == "project_paper_writing_write":
             content = (
                 "# 论文草稿\n\n"
@@ -272,11 +272,7 @@ def _install_llm_and_workspace_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
                 "- Missing toolchain: latexmk\n"
             )
         elif stage_text.startswith("project_paper_writing_improve_review_"):
-            content = (
-                "# 审稿意见\n\n"
-                "Score: 7.6\n\n"
-                "- 需要继续补强叙事和实验细节。\n"
-            )
+            content = "# 审稿意见\n\nScore: 7.6\n\n- 需要继续补强叙事和实验细节。\n"
         elif stage_text.startswith("project_paper_writing_improve_revise_"):
             content = (
                 "# 论文草稿（润色版）\n\n"
@@ -293,9 +289,7 @@ def _install_llm_and_workspace_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
             content = "# 最终交付物\n\n- 形成最终报告\n- 给出下一轮计划"
         elif stage_text == "project_rebuttal_issue_board":
             content = (
-                "# ISSUE_BOARD\n\n"
-                "- R1-C1: novelty clarification\n"
-                "- R2-C1: empirical support\n"
+                "# ISSUE_BOARD\n\n- R1-C1: novelty clarification\n- R2-C1: empirical support\n"
             )
         elif stage_text == "project_rebuttal_strategy":
             content = (
@@ -323,7 +317,9 @@ def _install_llm_and_workspace_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
             )
         elif stage_text.startswith("project_run_action_"):
             label = stage_text.removeprefix("project_run_action_")
-            content = f"# 后续动作输出\n\n- action_type: {label}\n- status: completed\n- smoke: ok\n"
+            content = (
+                f"# 后续动作输出\n\n- action_type: {label}\n- status: completed\n- smoke: ok\n"
+            )
         else:
             prompt_digest = str(prompt or "").replace("\n", " ")[:80]
             content = f"# {stage_text}\n\n- smoke: ok\n- prompt: {prompt_digest}\n"
@@ -346,15 +342,45 @@ def _install_llm_and_workspace_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
                 "evaluation_type": "mixed",
                 "summary": "ARIS smoke audit detected result evidence but still needs scope clarification.",
                 "checks": {
-                    "gt_provenance": {"status": "PASS", "evidence": ["configs/eval.yaml:1"], "details": "dataset origin declared."},
-                    "score_normalization": {"status": "WARN", "evidence": ["results/metrics.json:2"], "details": "normalization note missing."},
-                    "result_existence": {"status": "PASS", "evidence": ["results/metrics.json:1"], "details": "result file exists."},
-                    "dead_code": {"status": "PASS", "evidence": ["scripts/run_smoke.py:1"], "details": "evaluation path reachable."},
-                    "scope": {"status": "WARN", "evidence": ["notes/context.md:1"], "details": "scope statement is still broad."},
-                    "eval_type": {"status": "PASS", "evidence": ["README.md:1"], "details": "classified as mixed."},
+                    "gt_provenance": {
+                        "status": "PASS",
+                        "evidence": ["configs/eval.yaml:1"],
+                        "details": "dataset origin declared.",
+                    },
+                    "score_normalization": {
+                        "status": "WARN",
+                        "evidence": ["results/metrics.json:2"],
+                        "details": "normalization note missing.",
+                    },
+                    "result_existence": {
+                        "status": "PASS",
+                        "evidence": ["results/metrics.json:1"],
+                        "details": "result file exists.",
+                    },
+                    "dead_code": {
+                        "status": "PASS",
+                        "evidence": ["scripts/run_smoke.py:1"],
+                        "details": "evaluation path reachable.",
+                    },
+                    "scope": {
+                        "status": "WARN",
+                        "evidence": ["notes/context.md:1"],
+                        "details": "scope statement is still broad.",
+                    },
+                    "eval_type": {
+                        "status": "PASS",
+                        "evidence": ["README.md:1"],
+                        "details": "classified as mixed.",
+                    },
                 },
                 "action_items": ["clarify scope", "document normalization"],
-                "claims": [{"id": "C1", "impact": "needs_qualifier", "details": "narrow the strongest claim"}],
+                "claims": [
+                    {
+                        "id": "C1",
+                        "impact": "needs_qualifier",
+                        "details": "narrow the strongest claim",
+                    }
+                ],
             }
             return LLMResult(content=json.dumps(payload, ensure_ascii=False), parsed_json=payload)
         payload = {
@@ -399,7 +425,10 @@ def _install_llm_and_workspace_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
                 encoding="utf-8",
             )
             (reports_dir / "baseline_metrics.json").write_text(
-                json.dumps({"status": "completed", "baseline_score": 0.0}, ensure_ascii=False, indent=2) + "\n",
+                json.dumps(
+                    {"status": "completed", "baseline_score": 0.0}, ensure_ascii=False, indent=2
+                )
+                + "\n",
                 encoding="utf-8",
             )
             stdout = "autoresearch baseline completed"
@@ -413,15 +442,23 @@ def _install_llm_and_workspace_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
             "success": True,
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner._resolve_paper_compile_command",
         lambda context: "",
     )
     monkeypatch.setattr(project_workflow_runner, "inspect_workspace", _fake_inspect_workspace)
-    monkeypatch.setattr(project_workflow_runner, "run_workspace_command", _fake_run_workspace_command)
-    monkeypatch.setattr(project_multi_agent_runner, "run_workspace_command", _fake_run_workspace_command)
+    monkeypatch.setattr(
+        project_workflow_runner, "run_workspace_command", _fake_run_workspace_command
+    )
+    monkeypatch.setattr(
+        project_multi_agent_runner, "run_workspace_command", _fake_run_workspace_command
+    )
 
 
 def _stage_trace_by_id(metadata: dict) -> dict[str, dict]:
@@ -509,8 +546,13 @@ def test_aris_workflow_smoke_matrix(
         assert metadata.get("workflow_output_markdown")
         trace_map = _stage_trace_by_id(metadata)
         assert list(trace_map) == expected_stage_ids
-        assert all(str(trace_map[stage_id].get("status")) == "completed" for stage_id in expected_stage_ids)
-        assert all(str(trace_map[stage_id].get("model_role") or "").strip() in {"executor", "reviewer"} for stage_id in expected_stage_ids)
+        assert all(
+            str(trace_map[stage_id].get("status")) == "completed" for stage_id in expected_stage_ids
+        )
+        assert all(
+            str(trace_map[stage_id].get("model_role") or "").strip() in {"executor", "reviewer"}
+            for stage_id in expected_stage_ids
+        )
         for stage_id in expected_stage_ids:
             stage_trace = trace_map[stage_id]
             if stage_trace.get("model_source") == "executor_model":

@@ -232,7 +232,9 @@ class GraphRAGService:
             seed_nodes = kg_repo.search_nodes(normalized_query, limit=max(6, top_k * 3))
             node_ids = [str(node.id) for node in seed_nodes]
             edges_by_nodes = kg_repo.list_edges_for_node_ids(node_ids, limit=max(30, top_k * 10))
-            edges_by_papers = kg_repo.list_edges_for_paper_ids(seed_paper_ids, limit=max(30, top_k * 10))
+            edges_by_papers = kg_repo.list_edges_for_paper_ids(
+                seed_paper_ids, limit=max(30, top_k * 10)
+            )
 
             edge_map: dict[str, ResearchKGEdge] = {}
             for edge in [*edges_by_nodes, *edges_by_papers]:
@@ -247,9 +249,13 @@ class GraphRAGService:
 
             graph_paper_ids = set(seed_paper_ids)
             for node in nodes:
-                graph_paper_ids.update(str(pid) for pid in _json_list((node.metadata_json or {}).get("paper_ids")))
+                graph_paper_ids.update(
+                    str(pid) for pid in _json_list((node.metadata_json or {}).get("paper_ids"))
+                )
             for edge in edges:
-                graph_paper_ids.update(str(pid) for pid in _json_list((edge.metadata_json or {}).get("paper_ids")))
+                graph_paper_ids.update(
+                    str(pid) for pid in _json_list((edge.metadata_json or {}).get("paper_ids"))
+                )
             if paper_ids:
                 graph_paper_ids.update(str(pid) for pid in paper_ids if str(pid or "").strip())
 
@@ -258,9 +264,15 @@ class GraphRAGService:
             analysis_map = analysis_repo.contexts_for_papers(list(paper_map.keys()))
             citations = cit_repo.list_for_paper_ids(list(paper_map.keys()))
 
-            serialized_nodes = self._rank_nodes(nodes, normalized_query)[: max(1, min(top_k * 3, 24))]
-            serialized_edges = self._rank_edges(edges, normalized_query)[: max(1, min(top_k * 4, 32))]
-            serialized_papers = self._serialize_papers(papers, analysis_map, limit=max(1, min(top_k * 2, 16)))
+            serialized_nodes = self._rank_nodes(nodes, normalized_query)[
+                : max(1, min(top_k * 3, 24))
+            ]
+            serialized_edges = self._rank_edges(edges, normalized_query)[
+                : max(1, min(top_k * 4, 32))
+            ]
+            serialized_papers = self._serialize_papers(
+                papers, analysis_map, limit=max(1, min(top_k * 2, 16))
+            )
             serialized_citations = self._serialize_citations(citations, paper_map, limit=24)
             evidence = self._build_evidence_items(serialized_edges, serialized_papers)
 
@@ -301,20 +313,28 @@ class GraphRAGService:
                 papers = repo.list_by_ids([str(pid) for pid in paper_ids if str(pid or "").strip()])
             else:
                 papers = repo.list_latest(limit=max(1, min(limit, 200)))
-            return [self._paper_context_from_model(session, paper) for paper in papers[: max(1, limit)]]
+            return [
+                self._paper_context_from_model(session, paper) for paper in papers[: max(1, limit)]
+            ]
 
     def _paper_context_from_model(self, session, paper: Paper) -> PaperKGContext:  # noqa: ANN001
         metadata = dict(paper.metadata_json or {})
-        analysis_parts = [AnalysisRepository(session).contexts_for_papers([str(paper.id)]).get(str(paper.id), "")]
+        analysis_parts = [
+            AnalysisRepository(session).contexts_for_papers([str(paper.id)]).get(str(paper.id), "")
+        ]
         for key in ("skim_report", "deep_report"):
             payload = metadata.get(key)
             if isinstance(payload, dict):
-                analysis_parts.append(_clean_text(payload.get("markdown") or payload.get("summary") or payload))
+                analysis_parts.append(
+                    _clean_text(payload.get("markdown") or payload.get("summary") or payload)
+                )
         rounds = metadata.get("analysis_rounds")
         if isinstance(rounds, dict):
             final_notes = rounds.get("final_notes")
             if isinstance(final_notes, dict):
-                analysis_parts.append(_clean_text(final_notes.get("markdown") or final_notes.get("summary")))
+                analysis_parts.append(
+                    _clean_text(final_notes.get("markdown") or final_notes.get("summary"))
+                )
         ocr_excerpt = self._load_ocr_excerpt(str(paper.id), paper.pdf_path)
         content_blocks = [
             f"Title: {paper.title}",
@@ -354,9 +374,7 @@ class GraphRAGService:
         with session_scope() as session:
             state = ResearchKGRepository(session).get_paper_state(ctx.paper_id)
             return bool(
-                state
-                and state.status == "complete"
-                and state.content_hash == ctx.content_hash
+                state and state.status == "complete" and state.content_hash == ctx.content_hash
             )
 
     def _mark_state(
@@ -497,7 +515,9 @@ class GraphRAGService:
         candidate_names = [title]
         candidate_names.extend(
             match.group(0)
-            for match in re.finditer(r"\b[A-Z][A-Za-z0-9-]{2,}(?:\s+[A-Z][A-Za-z0-9-]{2,}){0,2}\b", ctx.content[:3000])
+            for match in re.finditer(
+                r"\b[A-Z][A-Za-z0-9-]{2,}(?:\s+[A-Z][A-Za-z0-9-]{2,}){0,2}\b", ctx.content[:3000]
+            )
         )
         nodes: list[dict[str, Any]] = []
         for name in candidate_names:
@@ -547,7 +567,9 @@ class GraphRAGService:
         paper_ids: list[str] | None,
     ) -> list[Paper]:
         if paper_ids:
-            return paper_repo.list_by_ids([str(pid) for pid in paper_ids if str(pid or "").strip()])[:top_k]
+            return paper_repo.list_by_ids(
+                [str(pid) for pid in paper_ids if str(pid or "").strip()]
+            )[:top_k]
         lexical = paper_repo.full_text_candidates(query=query, limit=max(top_k, 8))
         semantic: list[Paper] = []
         try:
@@ -567,7 +589,9 @@ class GraphRAGService:
                 break
         return merged
 
-    def _load_nodes_by_ids(self, kg_repo: ResearchKGRepository, node_ids: list[str]) -> list[ResearchKGNode]:
+    def _load_nodes_by_ids(
+        self, kg_repo: ResearchKGRepository, node_ids: list[str]
+    ) -> list[ResearchKGNode]:
         nodes: list[ResearchKGNode] = []
         seen: set[str] = set()
         for node_id in node_ids:
@@ -604,7 +628,10 @@ class GraphRAGService:
 
     def _rank_edges(self, edges: list[ResearchKGEdge], query: str) -> list[dict[str, Any]]:
         tokens = _tokenize(query)
-        node_ids = list({str(edge.source_node_id) for edge in edges} | {str(edge.target_node_id) for edge in edges})
+        node_ids = list(
+            {str(edge.source_node_id) for edge in edges}
+            | {str(edge.target_node_id) for edge in edges}
+        )
         with session_scope() as session:
             kg_repo = ResearchKGRepository(session)
             node_map = {
@@ -670,7 +697,9 @@ class GraphRAGService:
             )
         return items
 
-    def _serialize_citations(self, citations, paper_map: dict[str, Paper], *, limit: int) -> list[dict[str, Any]]:  # noqa: ANN001
+    def _serialize_citations(
+        self, citations, paper_map: dict[str, Paper], *, limit: int
+    ) -> list[dict[str, Any]]:  # noqa: ANN001
         items: list[dict[str, Any]] = []
         for citation in citations:
             source = paper_map.get(str(citation.source_paper_id))
@@ -736,7 +765,9 @@ class GraphRAGService:
         ]
         if nodes:
             for node in nodes[:12]:
-                lines.append(f"- [{node.get('type')}] {node.get('name')}: {_clip(node.get('summary'), 180)}")
+                lines.append(
+                    f"- [{node.get('type')}] {node.get('name')}: {_clip(node.get('summary'), 180)}"
+                )
         else:
             lines.append("- No KG entity hit.")
         lines.extend(["", "## Relations"])
@@ -753,13 +784,17 @@ class GraphRAGService:
         if papers:
             for paper in papers[:10]:
                 preview = paper.get("analysis_preview") or paper.get("abstract_preview")
-                lines.append(f"- {paper.get('title')} ({paper.get('year') or '?'}, {paper.get('arxiv_id') or 'no arXiv'}): {_clip(preview, 220)}")
+                lines.append(
+                    f"- {paper.get('title')} ({paper.get('year') or '?'}, {paper.get('arxiv_id') or 'no arXiv'}): {_clip(preview, 220)}"
+                )
         else:
             lines.append("- No paper context hit.")
         lines.extend(["", "## Citation Links"])
         if citations:
             for citation in citations[:12]:
-                lines.append(f"- {citation.get('source_title')} -> {citation.get('target_title')}: {_clip(citation.get('context'), 160)}")
+                lines.append(
+                    f"- {citation.get('source_title')} -> {citation.get('target_title')}: {_clip(citation.get('context'), 160)}"
+                )
         else:
             lines.append("- No in-library citation edge hit.")
         return "\n".join(lines).strip()

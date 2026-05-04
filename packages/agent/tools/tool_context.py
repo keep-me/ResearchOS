@@ -41,4 +41,3 @@ def context_session_id(context: AgentToolContext | None) -> str:
         return "default"
     value = str(context.session_id or "").strip()
     return value or "default"
-

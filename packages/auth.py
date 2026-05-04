@@ -4,10 +4,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import hmac
 import logging
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from jose import JWTError, jwt
@@ -39,7 +39,9 @@ def _looks_like_password_hash(value: str | None) -> bool:
 
 def auth_enabled() -> bool:
     settings = get_settings()
-    return bool(str(settings.auth_password or "").strip() or str(settings.auth_password_hash or "").strip())
+    return bool(
+        str(settings.auth_password or "").strip() or str(settings.auth_password_hash or "").strip()
+    )
 
 
 def configured_password_hash() -> str | None:
@@ -99,14 +101,18 @@ def require_auth_secret() -> str:
     settings = get_settings()
     secret = str(settings.auth_secret_key or "").strip()
     if not secret or secret == _DEFAULT_AUTH_SECRET:
-        raise RuntimeError("AUTH_SECRET_KEY must be explicitly configured when authentication is enabled")
+        raise RuntimeError(
+            "AUTH_SECRET_KEY must be explicitly configured when authentication is enabled"
+        )
     return secret
 
 
 def validate_auth_configuration() -> None:
     settings = get_settings()
     if not auth_enabled():
-        if settings.app_env != "dev" and not bool(getattr(settings, "allow_unauthenticated", False)):
+        if settings.app_env != "dev" and not bool(
+            getattr(settings, "allow_unauthenticated", False)
+        ):
             raise RuntimeError(
                 "Non-dev deployments must configure authentication or set ALLOW_UNAUTHENTICATED=true"
             )
@@ -153,9 +159,9 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
     to_encode = data.copy()
     to_encode.setdefault("typ", "access")
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+        expire = datetime.now(UTC) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, require_auth_secret(), algorithm=ALGORITHM)
     return encoded_jwt
@@ -165,7 +171,7 @@ def create_asset_access_token(path: str, *, expires_delta: timedelta | None = No
     normalized_path = str(path or "").strip()
     if not query_token_allowed_for_path(normalized_path):
         raise ValueError("path is not eligible for signed asset access")
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta or timedelta(seconds=QUERY_ACCESS_TOKEN_EXPIRE_SECONDS)
     )
     return jwt.encode(

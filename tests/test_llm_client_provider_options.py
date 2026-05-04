@@ -530,7 +530,10 @@ def test_raw_chat_http_error_carries_runtime_metadata(monkeypatch) -> None:  # n
         assert exc.metadata["transport"] == "chat.completions(raw-http)"
         assert exc.metadata["bucket"] == "chat-runtime"
         assert exc.metadata["provider"] == "openai"
-        assert exc.metadata["url"] == "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        assert (
+            exc.metadata["url"]
+            == "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        )
 
 
 def test_raw_responses_http_error_carries_runtime_metadata(monkeypatch) -> None:  # noqa: ANN001

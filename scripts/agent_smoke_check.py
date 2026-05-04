@@ -51,7 +51,9 @@ def tool_names(request: str) -> set[str]:
     return {item["function"]["name"] for item in get_openai_tools("build")}
 
 
-def run_tool(name: str, arguments: dict[str, Any], *, context: AgentToolContext | None = None) -> ToolResult:
+def run_tool(
+    name: str, arguments: dict[str, Any], *, context: AgentToolContext | None = None
+) -> ToolResult:
     events = list(execute_tool_stream(name, arguments, context=context))
     for event in reversed(events):
         if isinstance(event, ToolResult):
@@ -64,7 +66,10 @@ def check_tool_exposure() -> None:
     paper_tools = tool_names("帮我找 attention is all you need 这篇论文")
     mixed_tools = tool_names("给我当前系统状态、并润色这段摘要")
 
-    expect(generic_tools == paper_tools == mixed_tools, "request text does not change default tool exposure")
+    expect(
+        generic_tools == paper_tools == mixed_tools,
+        "request text does not change default tool exposure",
+    )
     expect("websearch" in generic_tools, "default tool exposure includes websearch")
     expect("search_web" not in generic_tools, "default tool exposure hides legacy search_web alias")
     expect("search_papers" not in generic_tools, "default tool exposure hides paper library tools")
@@ -86,24 +91,41 @@ def check_web_search() -> None:
 def check_arxiv_search() -> None:
     expected_title = "Attention Is All You Need"
 
-    native_result = run_tool("search_arxiv", {"query": "attention is all you need", "max_results": 5})
+    native_result = run_tool(
+        "search_arxiv", {"query": "attention is all you need", "max_results": 5}
+    )
     if not native_result.success:
         fail("native search_arxiv succeeds", native_result.summary)
         return
 
-    native_titles = [str(item.get("title") or "") for item in (native_result.data or {}).get("candidates", [])]
-    expect(expected_title in native_titles[:3], "native search_arxiv ranks exact title near top", ", ".join(native_titles[:3]))
+    native_titles = [
+        str(item.get("title") or "") for item in (native_result.data or {}).get("candidates", [])
+    ]
+    expect(
+        expected_title in native_titles[:3],
+        "native search_arxiv ranks exact title near top",
+        ", ".join(native_titles[:3]),
+    )
 
     mcp_payload = researchos_mcp.search_arxiv("attention is all you need", limit=5)
     mcp_titles = [str(item.get("title") or "") for item in mcp_payload.get("items", [])]
-    expect(expected_title in mcp_titles[:3], "MCP search_arxiv ranks exact title near top", ", ".join(mcp_titles[:3]))
+    expect(
+        expected_title in mcp_titles[:3],
+        "MCP search_arxiv ranks exact title near top",
+        ", ".join(mcp_titles[:3]),
+    )
 
 
 def check_skills() -> None:
     items = list_local_skills()
     project_skill_names = {item["name"] for item in items if item.get("source") == "project"}
-    expect("research-os-paper-workflows" in project_skill_names, "project paper workflow skill discovered")
-    expect("research-os-web-research" in project_skill_names, "project web research skill discovered")
+    expect(
+        "research-os-paper-workflows" in project_skill_names,
+        "project paper workflow skill discovered",
+    )
+    expect(
+        "research-os-web-research" in project_skill_names, "project web research skill discovered"
+    )
 
     list_result = run_tool("list_local_skills", {})
     expect(list_result.success, "list_local_skills succeeds", list_result.summary)
@@ -120,14 +142,26 @@ def check_workspace_tools() -> None:
     with tempfile.TemporaryDirectory(prefix="agent-smoke-", dir=str(tmp_root)) as temp_dir:
         workspace = Path(temp_dir)
         target = workspace / "notes.txt"
-        context = AgentToolContext(session_id="agent-smoke", mode="build", workspace_path=str(workspace))
+        context = AgentToolContext(
+            session_id="agent-smoke", mode="build", workspace_path=str(workspace)
+        )
 
-        write_result = run_tool("write", {"file_path": str(target), "content": "alpha\nbeta\n"}, context=context)
-        expect(write_result.success and target.exists(), "write tool creates file", write_result.summary)
+        write_result = run_tool(
+            "write", {"file_path": str(target), "content": "alpha\nbeta\n"}, context=context
+        )
+        expect(
+            write_result.success and target.exists(),
+            "write tool creates file",
+            write_result.summary,
+        )
 
         read_result = run_tool("read", {"file_path": str(target)}, context=context)
         read_content = str((read_result.data or {}).get("content") or "")
-        expect(read_result.success and "alpha" in read_content, "read tool returns file content", read_result.summary)
+        expect(
+            read_result.success and "alpha" in read_content,
+            "read tool returns file content",
+            read_result.summary,
+        )
 
         edit_result = run_tool(
             "edit",
@@ -138,27 +172,52 @@ def check_workspace_tools() -> None:
             },
             context=context,
         )
-        expect(edit_result.success and "gamma" in target.read_text(encoding="utf-8"), "edit tool updates file", edit_result.summary)
+        expect(
+            edit_result.success and "gamma" in target.read_text(encoding="utf-8"),
+            "edit tool updates file",
+            edit_result.summary,
+        )
 
         ls_result = run_tool("ls", {"path": str(workspace)}, context=context)
         entries = (ls_result.data or {}).get("entries") or []
-        expect(ls_result.success and len(entries) >= 1, "ls tool lists workspace entries", ls_result.summary)
+        expect(
+            ls_result.success and len(entries) >= 1,
+            "ls tool lists workspace entries",
+            ls_result.summary,
+        )
 
         bash_result = run_tool(
             "bash",
-            {"command": "python -c \"print('agent-smoke')\"", "workdir": str(workspace), "timeout_sec": 30},
+            {
+                "command": "python -c \"print('agent-smoke')\"",
+                "workdir": str(workspace),
+                "timeout_sec": 30,
+            },
             context=context,
         )
         stdout = str((bash_result.data or {}).get("stdout") or "")
-        expect(bash_result.success and "agent-smoke" in stdout, "bash tool runs foreground command", bash_result.summary)
+        expect(
+            bash_result.success and "agent-smoke" in stdout,
+            "bash tool runs foreground command",
+            bash_result.summary,
+        )
 
         background_result = run_tool(
             "bash",
-            {"command": "python -c \"print('agent-bg')\"", "workdir": str(workspace), "background": True, "timeout_sec": 30},
+            {
+                "command": "python -c \"print('agent-bg')\"",
+                "workdir": str(workspace),
+                "background": True,
+                "timeout_sec": 30,
+            },
             context=context,
         )
         task_id = str((background_result.data or {}).get("task_id") or "")
-        expect(background_result.success and bool(task_id), "bash tool submits background task", background_result.summary)
+        expect(
+            background_result.success and bool(task_id),
+            "bash tool submits background task",
+            background_result.summary,
+        )
 
         if not task_id:
             return
@@ -166,7 +225,9 @@ def check_workspace_tools() -> None:
         deadline = time.time() + 30
         final_status: ToolResult | None = None
         while time.time() < deadline:
-            final_status = run_tool("get_workspace_task_status", {"task_id": task_id}, context=context)
+            final_status = run_tool(
+                "get_workspace_task_status", {"task_id": task_id}, context=context
+            )
             data = final_status.data or {}
             if data.get("finished"):
                 break
@@ -178,15 +239,26 @@ def check_workspace_tools() -> None:
 
         task_payload = final_status.data or {}
         task_result = task_payload.get("result") or {}
-        expect(bool(task_payload.get("finished")), "background workspace task finishes", f"status={task_payload.get('status')}")
-        expect(task_result.get("success") is True, "background workspace task reports success", str(task_result))
+        expect(
+            bool(task_payload.get("finished")),
+            "background workspace task finishes",
+            f"status={task_payload.get('status')}",
+        )
+        expect(
+            task_result.get("success") is True,
+            "background workspace task reports success",
+            str(task_result),
+        )
 
 
 def check_researchos_integration() -> None:
     overview = researchos_mcp.paper_library_overview()
     recent = list(overview.get("recent_papers") or [])
     top_impact = list(overview.get("top_impact_papers") or [])
-    expect(isinstance(recent, list) and isinstance(top_impact, list), "paper_library_overview returns paper lists")
+    expect(
+        isinstance(recent, list) and isinstance(top_impact, list),
+        "paper_library_overview returns paper lists",
+    )
 
     if not recent:
         skip("paper_detail roundtrip", "paper library is empty in current environment")
@@ -199,7 +271,11 @@ def check_researchos_integration() -> None:
         return
 
     detail = researchos_mcp.paper_detail(paper_id)
-    expect(str(detail.get("id") or "") == paper_id, "paper_detail returns requested paper", str(detail.get("title") or ""))
+    expect(
+        str(detail.get("id") or "") == paper_id,
+        "paper_detail returns requested paper",
+        str(detail.get("title") or ""),
+    )
 
 
 def main() -> int:

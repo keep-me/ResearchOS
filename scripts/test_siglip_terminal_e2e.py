@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -12,8 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from playwright.sync_api import Error, TimeoutError as PlaywrightTimeoutError, sync_playwright
-
+from playwright.sync_api import Error, sync_playwright
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYTHON = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
@@ -295,9 +293,11 @@ def main() -> None:
             page_errors: list[str] = []
             page.on(
                 "console",
-                lambda msg: console_errors.append(f"{msg.type}: {msg.text}")
-                if msg.type in {"error", "warning"}
-                else None,
+                lambda msg: (
+                    console_errors.append(f"{msg.type}: {msg.text}")
+                    if msg.type in {"error", "warning"}
+                    else None
+                ),
             )
             page.on("pageerror", lambda exc: page_errors.append(str(exc)))
 
@@ -307,7 +307,9 @@ def main() -> None:
 
             terminal_button = page.get_by_role("button", name="终端").first
             terminal_button.click()
-            terminal_logs = wait_for_fetch_match(page, r"/agent/workspace/terminal/session(?:\\?|$)")
+            terminal_logs = wait_for_fetch_match(
+                page, r"/agent/workspace/terminal/session(?:\\?|$)"
+            )
             page.wait_for_timeout(2500)
             terminal_logs = page.evaluate("window.__researchFetchLogs || []")
             terminal_requests = [
@@ -316,7 +318,10 @@ def main() -> None:
                 if TERMINAL_REQUEST_PATTERN.search(str(entry.get("url") or ""))
                 and str(entry.get("method") or "").upper() == "POST"
             ]
-            _assert(len(terminal_requests) == 1, f"单次打开终端应只创建 1 个 session，实际 {len(terminal_requests)} 个")
+            _assert(
+                len(terminal_requests) == 1,
+                f"单次打开终端应只创建 1 个 session，实际 {len(terminal_requests)} 个",
+            )
             page.locator(".xterm").first.wait_for(timeout=30000)
             _assert(page.locator("text=终端未就绪").count() == 0, "终端面板仍显示“终端未就绪”")
             terminal_tab_1 = page.locator("text=终端 1").count()
@@ -325,7 +330,9 @@ def main() -> None:
             _assert(terminal_tab_2 == 0, "单次打开终端后仍出现多余的“终端 2”标签页")
 
             textarea = page.locator("textarea").first
-            textarea.fill("我引用了 SigLIP 2 这篇论文，请分析一下其架构图，并引用原图，不要重复展示图表。")
+            textarea.fill(
+                "我引用了 SigLIP 2 这篇论文，请分析一下其架构图，并引用原图，不要重复展示图表。"
+            )
             page.locator('button[aria-label="发送消息"]').first.click()
 
             session_logs = wait_for_fetch_match(page, r"/session/[^/]+/message(?:\\?|$)")
@@ -338,7 +345,10 @@ def main() -> None:
             _assert(request_entries, "未捕获到 assistant 会话请求")
             request_entry = request_entries[-1]
             request_json = json.loads(str(request_entry.get("requestBody") or "{}"))
-            _assert(request_json.get("mounted_paper_ids") == [PAPER_ID], "前端请求未携带 mounted_paper_ids")
+            _assert(
+                request_json.get("mounted_paper_ids") == [PAPER_ID],
+                "前端请求未携带 mounted_paper_ids",
+            )
 
             page.wait_for_selector(f'img[src*="{FIGURE_PATH_FRAGMENT}"]', timeout=180000)
             figure_images = page.locator(f'img[src*="{FIGURE_PATH_FRAGMENT}"]').count()

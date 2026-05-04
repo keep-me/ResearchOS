@@ -47,7 +47,9 @@ def test_reload_settings_applies_environment_changes(
         config.get_settings.cache_clear()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="foreign Windows path rejection is only relevant off Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="foreign Windows path rejection is only relevant off Windows"
+)
 def test_researchos_data_dir_rejects_foreign_windows_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RESEARCHOS_DATA_DIR", r"D:\ResearchOS\data")
     config.get_settings.cache_clear()

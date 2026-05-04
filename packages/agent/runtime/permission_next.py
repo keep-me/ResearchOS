@@ -9,16 +9,16 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from packages.agent.tools.apply_patch_runtime import patch_paths
 from packages.agent.session.session_plan import (
     check_plan_mode_tool_access,
     plan_exit_confirmation_text,
     targets_plan_file_only,
 )
 from packages.agent.session.session_question import normalize_questions_payload
+from packages.agent.tools.apply_patch_runtime import patch_paths
 from packages.agent.tools.tool_registry import manages_tool as registry_manages_tool
-from packages.agent.tools.tool_registry import tool_spec as registry_tool_spec
 from packages.agent.tools.tool_registry import tool_permission as registry_tool_permission
+from packages.agent.tools.tool_registry import tool_spec as registry_tool_spec
 from packages.agent.workspace.workspace_executor import (
     get_assistant_exec_policy,
     local_shell_command_to_string,
@@ -58,6 +58,7 @@ class PermissionDecision:
     request: PendingPermissionRequest | None = None
     reason: str | None = None
 
+
 def _request_to_payload(request: PendingPermissionRequest) -> dict[str, Any]:
     return asdict(request)
 
@@ -83,7 +84,9 @@ def _request_from_payload(payload: dict[str, Any] | None) -> PendingPermissionRe
     )
 
 
-def _persist_pending_request(request: PendingPermissionRequest, continuation_json: dict[str, Any] | None = None) -> None:
+def _persist_pending_request(
+    request: PendingPermissionRequest, continuation_json: dict[str, Any] | None = None
+) -> None:
     with session_scope() as session:
         AgentPendingActionRepository(session).upsert(
             action_id=request.id,
@@ -124,7 +127,9 @@ def persist_pending_action_state(
             session_id=session_id,
             project_id=project_id,
             action_type=action_type,
-            permission_json=copy.deepcopy(permission_request) if isinstance(permission_request, dict) else None,
+            permission_json=copy.deepcopy(permission_request)
+            if isinstance(permission_request, dict)
+            else None,
             continuation_json=continuation_json,
         )
     return load_pending_action_state(action_id) or {
@@ -132,7 +137,9 @@ def persist_pending_action_state(
         "session_id": session_id,
         "project_id": project_id,
         "action_type": action_type,
-        "permission_request": copy.deepcopy(permission_request) if isinstance(permission_request, dict) else None,
+        "permission_request": copy.deepcopy(permission_request)
+        if isinstance(permission_request, dict)
+        else None,
         "options": copy.deepcopy(options_payload) if isinstance(options_payload, dict) else None,
         "continuation": copy.deepcopy(continuation) if isinstance(continuation, dict) else None,
     }
@@ -143,8 +150,12 @@ def load_pending_action_state(action_id: str) -> dict[str, Any] | None:
         row = AgentPendingActionRepository(session).get(action_id)
         if row is None:
             return None
-        continuation_json = dict(row.continuation_json or {}) if isinstance(row.continuation_json, dict) else {}
-        permission_json = dict(row.permission_json or {}) if isinstance(row.permission_json, dict) else None
+        continuation_json = (
+            dict(row.continuation_json or {}) if isinstance(row.continuation_json, dict) else {}
+        )
+        permission_json = (
+            dict(row.permission_json or {}) if isinstance(row.permission_json, dict) else None
+        )
         return {
             "id": str(row.id),
             "session_id": str(row.session_id),
@@ -223,7 +234,9 @@ def evaluate(permission: str, pattern: str, *rulesets: PermissionRuleset) -> Per
     normalized_permission = str(permission or "").strip() or "*"
     normalized_pattern = expand(str(pattern or "*").strip() or "*")
     for rule in reversed(merged):
-        if fnmatch.fnmatchcase(normalized_permission, str(rule.get("permission") or "*")) and fnmatch.fnmatchcase(
+        if fnmatch.fnmatchcase(
+            normalized_permission, str(rule.get("permission") or "*")
+        ) and fnmatch.fnmatchcase(
             normalized_pattern,
             expand(str(rule.get("pattern") or "*")),
         ):
@@ -267,7 +280,9 @@ def _normalize_path(value: str | None, *, base: str | None = None) -> str | None
         return str(path)
 
 
-def _path_patterns_for_call(call_name: str, arguments: dict[str, Any], session: dict[str, Any]) -> list[str]:
+def _path_patterns_for_call(
+    call_name: str, arguments: dict[str, Any], session: dict[str, Any]
+) -> list[str]:
     base = str(session.get("workspace_path") or session.get("directory") or "").strip() or None
     patterns: list[str] = []
     if call_name in {"inspect_workspace"}:
@@ -454,7 +469,9 @@ def append_project_rules(project_id: str, rules: PermissionRuleset) -> Permissio
         return list(row.data_json or [])
 
 
-def effective_ruleset(session: dict[str, Any], policy: dict[str, Any] | None = None) -> PermissionRuleset:
+def effective_ruleset(
+    session: dict[str, Any], policy: dict[str, Any] | None = None
+) -> PermissionRuleset:
     base = _base_policy_ruleset(policy)
     session_rules = list(session.get("permission") or [])
     project_rules = get_project_rules(str(session.get("projectID") or "global"))
@@ -489,14 +506,22 @@ def list_pending(session_id: str | None = None) -> list[dict[str, Any]]:
             else repo.list_all(action_type="permission")
         )
         payloads = [dict(row.permission_json or {}) for row in rows]
-    items = [item for item in (_request_from_payload(payload) for payload in payloads) if item is not None]
+    items = [
+        item
+        for item in (_request_from_payload(payload) for payload in payloads)
+        if item is not None
+    ]
     return [asdict(item) for item in items]
 
 
 def get_pending(request_id: str) -> PendingPermissionRequest | None:
     with session_scope() as session:
         row = AgentPendingActionRepository(session).get(request_id)
-        payload = dict(row.permission_json or {}) if row is not None and isinstance(row.permission_json, dict) else None
+        payload = (
+            dict(row.permission_json or {})
+            if row is not None and isinstance(row.permission_json, dict)
+            else None
+        )
     return _request_from_payload(payload)
 
 
@@ -530,7 +555,9 @@ def create_request(
     )
 
 
-def reply(request_id: str, response: PermissionReply, message: str | None = None) -> PendingPermissionRequest | None:
+def reply(
+    request_id: str, response: PermissionReply, message: str | None = None
+) -> PendingPermissionRequest | None:
     existing = get_pending(request_id)
     if existing is None:
         return None
@@ -561,7 +588,10 @@ def reply(request_id: str, response: PermissionReply, message: str | None = None
                 if pending is None:
                     removable_ids.append(row.id)
                     continue
-                if all(evaluate(pending.permission, pattern, combined).get("action") == "allow" for pattern in pending.patterns):
+                if all(
+                    evaluate(pending.permission, pattern, combined).get("action") == "allow"
+                    for pattern in pending.patterns
+                ):
                     removable_ids.append(row.id)
             repo.delete_by_ids(removable_ids)
         return existing
@@ -784,4 +814,3 @@ def authorize_tool_call(
         patterns=patterns,
         always=always,
     )
-

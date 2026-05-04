@@ -98,4 +98,3 @@ def test_acp_server(name: str, payload: AcpTestPayload) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-

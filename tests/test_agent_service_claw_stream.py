@@ -180,11 +180,15 @@ def test_stream_claw_daemon_chat_uses_done_tool_results_for_fallback_text(monkey
 
     assert (
         "text_delta",
-        {"content": "本轮已完成以下工具调用：\n1. mcp__ResearchOS__get_paper_analysis: 已读取论文图表"},
+        {
+            "content": "本轮已完成以下工具调用：\n1. mcp__ResearchOS__get_paper_analysis: 已读取论文图表"
+        },
     ) in events
 
 
-def test_stream_claw_daemon_chat_appends_fallback_when_streamed_text_is_only_tool_preamble(monkeypatch):
+def test_stream_claw_daemon_chat_appends_fallback_when_streamed_text_is_only_tool_preamble(
+    monkeypatch,
+):
     monkeypatch.setattr(
         agent_service,
         "get_cli_agent_service",

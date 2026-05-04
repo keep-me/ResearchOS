@@ -84,9 +84,7 @@ def _error_event_with_attempts(
         include_current=True,
     )
     normalized_metadata = {
-        str(key): value
-        for key, value in payload.items()
-        if key not in {"message"}
+        str(key): value for key, value in payload.items() if key not in {"message"}
     }
     return event_cls(
         type="error",
@@ -126,11 +124,7 @@ def _yield_transport_error(
     if not isinstance(payload, dict):
         yield event_cls(type="error", content=str(error))
         return
-    metadata = {
-        str(key): value
-        for key, value in payload.items()
-        if key not in {"message"}
-    }
+    metadata = {str(key): value for key, value in payload.items() if key not in {"message"}}
     yield event_cls(
         type="error",
         content=str(payload.get("message") or str(error)),
@@ -192,11 +186,15 @@ def _yield_raw_openai_chat_stream(
     output_tokens = 0
     reasoning_tokens = 0
 
-    with httpx.Client(timeout=timeout, follow_redirects=True, headers=request_headers) as http_client:
+    with httpx.Client(
+        timeout=timeout, follow_redirects=True, headers=request_headers
+    ) as http_client:
         with http_client.stream("POST", url, json=payload) as response:
             if response.status_code >= 400:
                 body = response.read().decode("utf-8", errors="replace")
-                detail = client._extract_raw_error_message(body, f"{response.status_code} {response.reason_phrase}")
+                detail = client._extract_raw_error_message(
+                    body, f"{response.status_code} {response.reason_phrase}"
+                )
                 raise RuntimeError(detail)
 
             for line in response.iter_lines():
@@ -216,9 +214,18 @@ def _yield_raw_openai_chat_stream(
                     continue
 
                 usage = chunk.get("usage") or {}
-                input_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or input_tokens or 0)
-                output_tokens = int(usage.get("completion_tokens") or usage.get("output_tokens") or output_tokens or 0)
-                reasoning_tokens = int(client._extract_reasoning_tokens(usage) or reasoning_tokens or 0)
+                input_tokens = int(
+                    usage.get("prompt_tokens") or usage.get("input_tokens") or input_tokens or 0
+                )
+                output_tokens = int(
+                    usage.get("completion_tokens")
+                    or usage.get("output_tokens")
+                    or output_tokens
+                    or 0
+                )
+                reasoning_tokens = int(
+                    client._extract_reasoning_tokens(usage) or reasoning_tokens or 0
+                )
 
                 choices = chunk.get("choices") or []
                 if not choices:
@@ -293,7 +300,9 @@ def stream_openai_responses(
             target,
             session_cache_key=session_cache_key,
         )
-        if client._has_provider_defined_tool(tools, "openai.web_search", "openai.web_search_preview"):
+        if client._has_provider_defined_tool(
+            tools, "openai.web_search", "openai.web_search_preview"
+        ):
             client._append_responses_include(kwargs, "web_search_call.action.sources")
         if client._has_provider_defined_tool(tools, "openai.code_interpreter"):
             client._append_responses_include(kwargs, "code_interpreter_call.outputs")
@@ -316,9 +325,7 @@ def stream_openai_responses(
         response_payload = client._to_dict(response)
         usage_metadata = client._build_openai_response_metadata(
             response_id=str(response_payload.get("id") or "").strip() or None,
-            service_tier=(
-                str(response_payload.get("service_tier") or "").strip() or None
-            ),
+            service_tier=(str(response_payload.get("service_tier") or "").strip() or None),
         )
         emitted_content = False
         for part in response_parts:
@@ -571,7 +578,9 @@ def stream_openai_compatible(
             return
         should_try_raw_fallback = client._should_try_raw_openai_http_fallback(target, exc)
         if should_try_raw_fallback:
-            logger.info("chat_stream OpenAI-compatible blocked; switching to raw SSE fallback: %s", exc)
+            logger.info(
+                "chat_stream OpenAI-compatible blocked; switching to raw SSE fallback: %s", exc
+            )
             attempts = [
                 llm_provider_error.error_attempt(
                     exc,

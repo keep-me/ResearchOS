@@ -2,6 +2,7 @@
 LLM 提供者抽象层 - OpenAI / Anthropic / ZhipuAI / Pseudo
 支持从数据库动态加载激活的 LLM 配置
 """
+
 from __future__ import annotations
 
 import json
@@ -33,6 +34,8 @@ from packages.integrations.llm_provider_schema import (
     ParsedModelTarget,
     ResolvedEmbeddingConfig,
     ResolvedModelTarget,
+)
+from packages.integrations.llm_provider_schema import (
     normalize_provider_name as _normalize_provider_name,
 )
 
@@ -142,12 +145,8 @@ def build_llm_config_from_record(active) -> LLMConfig:
             _clean_optional_text(getattr(active, "embedding_provider", ""))
         )
         or None,
-        embedding_api_key=_clean_optional_text(
-            getattr(active, "embedding_api_key", "")
-        ),
-        embedding_api_base_url=_clean_optional_text(
-            getattr(active, "embedding_api_base_url", "")
-        ),
+        embedding_api_key=_clean_optional_text(getattr(active, "embedding_api_key", "")),
+        embedding_api_base_url=_clean_optional_text(getattr(active, "embedding_api_base_url", "")),
         model_embedding=active.model_embedding,
         model_fallback=active.model_fallback,
     )
@@ -158,11 +157,7 @@ def _load_active_config() -> LLMConfig:
     global _config_cache, _config_cache_ts  # noqa: PLW0603
     now = time.monotonic()
     with _cache_lock:
-        if (
-            _CONFIG_TTL > 0
-            and _config_cache is not None
-            and (now - _config_cache_ts) < _CONFIG_TTL
-        ):
+        if _CONFIG_TTL > 0 and _config_cache is not None and (now - _config_cache_ts) < _CONFIG_TTL:
             return _config_cache
 
     cfg: LLMConfig | None = None
@@ -194,6 +189,7 @@ def invalidate_llm_config_cache() -> None:
     with _cache_lock:
         _config_cache = None
         _config_cache_ts = 0.0
+
 
 def _get_openai_client(api_key: str, base_url: str | None, timeout: float | None = None):
     """兼容旧调用点，实际委托 provider registry。"""
@@ -569,21 +565,24 @@ class LLMClient:
                 parsed = self._try_parse_json(result.reasoning_content)
                 if parsed:
                     logger.info(
-                        "complete_json: JSON 从 reasoning_content 提取成功 "
-                        "(stage=%s, attempt=%d)", stage, attempt
+                        "complete_json: JSON 从 reasoning_content 提取成功 (stage=%s, attempt=%d)",
+                        stage,
+                        attempt,
                     )
             if parsed is not None:
                 break
             if attempt < max_retries:
                 logger.warning(
                     "complete_json: JSON 解析失败，重试 %d/%d (stage=%s)",
-                    attempt + 1, max_retries, stage,
+                    attempt + 1,
+                    max_retries,
+                    stage,
                 )
             else:
                 logger.warning(
-                    "complete_json: JSON 解析最终失败 (stage=%s), "
-                    "content[:300]=%s",
-                    stage, (result.content or "")[:300],
+                    "complete_json: JSON 解析最终失败 (stage=%s), content[:300]=%s",
+                    stage,
+                    (result.content or "")[:300],
                 )
         return LLMResult(
             content=result.content,
@@ -655,9 +654,7 @@ class LLMClient:
             target=target,
         )
 
-    def embed_text_with_info(
-        self, text: str, dimensions: int = 1536
-    ) -> EmbeddingResult:
+    def embed_text_with_info(self, text: str, dimensions: int = 1536) -> EmbeddingResult:
         return llm_provider_runtime.embed_text_with_info(
             self,
             EmbeddingResult,
@@ -665,9 +662,7 @@ class LLMClient:
             dimensions=dimensions,
         )
 
-    def embed_text(
-        self, text: str, dimensions: int = 1536
-    ) -> list[float]:
+    def embed_text(self, text: str, dimensions: int = 1536) -> list[float]:
         return self.embed_text_with_info(text, dimensions).vector
 
     def chat_stream(
@@ -794,7 +789,9 @@ class LLMClient:
         )
 
     @classmethod
-    def _extract_responses_usage(cls, response: object) -> tuple[int | None, int | None, int | None]:
+    def _extract_responses_usage(
+        cls, response: object
+    ) -> tuple[int | None, int | None, int | None]:
         payload = cls._to_dict(response)
         usage = payload.get("usage")
         if not isinstance(usage, dict):
@@ -810,7 +807,9 @@ class LLMClient:
     @classmethod
     def _extract_reasoning_tokens(cls, usage: object) -> int | None:
         payload = cls._to_dict(usage)
-        direct = cls._to_int(payload.get("reasoning_tokens")) or cls._to_int(payload.get("reasoningTokens"))
+        direct = cls._to_int(payload.get("reasoning_tokens")) or cls._to_int(
+            payload.get("reasoningTokens")
+        )
         if direct is not None:
             return direct
 
@@ -822,7 +821,9 @@ class LLMClient:
         ):
             details = payload.get(key)
             if isinstance(details, dict):
-                value = cls._to_int(details.get("reasoning_tokens")) or cls._to_int(details.get("reasoningTokens"))
+                value = cls._to_int(details.get("reasoning_tokens")) or cls._to_int(
+                    details.get("reasoningTokens")
+                )
                 if value is not None:
                     return value
 
@@ -849,7 +850,9 @@ class LLMClient:
             if value is not None:
                 return value
             details_dict = cls._to_dict(details)
-            value = cls._to_int(details_dict.get("reasoning_tokens")) or cls._to_int(details_dict.get("reasoningTokens"))
+            value = cls._to_int(details_dict.get("reasoning_tokens")) or cls._to_int(
+                details_dict.get("reasoningTokens")
+            )
             if value is not None:
                 return value
 
@@ -905,7 +908,9 @@ class LLMClient:
         tools: list[dict] | None,
         *tool_ids: str,
     ) -> bool:
-        expected = {str(tool_id or "").strip() for tool_id in tool_ids if str(tool_id or "").strip()}
+        expected = {
+            str(tool_id or "").strip() for tool_id in tool_ids if str(tool_id or "").strip()
+        }
         if not expected or not tools:
             return False
         for tool in tools:
@@ -997,7 +1002,10 @@ class LLMClient:
                 return
 
             text = cls._coerce_openai_message_text(
-                value.get("text") or value.get("content") or value.get("summary") or value.get("value")
+                value.get("text")
+                or value.get("content")
+                or value.get("summary")
+                or value.get("value")
             )
             if text.strip():
                 parts.append(text.strip())
@@ -1027,9 +1035,7 @@ class LLMClient:
         return "\n".join(item for item in parts if item).strip()
 
     @classmethod
-    def _extract_responses_tool_calls(
-        cls, response: object
-    ) -> list[dict[str, Any]]:
+    def _extract_responses_tool_calls(cls, response: object) -> list[dict[str, Any]]:
         return llm_provider_responses.extract_responses_tool_calls(cls, response)
 
     @staticmethod
@@ -1554,9 +1560,7 @@ class LLMClient:
         return llm_provider_embedding.embedding_error_priority(exc)
 
     @staticmethod
-    def _pseudo_embedding(
-        text: str, dimensions: int = 1536
-    ) -> list[float]:
+    def _pseudo_embedding(text: str, dimensions: int = 1536) -> list[float]:
         return llm_provider_embedding.pseudo_embedding(text, dimensions)
 
     # ---------- 工具 ----------
@@ -1761,8 +1765,8 @@ class LLMClient:
             trimmed = text
             if trimmed.endswith("\\"):
                 trimmed = trimmed[:-1]
-            elif re.search(r'\\u[0-9a-fA-F]{0,3}$', trimmed):
-                trimmed = re.sub(r'\\u[0-9a-fA-F]{0,3}$', '', trimmed)
+            elif re.search(r"\\u[0-9a-fA-F]{0,3}$", trimmed):
+                trimmed = re.sub(r"\\u[0-9a-fA-F]{0,3}$", "", trimmed)
             attempts = [
                 (trimmed, f'"{closers}'),
                 (trimmed, f'" {closers}'),
@@ -1773,7 +1777,7 @@ class LLMClient:
                 (text, closers),
                 (clean, closers),
                 (text, f'""{closers}'),
-                (text, f'null{closers}'),
+                (text, f"null{closers}"),
             ]
 
         for base, sfx in attempts:
@@ -1785,11 +1789,11 @@ class LLMClient:
         # 策略2：回退到最后一个完整的值边界再闭合
         # 找结构性断点: }, ], "后的逗号, 完整数值等
         candidates: list[int] = []
-        for m in re.finditer(r'[}\]]\s*,', text):
+        for m in re.finditer(r"[}\]]\s*,", text):
             candidates.append(m.start() + 1)
         for m in re.finditer(r'"\s*,', text):
             candidates.append(m.start() + 1)
-        for m in re.finditer(r'[}\]]\s*$', text):
+        for m in re.finditer(r"[}\]]\s*$", text):
             candidates.append(m.start() + 1)
 
         for pos in sorted(set(candidates), reverse=True):

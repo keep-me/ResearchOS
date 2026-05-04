@@ -66,11 +66,15 @@ def _analysis_round_labels(metadata: dict[str, Any]) -> list[str]:
     return labels
 
 
-def paper_asset_status(paper: Paper, analysis_report: AnalysisReport | None = None) -> dict[str, Any]:
+def paper_asset_status(
+    paper: Paper, analysis_report: AnalysisReport | None = None
+) -> dict[str, Any]:
     metadata = dict(getattr(paper, "metadata_json", None) or {})
     analysis_rounds = _analysis_round_labels(metadata)
     return {
-        "pdf": bool(clean_text(getattr(paper, "pdf_path", None)) or clean_text(metadata.get("pdf_url"))),
+        "pdf": bool(
+            clean_text(getattr(paper, "pdf_path", None)) or clean_text(metadata.get("pdf_url"))
+        ),
         "embedding": bool(getattr(paper, "embedding", None)),
         "skim": bool(analysis_report and clean_text(analysis_report.summary_md)),
         "deep": bool(analysis_report and clean_text(analysis_report.deep_dive_md)),
@@ -108,10 +112,16 @@ def paper_ref_from_model(
         "arxiv_id": clean_text(getattr(paper, "arxiv_id", ""), max_chars=80),
         "authors": _metadata_list(metadata.get("authors")),
         "year": _year_from_value(publication_date),
-        "publication_date": publication_date.isoformat() if hasattr(publication_date, "isoformat") else None,
+        "publication_date": publication_date.isoformat()
+        if hasattr(publication_date, "isoformat")
+        else None,
         "citation_count": metadata.get("citation_count") or metadata.get("citationCount") or 0,
-        "venue": clean_text(metadata.get("venue") or metadata.get("citation_venue"), max_chars=160) or None,
-        "read_status": str(getattr(getattr(paper, "read_status", None), "value", getattr(paper, "read_status", "")) or ""),
+        "venue": clean_text(metadata.get("venue") or metadata.get("citation_venue"), max_chars=160)
+        or None,
+        "read_status": str(
+            getattr(getattr(paper, "read_status", None), "value", getattr(paper, "read_status", ""))
+            or ""
+        ),
         "abstract_available": bool(clean_text(getattr(paper, "abstract", ""))),
         "pdf_url": clean_text(metadata.get("pdf_url"), max_chars=1000) or None,
         "source_url": clean_text(metadata.get("source_url"), max_chars=1000) or None,
@@ -183,7 +193,9 @@ def external_candidate_ref(
     }
 
 
-def workspace_pdf_ref(*, ref_id: str, path: str, title: str, match_reason: str = "") -> dict[str, Any]:
+def workspace_pdf_ref(
+    *, ref_id: str, path: str, title: str, match_reason: str = ""
+) -> dict[str, Any]:
     return {
         "ref_id": clean_text(ref_id),
         "source": "workspace_pdf",
@@ -209,14 +221,24 @@ def workspace_pdf_ref(*, ref_id: str, path: str, title: str, match_reason: str =
 
 
 def _candidate_key(item: dict[str, Any]) -> str:
-    for key in ("paper_id", "external_id", "arxiv_id", "openalex_id", "source_url", "path", "title"):
+    for key in (
+        "paper_id",
+        "external_id",
+        "arxiv_id",
+        "openalex_id",
+        "source_url",
+        "path",
+        "title",
+    ):
         value = clean_text(item.get(key)).lower()
         if value:
             return f"{key}:{value}"
     return f"ref:{clean_text(item.get('ref_id')).lower()}"
 
 
-def merge_refs(existing: list[dict[str, Any]] | None, incoming: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+def merge_refs(
+    existing: list[dict[str, Any]] | None, incoming: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     key_to_index: dict[str, int] = {}
     for raw in [*(existing or []), *(incoming or [])]:
@@ -255,7 +277,9 @@ def format_ref_index_for_prompt(
         ref_id = clean_text(item.get("ref_id")) or "-"
         title = clean_text(item.get("title"), max_chars=180) or "Untitled"
         source = clean_text(item.get("source")) or "unknown"
-        paper_id = clean_text(item.get("paper_id")) or clean_text(item.get("external_id")) or "unimported"
+        paper_id = (
+            clean_text(item.get("paper_id")) or clean_text(item.get("external_id")) or "unimported"
+        )
         arxiv_id = clean_text(item.get("arxiv_id"))
         year = item.get("year") or item.get("publication_year") or ""
         assets = item.get("asset_status") if isinstance(item.get("asset_status"), dict) else {}
@@ -263,7 +287,9 @@ def format_ref_index_for_prompt(
         for key in ("pdf", "embedding", "skim", "deep"):
             if assets.get(key):
                 asset_labels.append(key)
-        rounds = assets.get("analysis_rounds") if isinstance(assets.get("analysis_rounds"), list) else []
+        rounds = (
+            assets.get("analysis_rounds") if isinstance(assets.get("analysis_rounds"), list) else []
+        )
         if rounds:
             asset_labels.append("analysis_rounds:" + ",".join(str(x) for x in rounds))
         meta = [
@@ -290,7 +316,9 @@ def build_on_demand_paper_analysis_context(
     paper = session.get(Paper, paper_id)
     if paper is None:
         return ""
-    report = session.execute(select(AnalysisReport).where(AnalysisReport.paper_id == str(paper_id))).scalar_one_or_none()
+    report = session.execute(
+        select(AnalysisReport).where(AnalysisReport.paper_id == str(paper_id))
+    ).scalar_one_or_none()
     metadata = dict(getattr(paper, "metadata_json", None) or {})
     chunks = [
         f"标题: {clean_text(getattr(paper, 'title', ''))}",
@@ -305,8 +333,12 @@ def build_on_demand_paper_analysis_context(
     if isinstance(rounds, dict):
         for key in ("round_1", "round_2", "round_3", "final_notes"):
             payload = rounds.get(key)
-            markdown = str(payload.get("markdown") or "").strip() if isinstance(payload, dict) else ""
+            markdown = (
+                str(payload.get("markdown") or "").strip() if isinstance(payload, dict) else ""
+            )
             if markdown:
-                title = clean_text(payload.get("title") if isinstance(payload, dict) else key) or key
+                title = (
+                    clean_text(payload.get("title") if isinstance(payload, dict) else key) or key
+                )
                 chunks.append(f"[{title}]\n{markdown}")
     return "\n\n".join(chunks).strip()[:max_chars]

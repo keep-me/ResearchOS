@@ -10,20 +10,22 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.routers import projects as projects_router
 from packages.ai.project.amadeus_compat import build_remote_session_name
-from packages.ai.project.workflow_catalog import get_project_workflow_preset, is_active_project_workflow
+from packages.ai.project.workflow_catalog import (
+    get_project_workflow_preset,
+    is_active_project_workflow,
+)
 from packages.domain.enums import ProjectRunActionType, ProjectRunStatus, ProjectWorkflowType
 from packages.storage import db
 from packages.storage.db import Base
 
-
 ACTIVE_WORKFLOWS = [
-    workflow_type for workflow_type in ProjectWorkflowType if is_active_project_workflow(workflow_type)
+    workflow_type
+    for workflow_type in ProjectWorkflowType
+    if is_active_project_workflow(workflow_type)
 ]
 
 PLANNED_WORKFLOWS = [
-    workflow_type
-    for workflow_type in ProjectWorkflowType
-    if workflow_type not in ACTIVE_WORKFLOWS
+    workflow_type for workflow_type in ProjectWorkflowType if workflow_type not in ACTIVE_WORKFLOWS
 ]
 
 
@@ -70,7 +72,9 @@ def test_aris_router_active_workflow_create_and_retry(
 
     submitted_run_ids: list[str] = []
 
-    monkeypatch.setattr(projects_router, "supports_project_run", lambda value: value == workflow_type)
+    monkeypatch.setattr(
+        projects_router, "supports_project_run", lambda value: value == workflow_type
+    )
 
     def _fake_submit_project_run(run_id: str):
         submitted_run_ids.append(run_id)
@@ -84,7 +88,8 @@ def test_aris_router_active_workflow_create_and_retry(
             workflow_type=workflow_type.value,
             prompt=f"Execute {workflow_type.value} via router matrix.",
             execution_command="python ./scripts/run_smoke.py"
-            if workflow_type in {ProjectWorkflowType.run_experiment, ProjectWorkflowType.full_pipeline}
+            if workflow_type
+            in {ProjectWorkflowType.run_experiment, ProjectWorkflowType.full_pipeline}
             else None,
             max_iterations=4,
             executor_model="mock-executor",
@@ -170,13 +175,19 @@ def test_aris_router_action_matrix(
                 repo.update_run_action(
                     action_id,
                     task_id=f"task-action-{action_type.value}",
-                    log_path=(run.log_path + f".{action_type.value}.log") if run and run.log_path else f"/tmp/{action_id}.log",
-                    result_path=(run.run_directory + f"/actions/{action_id}.md") if run and run.run_directory else f"/tmp/{action_id}.md",
+                    log_path=(run.log_path + f".{action_type.value}.log")
+                    if run and run.log_path
+                    else f"/tmp/{action_id}.log",
+                    result_path=(run.run_directory + f"/actions/{action_id}.md")
+                    if run and run.run_directory
+                    else f"/tmp/{action_id}.md",
                     status=ProjectRunStatus.running,
                 )
         return f"task-action-{action_type.value}"
 
-    monkeypatch.setattr(projects_router, "submit_project_run_action", _fake_submit_project_run_action)
+    monkeypatch.setattr(
+        projects_router, "submit_project_run_action", _fake_submit_project_run_action
+    )
 
     created_action = projects_router.create_project_run_action(
         created_run["id"],

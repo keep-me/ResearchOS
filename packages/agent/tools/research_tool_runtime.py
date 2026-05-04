@@ -9,23 +9,25 @@ from datetime import date, datetime
 from queue import Queue
 from uuid import UUID
 
-from packages.ai.research.brief_service import DailyBriefService
+from sqlalchemy import func, select
+
+from packages.agent.tools.tool_runtime import AgentToolContext, ToolProgress, ToolResult
 from packages.ai.paper.external_paper_preview_service import ExternalPaperPreviewService
 from packages.ai.paper.figure_service import FigureService
+from packages.ai.paper.paper_analysis_service import PaperAnalysisService
+from packages.ai.paper.pipelines import PaperPipelines
+from packages.ai.research.brief_service import DailyBriefService
 from packages.ai.research.graph_rag_service import GraphRAGService
 from packages.ai.research.graph_service import GraphService
 from packages.ai.research.keyword_service import KeywordService
-from packages.ai.paper.paper_analysis_service import PaperAnalysisService
-from packages.ai.paper.pipelines import PaperPipelines
 from packages.ai.research.rag_service import RAGService
 from packages.ai.research.reasoning_service import ReasoningService
-from packages.ai.research.research_wiki_service import ResearchWikiService
 from packages.ai.research.research_venue_catalog import (
     classify_venue_type,
     matches_venue_filter,
     venue_tier_for_name,
 )
-from packages.agent.tools.tool_runtime import AgentToolContext, ToolProgress, ToolResult
+from packages.ai.research.research_wiki_service import ResearchWikiService
 from packages.ai.research.writing_service import WritingService
 from packages.config import get_settings
 from packages.integrations.arxiv_client import ArxivClient
@@ -33,7 +35,6 @@ from packages.integrations.openalex_client import OpenAlexClient
 from packages.storage.db import check_db_connection, session_scope
 from packages.storage.models import Paper, PipelineRun, TopicSubscription
 from packages.storage.repositories import PaperRepository, PipelineRunRepository, TopicRepository
-from sqlalchemy import func, select
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +150,12 @@ def _paper_figure_refs(figures: list[dict], *, limit: int | None = 4) -> list[di
 
 def _paper_saved_analysis_flags(payload: dict) -> dict[str, bool]:
     return {
-        "has_skim_report": isinstance(payload.get("skim_report"), dict) and bool(payload.get("skim_report")),
-        "has_deep_report": isinstance(payload.get("deep_report"), dict) and bool(payload.get("deep_report")),
-        "has_analysis_rounds": isinstance(payload.get("analysis_rounds"), dict) and bool(payload.get("analysis_rounds")),
+        "has_skim_report": isinstance(payload.get("skim_report"), dict)
+        and bool(payload.get("skim_report")),
+        "has_deep_report": isinstance(payload.get("deep_report"), dict)
+        and bool(payload.get("deep_report")),
+        "has_analysis_rounds": isinstance(payload.get("analysis_rounds"), dict)
+        and bool(payload.get("analysis_rounds")),
     }
 
 
@@ -314,7 +318,9 @@ def _external_publication_sort_key(item: dict) -> tuple[date, int]:
         year = int(item.get("publication_year") or 0)
     except (TypeError, ValueError):
         year = 0
-    return date(max(1, year), 1, 1) if year > 0 else date(1900, 1, 1), int(item.get("citation_count") or 0)
+    return date(max(1, year), 1, 1) if year > 0 else date(1900, 1, 1), int(
+        item.get("citation_count") or 0
+    )
 
 
 def _sort_external_results(items: list[dict], sort_mode: str) -> list[dict]:
@@ -415,7 +421,16 @@ def _dedupe_literature_items(items: list[dict]) -> list[dict]:
 
 _LOCAL_SEARCH_QUERY_EXPANSIONS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (
-        ("遥感", "对地观测", "地球观测", "卫星影像", "卫星图像", "遥感影像", "遥感图像", "地理空间"),
+        (
+            "遥感",
+            "对地观测",
+            "地球观测",
+            "卫星影像",
+            "卫星图像",
+            "遥感影像",
+            "遥感图像",
+            "地理空间",
+        ),
         ("remote sensing", "earth observation", "satellite imagery", "geospatial"),
     ),
     (
@@ -477,7 +492,14 @@ def _expanded_local_search_queries(keyword: str) -> list[str]:
         (),
     )
     if remote_terms and model_terms:
-        for suffix in ("model", "foundation model", "large model", "vision-language model", "vlm", "world model"):
+        for suffix in (
+            "model",
+            "foundation model",
+            "large model",
+            "vision-language model",
+            "vlm",
+            "world model",
+        ):
             add(f"remote sensing {suffix}")
         add("earth observation foundation model")
         add("satellite imagery foundation model")
@@ -505,12 +527,16 @@ def _search_papers(keyword: str, limit: int = 20) -> ToolResult:
         if not papers:
             candidate_terms = [
                 term.strip(" -")
-                for term in re.findall(r"\b[A-Za-z][A-Za-z0-9]*(?:[- ][A-Za-z0-9]+){0,3}\b", keyword)
+                for term in re.findall(
+                    r"\b[A-Za-z][A-Za-z0-9]*(?:[- ][A-Za-z0-9]+){0,3}\b", keyword
+                )
             ]
             for query in expanded_queries[1:]:
                 candidate_terms.extend(
                     term.strip(" -")
-                    for term in re.findall(r"\b[A-Za-z][A-Za-z0-9]*(?:[- ][A-Za-z0-9]+){0,3}\b", query)
+                    for term in re.findall(
+                        r"\b[A-Za-z][A-Za-z0-9]*(?:[- ][A-Za-z0-9]+){0,3}\b", query
+                    )
                 )
             seen_terms: set[str] = set()
             fallback_papers = []
@@ -570,7 +596,9 @@ def _get_paper_analysis(paper_id: str) -> ToolResult:
         paper = PaperRepository(session).get_by_id(pid)
         title = paper.title
         metadata = dict(paper.metadata_json or {})
-    bundle = metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
+    bundle = (
+        metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else {}
+    )
     figure_items = _paper_figure_items(pid, limit=None)
     ok, summary = _analysis_rounds_is_effective(bundle)
     return ToolResult(
@@ -735,12 +763,20 @@ def _list_topics() -> ToolResult:
                 "last_run_status": topic.last_run_status,
                 "last_run_count": topic.last_run_count,
                 "last_run_error": topic.last_run_error,
-                "date_filter_start": topic.date_filter_start.isoformat() if topic.date_filter_start else None,
-                "date_filter_end": topic.date_filter_end.isoformat() if topic.date_filter_end else None,
+                "date_filter_start": topic.date_filter_start.isoformat()
+                if topic.date_filter_start
+                else None,
+                "date_filter_end": topic.date_filter_end.isoformat()
+                if topic.date_filter_end
+                else None,
             }
             for topic in topics
         ]
-    return ToolResult(success=True, data={"topics": items, "count": len(items)}, summary=f"共有 {len(items)} 个工作区/订阅")
+    return ToolResult(
+        success=True,
+        data={"topics": items, "count": len(items)},
+        summary=f"共有 {len(items)} 个工作区/订阅",
+    )
 
 
 def _get_system_status() -> ToolResult:
@@ -832,9 +868,7 @@ def _search_literature(
             results.append(annotated)
 
     arxiv_requires_unsupported_filter = (
-        effective_tier != "all"
-        or effective_type != "all"
-        or bool(effective_venue_names)
+        effective_tier != "all" or effective_type != "all" or bool(effective_venue_names)
     )
     if effective_scope in {"hybrid", "arxiv"} and not arxiv_requires_unsupported_filter:
         arxiv_client = ArxivClient()
@@ -937,7 +971,9 @@ def _ingest_external_literature(
     topic_id: str | None = None,
     query: str | None = None,
 ) -> ToolResult:
-    normalized_entries = [dict(entry) for entry in (entries or []) if str((entry or {}).get("title") or "").strip()]
+    normalized_entries = [
+        dict(entry) for entry in (entries or []) if str((entry or {}).get("title") or "").strip()
+    ]
     if not normalized_entries:
         return ToolResult(success=False, summary="没有可导入的外部论文条目")
     result = PaperPipelines().ingest_external_entries(
@@ -970,7 +1006,9 @@ def _search_arxiv(query: str, max_results: int = 20) -> ToolResult:
             "arxiv_id": paper.arxiv_id,
             "title": paper.title,
             "abstract": paper.abstract,
-            "publication_date": paper.publication_date.isoformat() if paper.publication_date else None,
+            "publication_date": paper.publication_date.isoformat()
+            if paper.publication_date
+            else None,
             "categories": (paper.metadata or {}).get("categories", []),
             "authors": (paper.metadata or {}).get("authors", []),
         }
@@ -1053,7 +1091,9 @@ def _analyze_paper_rounds(
         ok, summary = _analysis_rounds_is_effective(bundle)
         if ok:
             final_notes = bundle.get("final_notes") if isinstance(bundle, dict) else None
-            summary = f"论文三轮分析完成：{str((final_notes or {}).get('title') or '最终结构化笔记')}"
+            summary = (
+                f"论文三轮分析完成：{str((final_notes or {}).get('title') or '最终结构化笔记')}"
+            )
         figure_items = _paper_figure_items(pid, limit=None)
         enriched_payload = {
             **payload,
@@ -1105,7 +1145,9 @@ def _generate_wiki(type: str, keyword_or_id: str) -> Iterator[ToolProgress | Too
                 if progress_callback:
                     progress_callback(message, int(max(1, min(99, percent * 100))), 100)
 
-            result = GraphService().topic_wiki(keyword=keyword, limit=120, progress_callback=_topic_progress)
+            result = GraphService().topic_wiki(
+                keyword=keyword, limit=120, progress_callback=_topic_progress
+            )
             result["title"] = result.get("title") or f"专题综述：{keyword}"
             return ToolResult(
                 success=True,
@@ -1382,9 +1424,7 @@ def _analyze_figures(paper_id: str, max_figures: int = 10) -> Iterator[ToolProgr
         arxiv_id=arxiv_id,
     )
     figure_items = _paper_figure_items(pid, limit=None)
-    analyzed_count = sum(
-        1 for item in figure_items if str(item.get("description") or "").strip()
-    )
+    analyzed_count = sum(1 for item in figure_items if str(item.get("description") or "").strip())
 
     markdown_lines = [f"# 图表分析：{title}", ""]
     for index, item in enumerate(figure_items, start=1):

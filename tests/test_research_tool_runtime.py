@@ -70,7 +70,9 @@ class _FakeOpenAlexClient:
 
 
 class _FakeArxivClient:
-    def search_candidates(self, query: str, *, max_results: int = 20, fetch_limit: int | None = None):  # noqa: ANN201
+    def search_candidates(
+        self, query: str, *, max_results: int = 20, fetch_limit: int | None = None
+    ):  # noqa: ANN201
         del query, max_results, fetch_limit
         return [
             PaperCreate(
@@ -93,7 +95,10 @@ class _FakeArxivClient:
 def test_research_venue_catalog_matches_ccf_a_aliases() -> None:
     assert venue_tier_for_name("Conference on Neural Information Processing Systems") == "ccf_a"
     assert venue_tier_for_name("Journal of Machine Learning Research") == "ccf_a"
-    assert classify_venue_type("conference", "Conference on Neural Information Processing Systems") == "conference"
+    assert (
+        classify_venue_type("conference", "Conference on Neural Information Processing Systems")
+        == "conference"
+    )
     assert matches_venue_filter(
         "Conference on Neural Information Processing Systems",
         raw_venue_type="conference",
@@ -139,5 +144,8 @@ def test_search_literature_merges_openalex_and_arxiv_without_duplicates(monkeypa
     papers = result.data["papers"]
     assert len(papers) == 4
     assert sum(1 for item in papers if item["arxiv_id"] == "2401.00001") == 1
-    assert any(item["source"] == "openalex" and item["venue"] == "Journal of Machine Learning Research" for item in papers)
+    assert any(
+        item["source"] == "openalex" and item["venue"] == "Journal of Machine Learning Research"
+        for item in papers
+    )
     assert any(item["source"] == "arxiv" and item["arxiv_id"] == "2402.00002" for item in papers)

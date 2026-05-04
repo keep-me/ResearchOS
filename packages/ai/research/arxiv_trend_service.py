@@ -500,7 +500,20 @@ def _build_subdomain_presets() -> tuple[_TrendSubdomainPreset, ...]:
         (
             "theory_algorithms",
             "理论、算法与程序语言",
-            ("cs.CC", "cs.CG", "cs.DM", "cs.DS", "cs.FL", "cs.GT", "cs.IT", "cs.LO", "cs.MS", "cs.NA", "cs.PL", "cs.SC"),
+            (
+                "cs.CC",
+                "cs.CG",
+                "cs.DM",
+                "cs.DS",
+                "cs.FL",
+                "cs.GT",
+                "cs.IT",
+                "cs.LO",
+                "cs.MS",
+                "cs.NA",
+                "cs.PL",
+                "cs.SC",
+            ),
         ),
         (
             "interaction_society",
@@ -607,7 +620,12 @@ class ArxivTrendService:
             )
             if computed.get("available"):
                 return computed
-        return latest_available or today_unavailable or latest_any or self._empty_snapshot(preset, message="当前还没有可用趋势快照")
+        return (
+            latest_available
+            or today_unavailable
+            or latest_any
+            or self._empty_snapshot(preset, message="当前还没有可用趋势快照")
+        )
 
     def generate_and_store_snapshot(
         self,
@@ -698,7 +716,10 @@ class ArxivTrendService:
             target_day = today_utc - timedelta(days=offset)
             try:
                 total, papers = self._fetch_day_for_preset(target_day, limit, preset=preset)
-            except (httpx.HTTPError, ElementTree.ParseError) as exc:  # pragma: no cover - external dependency
+            except (
+                httpx.HTTPError,
+                ElementTree.ParseError,
+            ) as exc:  # pragma: no cover - external dependency
                 last_error = str(exc)
                 continue
             if papers:
@@ -784,7 +805,9 @@ class ArxivTrendService:
                 response.raise_for_status()
                 root = ElementTree.fromstring(response.text)
                 if start_index == 0:
-                    total_text = root.findtext("opensearch:totalResults", namespaces=_ATOM_NS) or "0"
+                    total_text = (
+                        root.findtext("opensearch:totalResults", namespaces=_ATOM_NS) or "0"
+                    )
                     try:
                         raw_total = int(total_text.strip())
                     except ValueError:
@@ -856,9 +879,7 @@ class ArxivTrendService:
 
         for paper in papers:
             categories = [
-                str(item)
-                for item in paper.get("categories") or []
-                if str(item).startswith("cs.")
+                str(item) for item in paper.get("categories") or [] if str(item).startswith("cs.")
             ]
             if categories:
                 category_counter.update(categories[:2])
@@ -1037,7 +1058,11 @@ class ArxivTrendService:
                     paper_index = int(raw_index)
                 except (TypeError, ValueError):
                     return []
-                if paper_index not in valid_indexes or paper_index in seen_indexes or paper_index in local_seen:
+                if (
+                    paper_index not in valid_indexes
+                    or paper_index in seen_indexes
+                    or paper_index in local_seen
+                ):
                     return []
                 local_seen.add(paper_index)
                 indexes.append(paper_index)
@@ -1222,7 +1247,8 @@ class ArxivTrendService:
                 row_meta = dict(getattr(row, "metadata_json", None) or {})
                 if (
                     int(row_meta.get("snapshot_version") or 0) == _TREND_SNAPSHOT_VERSION
-                    and str(row_meta.get("generated_for_user_date") or "") == generated_for_user_date
+                    and str(row_meta.get("generated_for_user_date") or "")
+                    == generated_for_user_date
                 ):
                     existing = row
                     break
@@ -1258,9 +1284,7 @@ def _tokenize(text: str) -> list[str]:
     return [
         token
         for token in tokens
-        if token not in _TERM_STOPWORDS
-        and not token.isdigit()
-        and 3 <= len(token) <= 28
+        if token not in _TERM_STOPWORDS and not token.isdigit() and 3 <= len(token) <= 28
     ]
 
 
@@ -1330,7 +1354,9 @@ def _is_valid_topic_ngram(raw_tokens: list[str], tokens: list[str]) -> bool:
 
 def _topic_phrase_score(raw_tokens: list[str], tokens: list[str], *, source: str) -> float:
     signal_count = sum(1 for token in tokens if token not in _TOPIC_GENERIC_TOKENS)
-    acronym_bonus = 0.45 if any(re.fullmatch(r"[A-Z]{2,8}s?", raw or "") for raw in raw_tokens) else 0.0
+    acronym_bonus = (
+        0.45 if any(re.fullmatch(r"[A-Z]{2,8}s?", raw or "") for raw in raw_tokens) else 0.0
+    )
     size_bonus = {
         1: 0.7,
         2: 1.1,
@@ -1432,9 +1458,7 @@ def _topic_signal_tokens(key: str) -> set[str]:
     tokens = [
         token
         for token in re.split(r"[\s/-]+", str(key or "").lower())
-        if token
-        and token not in _TOPIC_BOUNDARY_STOPWORDS
-        and token not in _TOPIC_GENERIC_TOKENS
+        if token and token not in _TOPIC_BOUNDARY_STOPWORDS and token not in _TOPIC_GENERIC_TOKENS
     ]
     return set(tokens)
 
@@ -1484,7 +1508,6 @@ def _keyword_rows_from_topics(
     *,
     limit: int,
 ) -> list[dict]:
-    denominator = max(1, sample_size)
     rows: list[dict] = []
     for key, aggregate in sorted(
         aggregates.items(),
@@ -1504,7 +1527,10 @@ def _keyword_rows_from_topics(
         )
     selected: list[dict] = []
     for row in rows:
-        if any(_topic_rows_too_similar(str(row.get("_key") or ""), str(item.get("_key") or "")) for item in selected):
+        if any(
+            _topic_rows_too_similar(str(row.get("_key") or ""), str(item.get("_key") or ""))
+            for item in selected
+        ):
             continue
         selected.append(row)
         if len(selected) >= limit:
@@ -1673,14 +1699,22 @@ def _partition_direction_rows(
                 "label": _topic_display_label(seed, aggregate.surfaces),
                 "count": count,
                 "sample_ratio": round(count / max(1, sample_size), 4),
-                "keywords": _seed_cluster_keywords(seed, seed_keywords.get(seed, Counter()), limit=4),
+                "keywords": _seed_cluster_keywords(
+                    seed, seed_keywords.get(seed, Counter()), limit=4
+                ),
                 "example_title": (seed_examples.get(seed) or [""])[0],
                 "example_titles": list(seed_examples.get(seed) or []),
                 "_score": float(aggregate.weighted_score),
             }
         )
 
-    ranked_rows.sort(key=lambda item: (-int(item.get("count") or 0), -float(item.get("_score") or 0.0), str(item.get("key") or "")))
+    ranked_rows.sort(
+        key=lambda item: (
+            -int(item.get("count") or 0),
+            -float(item.get("_score") or 0.0),
+            str(item.get("key") or ""),
+        )
+    )
     final_rows: list[dict] = []
     running_total = 0
     selected = ranked_rows[:limit]
@@ -1716,7 +1750,9 @@ def _dynamic_direction_rows(
         for related_key, related_count in aggregate.co_topics.most_common(6):
             if _topic_rows_too_similar(key, related_key):
                 continue
-            related_label = _topic_display_label(related_key, aggregates.get(related_key, _TopicAggregate()).surfaces)
+            related_label = _topic_display_label(
+                related_key, aggregates.get(related_key, _TopicAggregate()).surfaces
+            )
             if not related_label:
                 continue
             keywords.append({"keyword": related_label, "count": int(related_count)})
@@ -1736,7 +1772,10 @@ def _dynamic_direction_rows(
 
     selected: list[dict] = []
     for row in rows:
-        if any(_topic_rows_too_similar(str(row.get("key") or ""), str(item.get("key") or "")) for item in selected):
+        if any(
+            _topic_rows_too_similar(str(row.get("key") or ""), str(item.get("key") or ""))
+            for item in selected
+        ):
             continue
         selected.append(row)
         if len(selected) >= limit:
@@ -1801,7 +1840,10 @@ def _merge_with_fallback_directions(
     selected = list(dynamic_rows)
     fallback_rows = _fallback_direction_rows(papers, sample_size, limit=limit * 2)
     for row in fallback_rows:
-        if any(_topic_rows_too_similar(str(row.get("key") or ""), str(item.get("key") or "")) for item in selected):
+        if any(
+            _topic_rows_too_similar(str(row.get("key") or ""), str(item.get("key") or ""))
+            for item in selected
+        ):
             continue
         selected.append(row)
         if len(selected) >= limit:
@@ -1829,21 +1871,20 @@ def _build_llm_partition_prompt(
     subdomain_label: str,
 ) -> str:
     target_direction_count = _llm_partition_target_direction_count(sample_size)
-    category_lines = [
-        f"- {item.get('key')}: {item.get('count')} 篇"
-        for item in categories[:6]
-    ]
-    keyword_lines = [
-        f"- {item.get('keyword')}: {item.get('count')}"
-        for item in keywords[:10]
-    ]
+    category_lines = [f"- {item.get('key')}: {item.get('count')} 篇" for item in categories[:6]]
+    keyword_lines = [f"- {item.get('keyword')}: {item.get('count')}" for item in keywords[:10]]
     paper_lines = []
     for index, paper in enumerate(paper_records, start=1):
-        topic_text = " / ".join(
-            _humanize_topic_label(topic_key)
-            for topic_key in list(paper.topics.keys())[:4]
-        ) or "无"
-        categories_text = " / ".join(str(item).strip() for item in paper.categories[:3] if str(item).strip()) or "无"
+        topic_text = (
+            " / ".join(
+                _humanize_topic_label(topic_key) for topic_key in list(paper.topics.keys())[:4]
+            )
+            or "无"
+        )
+        categories_text = (
+            " / ".join(str(item).strip() for item in paper.categories[:3] if str(item).strip())
+            or "无"
+        )
         paper_lines.append(
             f"{index}. title={paper.title or '无'} | categories={categories_text} | top_topics={topic_text}"
         )
@@ -1866,7 +1907,7 @@ def _build_llm_partition_prompt(
         "{\n"
         '  "direction_sentence": "......",\n'
         '  "directions": [\n'
-        '    {\n'
+        "    {\n"
         '      "label": "方向名",\n'
         '      "summary": "一句话摘要",\n'
         '      "keywords": ["词1", "词2", "词3"],\n'
@@ -1898,14 +1939,10 @@ def _build_llm_direction_prompt(
 ) -> str:
     category_lines = []
     for item in categories[:6]:
-        category_lines.append(
-            f"- {item.get('key')}: {item.get('count')} 篇"
-        )
+        category_lines.append(f"- {item.get('key')}: {item.get('count')} 篇")
     keyword_lines = []
     for item in keywords[:12]:
-        keyword_lines.append(
-            f"- {item.get('keyword')}: {item.get('count')}"
-        )
+        keyword_lines.append(f"- {item.get('keyword')}: {item.get('count')}")
     cluster_lines = []
     for index, row in enumerate(direction_rows, start=1):
         cluster_key = str(row.get("key") or "").strip()
@@ -1917,9 +1954,23 @@ def _build_llm_direction_prompt(
                     f"   paper_count={row.get('count')}",
                     f"   share_pct={round(float(row.get('sample_ratio') or 0.0) * 100, 1)}",
                     "   cluster_keywords="
-                    + (" / ".join(str((entry or {}).get("keyword") or "").strip() for entry in (row.get("keywords") or []) if str((entry or {}).get("keyword") or "").strip()) or "无"),
+                    + (
+                        " / ".join(
+                            str((entry or {}).get("keyword") or "").strip()
+                            for entry in (row.get("keywords") or [])
+                            if str((entry or {}).get("keyword") or "").strip()
+                        )
+                        or "无"
+                    ),
                     "   example_titles="
-                    + (" || ".join(str(title).strip() for title in (row.get("example_titles") or []) if str(title).strip()) or "无"),
+                    + (
+                        " || ".join(
+                            str(title).strip()
+                            for title in (row.get("example_titles") or [])
+                            if str(title).strip()
+                        )
+                        or "无"
+                    ),
                 ]
             )
         )
@@ -1941,7 +1992,7 @@ def _build_llm_direction_prompt(
         "{\n"
         '  "direction_sentence": "......",\n'
         '  "directions": [\n'
-        '    {\n'
+        "    {\n"
         '      "cluster_key": "cluster_key_from_input",\n'
         '      "label": "方向名",\n'
         '      "summary": "一句话概括该方向今天在研究什么",\n'
@@ -1986,13 +2037,12 @@ def _counter_rows(
 def _direction_sentence(directions: list[dict], terms: list[dict]) -> str:
     if not directions:
         return "暂无可用趋势"
-    first_sentence = str((directions[0] or {}).get("_direction_sentence") or "").strip() if directions else ""
+    first_sentence = (
+        str((directions[0] or {}).get("_direction_sentence") or "").strip() if directions else ""
+    )
     if first_sentence:
         return first_sentence
-    leaders = [
-        str(item.get("label") or item.get("key"))
-        for item in directions[:3]
-    ]
+    leaders = [str(item.get("label") or item.get("key")) for item in directions[:3]]
     keywords = [str(item.get("keyword") or item.get("term")) for item in terms[:3]]
     leader_text = "、".join(leaders)
     if keywords:

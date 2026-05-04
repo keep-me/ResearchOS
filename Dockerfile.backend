@@ -54,7 +54,7 @@ ENV DATABASE_URL=sqlite:////app/data/researchos.db
 ENV PYTHONUNBUFFERED=1
 
 # 初始化数据库（如果不存在）
-RUN python scripts/local_bootstrap.py || true
+RUN python scripts/local_bootstrap.py
 
 EXPOSE 8002
 

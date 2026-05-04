@@ -12,12 +12,11 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.routers import agent as agent_router
 from apps.api.routers import session_runtime as session_runtime_router
-from packages.agent import agent_service
-from packages.agent import session_retry
+from packages.agent import agent_service, session_retry
 from packages.agent.session.session_errors import normalize_error
 from packages.agent.session.session_runtime import get_session_status
-from packages.integrations.llm_provider_http import ProviderHTTPError
 from packages.integrations.llm_client import StreamEvent
+from packages.integrations.llm_provider_http import ProviderHTTPError
 from packages.storage import db
 from packages.storage.db import Base
 
@@ -445,21 +444,27 @@ def test_normalize_error_preserves_transport_runtime_metadata() -> None:
 
 
 def test_retry_delay_prefers_retry_after_headers() -> None:
-    assert session_retry.delay(
-        1,
-        {
-            "message": "429 Too Many Requests",
-            "responseHeaders": {"retry-after-ms": "2500"},
-        },
-    ) == 2500
+    assert (
+        session_retry.delay(
+            1,
+            {
+                "message": "429 Too Many Requests",
+                "responseHeaders": {"retry-after-ms": "2500"},
+            },
+        )
+        == 2500
+    )
 
-    assert session_retry.delay(
-        1,
-        {
-            "message": "429 Too Many Requests",
-            "responseHeaders": {"retry-after": "3"},
-        },
-    ) == 3000
+    assert (
+        session_retry.delay(
+            1,
+            {
+                "message": "429 Too Many Requests",
+                "responseHeaders": {"retry-after": "3"},
+            },
+        )
+        == 3000
+    )
 
 
 def test_retry_delay_uses_opencode_backoff_defaults_without_headers() -> None:
@@ -479,4 +484,3 @@ def test_retryable_does_not_retry_blocked_gateway_errors() -> None:
         )
         is None
     )
-

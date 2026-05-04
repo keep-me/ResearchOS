@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import anyio
 import copy
 import logging
 import re
@@ -11,25 +10,34 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+import anyio
 import mcp.types as mcp_types
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.message import SessionMessage
 
-from packages.ai.paper.paper_ops_service import (
-    FigureExtractionEmptyError,
-    PaperPdfUnavailableError,
-    extract_paper_figures_payload as _extract_paper_figures_payload,
-    extract_uploaded_pdf_metadata as _extract_uploaded_pdf_metadata,
-    normalize_manual_paper_id as _normalize_manual_paper_id,
-    safe_uploaded_filename as _safe_uploaded_filename,
-)
 from packages.agent import research_tool_runtime as research_runtime
 from packages.agent.mcp.researchos_mcp_registry import RESEARCHOS_MCP_SERVER_NAME
 from packages.agent.mcp.researchos_mcp_runtime import register_dynamic_bridge_tools
+from packages.agent.tools.tool_runtime import ToolProgress, ToolResult
 from packages.ai.paper.figure_service import FigureService
+from packages.ai.paper.paper_ops_service import (
+    FigureExtractionEmptyError,
+    PaperPdfUnavailableError,
+)
+from packages.ai.paper.paper_ops_service import (
+    extract_paper_figures_payload as _extract_paper_figures_payload,
+)
+from packages.ai.paper.paper_ops_service import (
+    extract_uploaded_pdf_metadata as _extract_uploaded_pdf_metadata,
+)
+from packages.ai.paper.paper_ops_service import (
+    normalize_manual_paper_id as _normalize_manual_paper_id,
+)
+from packages.ai.paper.paper_ops_service import (
+    safe_uploaded_filename as _safe_uploaded_filename,
+)
 from packages.ai.paper.pipelines import PaperPipelines
 from packages.ai.research.reasoning_service import ReasoningService
-from packages.agent.tools.tool_runtime import ToolProgress, ToolResult
 from packages.ai.research.web_search_service import search_web as run_web_search
 from packages.config import get_settings
 from packages.domain.schemas import PaperCreate
@@ -57,7 +65,6 @@ server = FastMCP(
         "兼容旧版的 paper_* / task_* 工具仍保留在执行层，但默认主链路优先使用 skim_paper、deep_read_paper、analyze_paper_rounds、analyze_figures 这类直接返回结果的工具。"
     ),
 )
-
 
 
 def _safe_pdf_stem(value: str | None) -> str:
@@ -123,7 +130,9 @@ def _paper_summary(paper: Paper) -> dict[str, Any]:
     }
 
 
-def _paper_figure_refs(items: list[dict[str, Any]], *, limit: int | None = 6) -> list[dict[str, Any]]:
+def _paper_figure_refs(
+    items: list[dict[str, Any]], *, limit: int | None = 6
+) -> list[dict[str, Any]]:
     visible = items if limit is None or limit <= 0 else items[:limit]
     refs: list[dict[str, Any]] = []
     for item in visible:
@@ -144,7 +153,11 @@ def _paper_detail_payload(paper: Paper) -> dict[str, Any]:
     skim_report: dict[str, Any] | None = None
     deep_report: dict[str, Any] | None = None
     with session_scope() as session:
-        report = session.query(AnalysisReport).filter(AnalysisReport.paper_id == str(paper.id)).one_or_none()
+        report = (
+            session.query(AnalysisReport)
+            .filter(AnalysisReport.paper_id == str(paper.id))
+            .one_or_none()
+        )
         if report and report.summary_md:
             skim_report = {
                 "summary_md": report.summary_md,
@@ -180,7 +193,9 @@ def _paper_detail_payload(paper: Paper) -> dict[str, Any]:
             "skim_report": skim_report,
             "deep_report": deep_report,
             "reasoning_chain": reasoning,
-            "analysis_rounds": metadata.get("analysis_rounds") if isinstance(metadata.get("analysis_rounds"), dict) else None,
+            "analysis_rounds": metadata.get("analysis_rounds")
+            if isinstance(metadata.get("analysis_rounds"), dict)
+            else None,
             "figure_count": len(normalized_figures),
             "figure_refs": _paper_figure_refs(normalized_figures),
             "metadata": metadata,
@@ -489,7 +504,9 @@ def _submit_figure_task(
     return {"task_id": task_id, "status": "running", "message": "图表提取任务已启动"}
 
 
-def _copy_local_pdf(pdf_path: str, title: str | None, arxiv_id: str | None, topic_id: str | None) -> dict[str, Any]:
+def _copy_local_pdf(
+    pdf_path: str, title: str | None, arxiv_id: str | None, topic_id: str | None
+) -> dict[str, Any]:
     source = Path(pdf_path).expanduser().resolve()
     if not source.exists():
         raise ValueError(f"PDF 文件不存在: {source}")
@@ -505,8 +522,12 @@ def _copy_local_pdf(pdf_path: str, title: str | None, arxiv_id: str | None, topi
     shutil.copy2(source, stored_path)
 
     normalized_id = _normalize_manual_paper_id(arxiv_id)
-    fallback_title = str(title or "").strip() or source.stem.replace("_", " ").replace("-", " ").strip()
-    extracted_title, extracted_abstract = _extract_uploaded_pdf_metadata(stored_path, fallback_title or source.stem)
+    fallback_title = (
+        str(title or "").strip() or source.stem.replace("_", " ").replace("-", " ").strip()
+    )
+    extracted_title, extracted_abstract = _extract_uploaded_pdf_metadata(
+        stored_path, fallback_title or source.stem
+    )
     resolved_title = (str(title or "").strip() or extracted_title or source.stem).strip()[:300]
     resolved_abstract = extracted_abstract.strip()
     metadata = {
@@ -587,7 +608,9 @@ def search_arxiv(query: str, limit: int = 8) -> dict[str, Any]:
             "arxiv_id": paper.arxiv_id,
             "title": paper.title,
             "abstract": paper.abstract,
-            "publication_date": paper.publication_date.isoformat() if paper.publication_date else None,
+            "publication_date": paper.publication_date.isoformat()
+            if paper.publication_date
+            else None,
             "categories": (paper.metadata or {}).get("categories", []),
             "authors": (paper.metadata or {}).get("authors", []),
         }
@@ -775,7 +798,9 @@ def task_status(task_id: str, include_result: bool = True) -> dict[str, Any]:
     status = global_tracker.get_task(task_id)
     if not status:
         raise ValueError(f"未找到任务: {task_id}")
-    result = global_tracker.get_result(task_id) if include_result and status.get("finished") else None
+    result = (
+        global_tracker.get_result(task_id) if include_result and status.get("finished") else None
+    )
     return {
         "status": status,
         "result": result,
@@ -789,8 +814,12 @@ def task_status(task_id: str, include_result: bool = True) -> dict[str, Any]:
 def paper_library_overview() -> dict[str, Any]:
     with session_scope() as session:
         repo = PaperRepository(session)
-        latest, _ = repo.list_paginated(page=1, page_size=6, sort_by="created_at", sort_order="desc")
-        influential, _ = repo.list_paginated(page=1, page_size=6, sort_by="impact", sort_order="desc")
+        latest, _ = repo.list_paginated(
+            page=1, page_size=6, sort_by="created_at", sort_order="desc"
+        )
+        influential, _ = repo.list_paginated(
+            page=1, page_size=6, sort_by="impact", sort_order="desc"
+        )
         recent_items = [_paper_summary(paper) for paper in latest]
         top_items = [_paper_summary(paper) for paper in influential]
 
@@ -980,9 +1009,7 @@ def ingest_external_literature(
     description="读取未入库 arXiv 论文的摘要元数据和章节目录。",
 )
 def preview_external_paper_head(arxiv_id: str) -> dict[str, Any]:
-    return _tool_result_payload(
-        research_runtime._preview_external_paper_head(arxiv_id=arxiv_id)
-    )
+    return _tool_result_payload(research_runtime._preview_external_paper_head(arxiv_id=arxiv_id))
 
 
 @server.tool(
@@ -1003,9 +1030,7 @@ def preview_external_paper_section(arxiv_id: str, section_name: str) -> dict[str
     description="将选中的 arXiv 论文导入本地库。",
 )
 def ingest_arxiv(query: str, arxiv_ids: list[str]) -> dict[str, Any]:
-    return _tool_result_payload(
-        research_runtime._ingest_arxiv(query=query, arxiv_ids=arxiv_ids)
-    )
+    return _tool_result_payload(research_runtime._ingest_arxiv(query=query, arxiv_ids=arxiv_ids))
 
 
 @server.tool(
@@ -1014,9 +1039,7 @@ def ingest_arxiv(query: str, arxiv_ids: list[str]) -> dict[str, Any]:
 )
 def skim_paper(paper_id: str) -> dict[str, Any]:
     resolved_id = _resolve_paper_id_value(paper_id)
-    return _resolve_runtime_iterator_payload(
-        lambda: research_runtime._skim_paper(str(resolved_id))
-    )
+    return _resolve_runtime_iterator_payload(lambda: research_runtime._skim_paper(str(resolved_id)))
 
 
 @server.tool(
@@ -1152,9 +1175,7 @@ def identify_research_gaps(keyword: str, limit: int = 120) -> dict[str, Any]:
     description="执行学术写作辅助，例如翻译、润色、压缩、扩写和图表说明。",
 )
 def writing_assist(action: str, text: str) -> dict[str, Any]:
-    return _tool_result_payload(
-        research_runtime._writing_assist(action=action, text=text)
-    )
+    return _tool_result_payload(research_runtime._writing_assist(action=action, text=text))
 
 
 @server.tool(
@@ -1191,4 +1212,3 @@ async def _run_agent_stdio_async() -> None:
 
 if __name__ == "__main__":
     main()
-

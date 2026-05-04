@@ -42,14 +42,22 @@ def test_auto_compaction_threshold_effectively_disables_when_off(monkeypatch):
 def test_is_tool_progress_placeholder_text_matches_preamble_but_not_result_summary():
     assert agent_runtime_policy.is_tool_progress_placeholder_text("我来先帮你查一下相关资料。")
     assert agent_runtime_policy.is_tool_progress_placeholder_text("Let me search for that first.")
-    assert not agent_runtime_policy.is_tool_progress_placeholder_text("已完成以下工具调用：1. search_papers: 找到 12 篇相关论文")
-    assert not agent_runtime_policy.is_tool_progress_placeholder_text("根据刚才的检索结果，我建议优先看方法部分。")
+    assert not agent_runtime_policy.is_tool_progress_placeholder_text(
+        "已完成以下工具调用：1. search_papers: 找到 12 篇相关论文"
+    )
+    assert not agent_runtime_policy.is_tool_progress_placeholder_text(
+        "根据刚才的检索结果，我建议优先看方法部分。"
+    )
 
 
 def test_should_hard_stop_after_tool_request_reserves_summary_turn():
-    assert not agent_runtime_policy.should_hard_stop_after_tool_request(0, 3, requested_tool_calls=True)
+    assert not agent_runtime_policy.should_hard_stop_after_tool_request(
+        0, 3, requested_tool_calls=True
+    )
     assert agent_runtime_policy.should_hard_stop_after_tool_request(2, 3, requested_tool_calls=True)
-    assert not agent_runtime_policy.should_hard_stop_after_tool_request(2, 3, requested_tool_calls=False)
+    assert not agent_runtime_policy.should_hard_stop_after_tool_request(
+        2, 3, requested_tool_calls=False
+    )
 
 
 def test_tool_call_signature_is_stable_for_same_arguments():
@@ -67,17 +75,13 @@ def test_tool_call_signature_is_stable_for_same_arguments():
 
 
 def test_should_hard_stop_after_repeated_tool_calls_only_for_identical_back_to_back_calls():
-    previous = (
-        agent_runtime_policy.tool_call_signature("bash", {"command": "echo repeat"}),
-    )
-    same = (
-        agent_runtime_policy.tool_call_signature("bash", {"command": "echo repeat"}),
-    )
-    different = (
-        agent_runtime_policy.tool_call_signature("bash", {"command": "echo other"}),
-    )
+    previous = (agent_runtime_policy.tool_call_signature("bash", {"command": "echo repeat"}),)
+    same = (agent_runtime_policy.tool_call_signature("bash", {"command": "echo repeat"}),)
+    different = (agent_runtime_policy.tool_call_signature("bash", {"command": "echo other"}),)
 
     assert not agent_runtime_policy.should_hard_stop_after_repeated_tool_calls(0, previous, same)
     assert agent_runtime_policy.should_hard_stop_after_repeated_tool_calls(1, previous, same)
-    assert not agent_runtime_policy.should_hard_stop_after_repeated_tool_calls(1, previous, different)
+    assert not agent_runtime_policy.should_hard_stop_after_repeated_tool_calls(
+        1, previous, different
+    )
     assert not agent_runtime_policy.should_hard_stop_after_repeated_tool_calls(1, None, same)

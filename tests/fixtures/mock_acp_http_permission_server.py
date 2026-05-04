@@ -4,9 +4,10 @@ import contextlib
 import json
 import threading
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Iterator
+from typing import Any
 
 
 def _build_prompt_text(params: dict[str, Any]) -> str:
@@ -38,7 +39,9 @@ class _MockHttpPermissionState:
         self._next_permission_request_id = 91001
         self._pending_by_permission_id: dict[int, _PendingPermission] = {}
 
-    def create_permission(self, *, prompt_request_id: int, session_id: str, prompt_text: str) -> tuple[int, _PendingPermission]:
+    def create_permission(
+        self, *, prompt_request_id: int, session_id: str, prompt_text: str
+    ) -> tuple[int, _PendingPermission]:
         with self._lock:
             permission_request_id = self._next_permission_request_id
             self._next_permission_request_id += 1
@@ -127,8 +130,14 @@ class _MockHttpPermissionHandler(BaseHTTPRequestHandler):
             return
 
         if not method and request_id is not None:
-            result_payload = payload.get("result") if isinstance(payload.get("result"), dict) else {}
-            outcome = result_payload.get("outcome") if isinstance(result_payload.get("outcome"), dict) else {}
+            result_payload = (
+                payload.get("result") if isinstance(payload.get("result"), dict) else {}
+            )
+            outcome = (
+                result_payload.get("outcome")
+                if isinstance(result_payload.get("outcome"), dict)
+                else {}
+            )
             option_id = str(outcome.get("optionId") or "").strip() or None
             resolved = self.state.resolve_permission(int(request_id or 0), option_id)
             if not resolved:
@@ -204,7 +213,11 @@ class _MockHttpPermissionHandler(BaseHTTPRequestHandler):
                         "sessionId": session_id,
                         "options": [
                             {"optionId": "allow_once", "name": "Allow once", "kind": "allow_once"},
-                            {"optionId": "allow_always", "name": "Always allow", "kind": "allow_always"},
+                            {
+                                "optionId": "allow_always",
+                                "name": "Always allow",
+                                "kind": "allow_always",
+                            },
                             {"optionId": "reject_once", "name": "Reject", "kind": "reject_once"},
                         ],
                         "toolCall": {

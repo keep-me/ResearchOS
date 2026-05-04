@@ -8,7 +8,9 @@ from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
 
-_ARXIV_ID_RE = re.compile(r"(?P<id>(?:[a-z-]+(?:\.[A-Z]{2})?/\d{7}|\d{4}\.\d{4,5}))(?:v\d+)?$", re.IGNORECASE)
+_ARXIV_ID_RE = re.compile(
+    r"(?P<id>(?:[a-z-]+(?:\.[A-Z]{2})?/\d{7}|\d{4}\.\d{4,5}))(?:v\d+)?$", re.IGNORECASE
+)
 _HEADING_PREFIX_RE = re.compile(r"^(?:section\s+)?(?:\d+(?:\.\d+)*[.)]?\s+)+", re.IGNORECASE)
 
 
@@ -67,7 +69,7 @@ class ExternalPaperPreviewService:
             "http://ar5iv.labs.arxiv.org/html/",
         ):
             if cleaned.lower().startswith(prefix):
-                cleaned = cleaned[len(prefix):]
+                cleaned = cleaned[len(prefix) :]
                 break
         cleaned = cleaned.removesuffix(".pdf").strip().rstrip("/")
         match = _ARXIV_ID_RE.search(cleaned)
@@ -117,8 +119,7 @@ class ExternalPaperPreviewService:
             available = [item["title"] for item in section_catalog[:12]]
             raise ValueError(
                 "未找到匹配章节："
-                f"{requested}"
-                + (f"。可选章节示例：{', '.join(available)}" if available else "")
+                f"{requested}" + (f"。可选章节示例：{', '.join(available)}" if available else "")
             )
 
         section_tag = matched.find_parent("section")
@@ -161,8 +162,7 @@ class ExternalPaperPreviewService:
             or self._find_text(soup, "h1")
         )
         abstract = _clean_text(
-            self._meta_content(soup, "description")
-            or self._find_text(soup, "blockquote.abstract")
+            self._meta_content(soup, "description") or self._find_text(soup, "blockquote.abstract")
         )
         if abstract.lower().startswith("abstract:"):
             abstract = abstract.split(":", 1)[1].strip()

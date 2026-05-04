@@ -81,7 +81,9 @@ class McpRegistryService:
                 encoding="utf-8",
             )
 
-    def _normalize_server(self, name: str, raw: dict[str, Any], *, builtin: bool = False) -> dict[str, Any]:
+    def _normalize_server(
+        self, name: str, raw: dict[str, Any], *, builtin: bool = False
+    ) -> dict[str, Any]:
         transport = str(raw.get("transport") or "stdio").strip().lower()
         if transport not in {"stdio", "http"}:
             raise ValueError(f"MCP 服务 {name} 的 transport 仅支持 stdio 或 http")
@@ -160,7 +162,9 @@ class McpRegistryService:
         if not servers:
             servers.update(self._load_cursor_servers())
 
-        servers["researchos"] = self._normalize_server("researchos", _builtin_researchos_server(), builtin=True)
+        servers["researchos"] = self._normalize_server(
+            "researchos", _builtin_researchos_server(), builtin=True
+        )
         return {"version": 1, "servers": servers}
 
     def _save_registry(self, config: dict[str, Any]) -> None:
@@ -228,19 +232,29 @@ class McpRegistryService:
             states = dict(self._states)
 
         items: list[dict[str, Any]] = []
-        for name, server in sorted(config["servers"].items(), key=lambda item: (item[0] != "researchos", item[0])):
+        for name, server in sorted(
+            config["servers"].items(), key=lambda item: (item[0] != "researchos", item[0])
+        ):
             connection = connections.get(name)
             state = states.get(name, {})
             connected = connection is not None
             items.append(
                 {
                     **server,
-                    "status": "connected" if connected else "disabled" if not server["enabled"] else "disconnected",
+                    "status": "connected"
+                    if connected
+                    else "disabled"
+                    if not server["enabled"]
+                    else "disconnected",
                     "connected": connected,
-                    "tool_count": len(connection.tool_names if connection else state.get("tool_names", [])),
+                    "tool_count": len(
+                        connection.tool_names if connection else state.get("tool_names", [])
+                    ),
                     "tools": connection.tool_names if connection else state.get("tool_names", []),
                     "last_error": state.get("last_error"),
-                    "last_connected_at": connection.connected_at if connection else state.get("last_connected_at"),
+                    "last_connected_at": connection.connected_at
+                    if connection
+                    else state.get("last_connected_at"),
                     "last_disconnected_at": state.get("last_disconnected_at"),
                     "session_id": connection.session_id if connection else state.get("session_id"),
                 }
@@ -285,7 +299,9 @@ class McpRegistryService:
                     encoding="utf-8",
                     encoding_error_handler="replace",
                 )
-                read_stream, write_stream = await exit_stack.enter_async_context(stdio_client(params))
+                read_stream, write_stream = await exit_stack.enter_async_context(
+                    stdio_client(params)
+                )
                 session_id = None
             else:
                 read_stream, write_stream, session_id_getter = await exit_stack.enter_async_context(
@@ -335,7 +351,9 @@ class McpRegistryService:
             try:
                 await connection.close()
             except BaseException as exc:
-                close_error = _normalize_disconnect_error(str(exc or "").strip() or "断开连接时出现异常")
+                close_error = _normalize_disconnect_error(
+                    str(exc or "").strip() or "断开连接时出现异常"
+                )
         async with self._lock:
             state = dict(self._states.get(name, {}))
             state["last_disconnected_at"] = time.time()

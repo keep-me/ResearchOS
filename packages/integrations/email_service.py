@@ -1,6 +1,7 @@
 """
 邮箱发送服务
 """
+
 from __future__ import annotations
 
 import logging
@@ -79,6 +80,7 @@ class EmailService:
         except Exception as e:
             logger.error(f"邮件发送失败: {e}", exc_info=True)
             return False
+
 
 def create_test_email(config: EmailConfig) -> bool:
     """

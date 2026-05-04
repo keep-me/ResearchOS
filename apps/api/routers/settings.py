@@ -1,14 +1,15 @@
-"""LLM 配置 / 邮箱配置 / 工作区 / 助手策略路由
-"""
+"""LLM 配置 / 邮箱配置 / 工作区 / 助手策略路由"""
 
 from typing import Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from apps.api.deps import iso_dt
+from packages.auth import auth_enabled
+from packages.config import get_settings
 from packages.domain.schemas import LLMProviderCreate, LLMProviderUpdate
 from packages.integrations.llm_provider_schema import (
     infer_protocol_from_base_url,
@@ -150,6 +151,21 @@ def _clean_optional_text(value: str | None) -> str | None:
     return cleaned or None
 
 
+def require_sensitive_settings_access(request: Request) -> None:
+    settings = get_settings()
+    if not auth_enabled() and settings.app_env == "dev":
+        return
+    if bool(getattr(settings, "allow_sensitive_settings", False)):
+        return
+    user = getattr(request.state, "user", {}) or {}
+    if str(user.get("role") or "").strip().lower() == "admin":
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Sensitive settings require admin access or ALLOW_SENSITIVE_SETTINGS=true",
+    )
+
+
 def _provider_label(value: str | None) -> str:
     normalized = (value or "").strip().lower()
     labels = {
@@ -165,7 +181,9 @@ def _provider_label(value: str | None) -> str:
     return labels.get(normalized, normalized or "unknown")
 
 
-def _provider_value_for_ui(provider_family: str | None, provider_protocol: str | None) -> str | None:
+def _provider_value_for_ui(
+    provider_family: str | None, provider_protocol: str | None
+) -> str | None:
     family = (provider_family or "").strip().lower()
     protocol = (provider_protocol or "").strip().lower()
     if family in {"zhipu", "gemini", "qwen", "kimi", "minimax"}:
@@ -333,7 +351,11 @@ def _normalize_provider_payload(
     normalized_embedding_api_base_url = _normalize_service_base_url(embedding_api_base_url)
     normalized_embedding_protocol = normalize_protocol_name(embedding_provider)
     normalized_embedding_provider = None
-    if normalized_embedding_api_base_url or normalized_embedding_protocol or _clean_optional_text(embedding_provider):
+    if (
+        normalized_embedding_api_base_url
+        or normalized_embedding_protocol
+        or _clean_optional_text(embedding_provider)
+    ):
         effective_embedding_protocol = (
             normalized_embedding_protocol
             or infer_protocol_from_base_url(normalized_embedding_api_base_url)
@@ -355,7 +377,9 @@ def _normalize_provider_payload(
                 normalized_embedding_provider or normalized_protocol,
                 base_url=normalized_embedding_api_base_url or normalized_api_base_url,
             )
-            if normalized_embedding_provider or normalized_embedding_api_base_url or normalized_embedding_protocol
+            if normalized_embedding_provider
+            or normalized_embedding_api_base_url
+            or normalized_embedding_protocol
             else None
         ),
         "embedding_api_base_url": normalized_embedding_api_base_url,
@@ -364,11 +388,16 @@ def _normalize_provider_payload(
 
 def _analyze_provider_config(cfg) -> dict:
     provider_family = _normalize_provider_for_ui(getattr(cfg, "provider", None))
-    provider_protocol = resolve_provider_protocol(
-        getattr(cfg, "provider", None),
-        getattr(cfg, "api_base_url", None),
-    ) or "openai"
-    embedding_provider_family = _normalize_provider_for_ui(getattr(cfg, "embedding_provider", None)) or provider_family
+    provider_protocol = (
+        resolve_provider_protocol(
+            getattr(cfg, "provider", None),
+            getattr(cfg, "api_base_url", None),
+        )
+        or "openai"
+    )
+    embedding_provider_family = (
+        _normalize_provider_for_ui(getattr(cfg, "embedding_provider", None)) or provider_family
+    )
     api_base_url = _clean_optional_text(getattr(cfg, "api_base_url", None))
     embedding_api_base_url = _clean_optional_text(getattr(cfg, "embedding_api_base_url", None))
     inferred_provider = _infer_provider_from_base_url(api_base_url)
@@ -407,11 +436,19 @@ def _analyze_provider_config(cfg) -> dict:
             "如果要启用向量检索，建议单独配置 embedding Base URL 与 embedding API Key，不要直接沿用 DashScope 聊天地址。"
         )
 
-    if inferred_embedding_protocol and embedding_protocol and inferred_embedding_protocol != embedding_protocol:
+    if (
+        inferred_embedding_protocol
+        and embedding_protocol
+        and inferred_embedding_protocol != embedding_protocol
+    ):
         warnings.append(
             f"嵌入通道当前选择的是 {_provider_label(embedding_protocol)}，但嵌入 Base URL 更像 {_provider_label(inferred_embedding_protocol)} 接口。"
         )
-    elif embedding_api_base_url and inferred_embedding_provider and inferred_embedding_provider != embedding_provider_family:
+    elif (
+        embedding_api_base_url
+        and inferred_embedding_provider
+        and inferred_embedding_provider != embedding_provider_family
+    ):
         warnings.append(
             f"嵌入通道识别为 {_provider_label(embedding_provider_family)}，但嵌入 Base URL 更像 {_provider_label(inferred_embedding_provider)} 提供方的接口。"
         )
@@ -449,14 +486,24 @@ def _build_troubleshooting(chat: dict, embedding: dict, analysis: dict) -> list[
 
     if "invalid_api_key" in chat_message or "invalid access token" in chat_message:
         notes.append("聊天 API Key 无效、已过期，或与当前聊天服务不匹配。")
-    if "invalidtoken" in embedding_message or "invalid_api_key" in embedding_message or "无效的token" in embedding_message:
+    if (
+        "invalidtoken" in embedding_message
+        or "invalid_api_key" in embedding_message
+        or "无效的token" in embedding_message
+    ):
         notes.append("嵌入 API Key 无效、已过期，或与当前嵌入服务不匹配。")
     if "401" in chat_message and "token" in chat_message:
         notes.append("401 通常表示主通道的令牌无效，而不是前端没有保存。")
     if "403" in embedding_message and "token" in embedding_message:
-        notes.append("403 通常表示嵌入服务拒绝了当前 Token，请检查是否填入了对应平台的独立 embedding key。")
-    if "not found" in embedding_message and _looks_like_endpoint_url(analysis.get("embedding_api_base_url")):
-        notes.append("嵌入 Base URL 可能填成了完整 `/embeddings` 接口地址；请改成服务根地址，例如 `https://api.siliconflow.cn/v1`。")
+        notes.append(
+            "403 通常表示嵌入服务拒绝了当前 Token，请检查是否填入了对应平台的独立 embedding key。"
+        )
+    if "not found" in embedding_message and _looks_like_endpoint_url(
+        analysis.get("embedding_api_base_url")
+    ):
+        notes.append(
+            "嵌入 Base URL 可能填成了完整 `/embeddings` 接口地址；请改成服务根地址，例如 `https://api.siliconflow.cn/v1`。"
+        )
     if "not found" in chat_message and _looks_like_endpoint_url(analysis.get("api_base_url")):
         notes.append("主通道 Base URL 可能填成了完整接口地址；请改成服务根地址，例如 `.../v1`。")
 
@@ -605,7 +652,9 @@ def update_llm_provider(config_id: str, req: LLMProviderUpdate) -> dict:
             existing = LLMConfigRepository(session).get_by_id(config_id)
             normalized = _normalize_provider_payload(
                 provider=req.provider if req.provider is not None else existing.provider,
-                api_base_url=req.api_base_url if req.api_base_url is not None else existing.api_base_url,
+                api_base_url=req.api_base_url
+                if req.api_base_url is not None
+                else existing.api_base_url,
                 embedding_provider=(
                     req.embedding_provider
                     if req.embedding_provider is not None
@@ -621,7 +670,9 @@ def update_llm_provider(config_id: str, req: LLMProviderUpdate) -> dict:
                 req.image_provider if req.image_provider is not None else existing.image_provider
             )
             normalized_image_api_base_url = _normalize_image_service_base_url(
-                req.image_api_base_url if req.image_api_base_url is not None else existing.image_api_base_url
+                req.image_api_base_url
+                if req.image_api_base_url is not None
+                else existing.image_api_base_url
             )
             cfg = LLMConfigRepository(session).update(
                 config_id,
@@ -632,9 +683,13 @@ def update_llm_provider(config_id: str, req: LLMProviderUpdate) -> dict:
                 model_skim=req.model_skim,
                 model_deep=req.model_deep,
                 model_vision=req.model_vision,
-                embedding_provider=normalized["embedding_provider"] if req.embedding_provider is not None or req.embedding_api_base_url is not None else None,
+                embedding_provider=normalized["embedding_provider"]
+                if req.embedding_provider is not None or req.embedding_api_base_url is not None
+                else None,
                 embedding_api_key=req.embedding_api_key,
-                embedding_api_base_url=normalized["embedding_api_base_url"] if req.embedding_api_base_url is not None else None,
+                embedding_api_base_url=normalized["embedding_api_base_url"]
+                if req.embedding_api_base_url is not None
+                else None,
                 model_embedding=req.model_embedding,
                 model_fallback=req.model_fallback,
                 image_provider=(
@@ -643,7 +698,9 @@ def update_llm_provider(config_id: str, req: LLMProviderUpdate) -> dict:
                     else None
                 ),
                 image_api_key=req.image_api_key,
-                image_api_base_url=normalized_image_api_base_url if req.image_api_base_url is not None else None,
+                image_api_base_url=normalized_image_api_base_url
+                if req.image_api_base_url is not None
+                else None,
                 model_image=req.model_image,
             )
         except ValueError as exc:
@@ -704,7 +761,9 @@ def test_llm_provider(config_id: str) -> dict:
         "config_id": config_id,
         "name": cfg_name,
         "config": config_out,
-        "warnings": _build_troubleshooting(result.get("chat", {}), result.get("embedding", {}), analysis),
+        "warnings": _build_troubleshooting(
+            result.get("chat", {}), result.get("embedding", {}), analysis
+        ),
         **result,
     }
 
@@ -713,6 +772,8 @@ def test_llm_provider(config_id: str) -> dict:
 def list_workspace_roots() -> dict:
     from packages.agent.workspace.workspace_executor import (
         default_projects_root as _default_projects_root,
+    )
+    from packages.agent.workspace.workspace_executor import (
         list_workspace_roots as _list_workspace_roots,
     )
 
@@ -723,11 +784,14 @@ def list_workspace_roots() -> dict:
 
 
 @router.post("/settings/workspace-roots")
-def create_workspace_root(body: WorkspaceRootCreate) -> dict:
+def create_workspace_root(body: WorkspaceRootCreate, request: Request) -> dict:
+    require_sensitive_settings_access(request)
     from packages.agent.workspace.workspace_executor import (
         WorkspaceAccessError,
         add_workspace_root,
         default_projects_root,
+    )
+    from packages.agent.workspace.workspace_executor import (
         list_workspace_roots as _list_workspace_roots,
     )
 
@@ -743,11 +807,16 @@ def create_workspace_root(body: WorkspaceRootCreate) -> dict:
 
 
 @router.put("/settings/workspace-roots")
-def update_workspace_root(body: WorkspaceRootUpdate) -> dict:
+def update_workspace_root(body: WorkspaceRootUpdate, request: Request) -> dict:
+    require_sensitive_settings_access(request)
     from packages.agent.workspace.workspace_executor import (
         WorkspaceAccessError,
         default_projects_root,
+    )
+    from packages.agent.workspace.workspace_executor import (
         list_workspace_roots as _list_workspace_roots,
+    )
+    from packages.agent.workspace.workspace_executor import (
         update_workspace_root as _update_workspace_root,
     )
 
@@ -763,12 +832,15 @@ def update_workspace_root(body: WorkspaceRootUpdate) -> dict:
 
 
 @router.put("/settings/workspace-roots/default")
-def update_default_workspace_root(body: WorkspaceDefaultRootUpdate) -> dict:
+def update_default_workspace_root(body: WorkspaceDefaultRootUpdate, request: Request) -> dict:
+    require_sensitive_settings_access(request)
     from packages.agent.workspace.workspace_executor import (
         WorkspaceAccessError,
         default_projects_root,
-        list_workspace_roots as _list_workspace_roots,
         set_default_projects_root,
+    )
+    from packages.agent.workspace.workspace_executor import (
+        list_workspace_roots as _list_workspace_roots,
     )
 
     try:
@@ -782,12 +854,18 @@ def update_default_workspace_root(body: WorkspaceDefaultRootUpdate) -> dict:
 
 
 @router.delete("/settings/workspace-roots")
-def delete_workspace_root(path: str = Query(..., description="要删除的工作区根目录")) -> dict:
+def delete_workspace_root(
+    request: Request,
+    path: str = Query(..., description="要删除的工作区根目录"),
+) -> dict:
+    require_sensitive_settings_access(request)
     from packages.agent.workspace.workspace_executor import (
         WorkspaceAccessError,
         default_projects_root,
-        list_workspace_roots as _list_workspace_roots,
         remove_workspace_root,
+    )
+    from packages.agent.workspace.workspace_executor import (
+        list_workspace_roots as _list_workspace_roots,
     )
 
     try:
@@ -803,13 +881,16 @@ def delete_workspace_root(path: str = Query(..., description="要删除的工作
 
 @router.get("/settings/assistant-exec-policy")
 def get_assistant_exec_policy() -> dict:
-    from packages.agent.workspace.workspace_executor import get_assistant_exec_policy as _get_assistant_exec_policy
+    from packages.agent.workspace.workspace_executor import (
+        get_assistant_exec_policy as _get_assistant_exec_policy,
+    )
 
     return _get_assistant_exec_policy()
 
 
 @router.put("/settings/assistant-exec-policy")
-def put_assistant_exec_policy(body: AssistantExecPolicyUpdate) -> dict:
+def put_assistant_exec_policy(body: AssistantExecPolicyUpdate, request: Request) -> dict:
+    require_sensitive_settings_access(request)
     from packages.agent.workspace.workspace_executor import update_assistant_exec_policy
 
     payload = body.model_dump(exclude_none=True)
@@ -936,4 +1017,3 @@ def get_smtp_presets():
 
     providers: list[Literal["gmail", "qq", "163", "outlook"]] = ["gmail", "qq", "163", "outlook"]
     return {provider: get_default_smtp_config(provider) for provider in providers}
-

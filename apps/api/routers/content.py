@@ -1,5 +1,4 @@
-"""Wiki / 简报 / 生成内容 / 趋势路由
-"""
+"""Wiki / 简报 / 生成内容 / 趋势路由"""
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -137,7 +136,9 @@ def start_paper_wiki_task(paper_id: str) -> dict:
 
 @router.get("/generated/list")
 def generated_list(
-    type: str = Query(..., description="content_type: topic_wiki|paper_wiki|daily_brief|graph_insight"),
+    type: str = Query(
+        ..., description="content_type: topic_wiki|paper_wiki|daily_brief|graph_insight"
+    ),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict:
     with session_scope() as session:

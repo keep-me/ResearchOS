@@ -7,15 +7,15 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
-from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.pool import StaticPool
 
 from apps.api.routers import projects as projects_router
 from packages.agent.session.session_runtime import append_session_message, ensure_session_record
-from packages.domain.task_tracker import global_tracker
 from packages.domain.enums import ProjectRunActionType, ProjectRunStatus, ProjectWorkflowType
 from packages.domain.schemas import PaperCreate
+from packages.domain.task_tracker import global_tracker
 from packages.integrations.llm_client import LLMResult
 from packages.storage import db
 from packages.storage.db import Base
@@ -131,7 +131,9 @@ def test_project_crud_touch_and_default_target(monkeypatch: pytest.MonkeyPatch, 
     assert exc.value.status_code == 404
 
 
-def test_project_create_respects_explicit_local_workdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_project_create_respects_explicit_local_workdir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     explicit_workdir = tmp_path / "custom-project-root" / "anchorcot"
@@ -149,7 +151,9 @@ def test_project_create_respects_explicit_local_workdir(monkeypatch: pytest.Monk
     assert Path(item["workdir"]).exists()
 
 
-def test_touch_project_returns_404_when_row_was_deleted_during_flush(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_touch_project_returns_404_when_row_was_deleted_during_flush(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     project = _create_project("Touch Race Project")
@@ -311,7 +315,10 @@ def test_workflow_presets_hide_legacy_items(monkeypatch: pytest.MonkeyPatch, tmp
         "One-Click · Research Pipeline",
     ]
     assert all(str(item.get("intro") or "").strip() for item in payload["items"])
-    assert all(isinstance(item.get("usage_steps"), list) and item["usage_steps"] for item in payload["items"])
+    assert all(
+        isinstance(item.get("usage_steps"), list) and item["usage_steps"]
+        for item in payload["items"]
+    )
     assert all(str(item.get("sample_prompt") or "").strip() for item in payload["items"])
     assert payload["items"][1]["sample_execution_command"]
     assert payload["items"][4]["sample_rebuttal_review_bundle"]
@@ -323,7 +330,9 @@ def test_workflow_presets_hide_legacy_items(monkeypatch: pytest.MonkeyPatch, tmp
     assert payload["planned_items"] == []
 
 
-def test_project_companion_overview_includes_latest_run_tasks_and_acp(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_project_companion_overview_includes_latest_run_tasks_and_acp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     project = _create_project("Companion Overview Project")
@@ -383,7 +392,9 @@ def test_project_companion_overview_includes_latest_run_tasks_and_acp(monkeypatc
     assert payload["tasks"][0]["task_id"] == "task-project-overview"
 
 
-def test_project_companion_snapshot_includes_tasks_sessions_and_messages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_project_companion_snapshot_includes_tasks_sessions_and_messages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     project = _create_project("Companion Snapshot Project")
@@ -617,13 +628,19 @@ def test_project_run_flow_retry_and_actions(monkeypatch: pytest.MonkeyPatch, tmp
                 repo.update_run_action(
                     action_id,
                     task_id="task-action-1",
-                    log_path=(run.log_path + ".followup") if run and run.log_path else "/tmp/followup.log",
-                    result_path=(run.run_directory + f"/actions/{action_id}.md") if run and run.run_directory else f"/tmp/{action_id}.md",
+                    log_path=(run.log_path + ".followup")
+                    if run and run.log_path
+                    else "/tmp/followup.log",
+                    result_path=(run.run_directory + f"/actions/{action_id}.md")
+                    if run and run.run_directory
+                    else f"/tmp/{action_id}.md",
                 )
         return "task-action-1"
 
     monkeypatch.setattr(projects_router, "submit_project_run", _fake_submit_project_run)
-    monkeypatch.setattr(projects_router, "submit_project_run_action", _fake_submit_project_run_action)
+    monkeypatch.setattr(
+        projects_router, "submit_project_run_action", _fake_submit_project_run_action
+    )
 
     created_run = projects_router.create_project_run(
         project_id,
@@ -637,7 +654,9 @@ def test_project_run_flow_retry_and_actions(monkeypatch: pytest.MonkeyPatch, tmp
     run_id = created_run["id"]
     assert run_id in submitted_run_ids
     assert created_run["workflow_type"] == ProjectWorkflowType.literature_review.value
-    assert created_run["orchestration"]["workflow_type"] == ProjectWorkflowType.literature_review.value
+    assert (
+        created_run["orchestration"]["workflow_type"] == ProjectWorkflowType.literature_review.value
+    )
     assert len(created_run["stage_trace"]) == len(created_run["orchestration"]["stages"])
     assert created_run["run_directory"]
     assert created_run["log_path"]
@@ -669,7 +688,9 @@ def test_project_run_flow_retry_and_actions(monkeypatch: pytest.MonkeyPatch, tmp
     assert len(listed) == 2
 
 
-def test_project_run_paper_ids_build_full_index_and_link_to_project(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_project_run_paper_ids_build_full_index_and_link_to_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     project = _create_project("Run Paper Index Project")
@@ -749,7 +770,9 @@ def test_project_run_external_literature_candidate_import_links_project(
             "papers": [],
         }
 
-    monkeypatch.setattr(projects_router.pipelines, "ingest_external_entries", _fake_ingest_external_entries)
+    monkeypatch.setattr(
+        projects_router.pipelines, "ingest_external_entries", _fake_ingest_external_entries
+    )
 
     imported = projects_router.import_project_run_literature_candidates(
         run_id,
@@ -771,7 +794,9 @@ def test_project_run_external_literature_candidate_import_links_project(
     assert {item["id"] for item in project_detail["papers"]} == {existing_paper_id}
 
 
-def test_project_run_detail_falls_back_to_persisted_artifact_refs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_project_run_detail_falls_back_to_persisted_artifact_refs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     project = _create_project("Persisted Artifact Project")
@@ -814,7 +839,9 @@ def test_project_run_detail_falls_back_to_persisted_artifact_refs(monkeypatch: p
     assert detail["metadata"]["artifact_refs"][0]["relative_path"] == "reports/literature-review.md"
 
 
-def test_delete_project_run_removes_records_tasks_and_artifacts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_delete_project_run_removes_records_tasks_and_artifacts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     project = _create_project("Delete Run Project")
@@ -891,9 +918,21 @@ def test_delete_project_run_removes_records_tasks_and_artifacts(monkeypatch: pyt
     action_log_path.write_text("action log\n", encoding="utf-8")
     action_result_path.write_text("# action\n", encoding="utf-8")
 
-    global_tracker.start(run_task_id, "project_run", "delete run", total=1, metadata={"project_id": project["id"], "run_id": run_id})
+    global_tracker.start(
+        run_task_id,
+        "project_run",
+        "delete run",
+        total=1,
+        metadata={"project_id": project["id"], "run_id": run_id},
+    )
     global_tracker.finish(run_task_id)
-    global_tracker.start(action_task_id, "project_action", "delete run action", total=1, metadata={"project_id": project["id"], "run_id": run_id, "action_id": action_id})
+    global_tracker.start(
+        action_task_id,
+        "project_action",
+        "delete run action",
+        total=1,
+        metadata={"project_id": project["id"], "run_id": run_id, "action_id": action_id},
+    )
     global_tracker.finish(action_task_id)
 
     payload = projects_router.delete_project_run(run_id, delete_artifacts=True)
@@ -980,7 +1019,9 @@ def test_delete_project_run_rejects_active_run(monkeypatch: pytest.MonkeyPatch, 
     assert "先停止" in str(exc.value.detail)
 
 
-def test_project_run_create_accepts_auto_proceed_flag(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_project_run_create_accepts_auto_proceed_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     _configure_test_db(monkeypatch)
     _bind_projects_root(monkeypatch, tmp_path)
     project = _create_project("Auto Proceed Project")
@@ -1082,7 +1123,9 @@ def test_project_run_checkpoint_response_flow(monkeypatch: pytest.MonkeyPatch, t
             )
         return "task-run-approved"
 
-    monkeypatch.setattr("packages.ai.project.execution_service.submit_project_run", _fake_submit_project_run)
+    monkeypatch.setattr(
+        "packages.ai.project.execution_service.submit_project_run", _fake_submit_project_run
+    )
 
     approved = projects_router.respond_project_run_checkpoint(
         run_id,
@@ -1198,4 +1241,3 @@ def test_project_run_and_action_validation_errors(monkeypatch: pytest.MonkeyPatc
         )
     assert exc_action.value.status_code == 400
     assert "action_type" in str(exc_action.value.detail)
-

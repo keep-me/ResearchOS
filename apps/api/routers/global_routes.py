@@ -97,7 +97,9 @@ async def global_event_ws(websocket: WebSocket):
     except Exception:
         logger.exception("global websocket stream failed")
         try:
-            await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="global websocket stream failed")
+            await websocket.close(
+                code=status.WS_1011_INTERNAL_ERROR, reason="global websocket stream failed"
+            )
         except Exception:
             pass
 
@@ -145,7 +147,7 @@ async def _iter_global_event_stream(
                 break
             try:
                 payload = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield _make_sse_data(
                     {
                         "payload": {
@@ -188,7 +190,7 @@ async def _forward_global_events_websocket(
         while True:
             try:
                 payload = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await websocket.send_json(
                     {
                         "payload": {

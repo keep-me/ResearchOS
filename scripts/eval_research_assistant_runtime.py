@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -67,11 +67,7 @@ def _text_from_parts(parts: list[dict[str, Any]] | None) -> str:
 
 
 def _tool_parts(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    return [
-        dict(part)
-        for part in (parts or [])
-        if str(part.get("type") or "") == "tool"
-    ]
+    return [dict(part) for part in (parts or []) if str(part.get("type") or "") == "tool"]
 
 
 def _last_assistant_message(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -127,8 +123,7 @@ def _reasoning_text(events: list[dict[str, Any]]) -> str:
     return "".join(
         str((item.get("data") or {}).get("content") or "")
         for item in events
-        if str(item.get("event") or "") == "reasoning_delta"
-        and isinstance(item.get("data"), dict)
+        if str(item.get("event") or "") == "reasoning_delta" and isinstance(item.get("data"), dict)
     )
 
 
@@ -172,8 +167,12 @@ def _run_case(client: TestClient, workspace: str, case: EvalCase) -> dict[str, A
     session_payload = dict(state.get("session") or {})
     last_assistant = _last_assistant_message(messages) or {}
     info = last_assistant.get("info") if isinstance(last_assistant.get("info"), dict) else {}
-    tool_parts = _tool_parts(last_assistant.get("parts") if isinstance(last_assistant.get("parts"), list) else [])
-    answer_text = _text_from_parts(last_assistant.get("parts") if isinstance(last_assistant.get("parts"), list) else [])
+    tool_parts = _tool_parts(
+        last_assistant.get("parts") if isinstance(last_assistant.get("parts"), list) else []
+    )
+    answer_text = _text_from_parts(
+        last_assistant.get("parts") if isinstance(last_assistant.get("parts"), list) else []
+    )
     persisted_reasoning = str(last_assistant.get("reasoning_content") or "")
     return {
         "name": case.name,
@@ -193,13 +192,20 @@ def _run_case(client: TestClient, workspace: str, case: EvalCase) -> dict[str, A
         "assistant_finish": str(info.get("finish") or ""),
         "assistant_mode": str(info.get("mode") or ""),
         "assistant_variant": str(info.get("variant") or ""),
-        "assistant_tokens": dict(info.get("tokens") or {}) if isinstance(info.get("tokens"), dict) else {},
+        "assistant_tokens": dict(info.get("tokens") or {})
+        if isinstance(info.get("tokens"), dict)
+        else {},
         "assistant_text": answer_text,
         "assistant_text_preview": answer_text[:1200],
         "assistant_tool_parts": [
             {
                 "tool": str(part.get("tool") or ""),
-                "status": str(((part.get("state") or {}) if isinstance(part.get("state"), dict) else {}).get("status") or ""),
+                "status": str(
+                    ((part.get("state") or {}) if isinstance(part.get("state"), dict) else {}).get(
+                        "status"
+                    )
+                    or ""
+                ),
                 "summary": str(part.get("summary") or ""),
             }
             for part in tool_parts
@@ -207,8 +213,7 @@ def _run_case(client: TestClient, workspace: str, case: EvalCase) -> dict[str, A
         "errors": [
             dict(item.get("data") or {})
             for item in events
-            if str(item.get("event") or "") == "error"
-            and isinstance(item.get("data"), dict)
+            if str(item.get("event") or "") == "error" and isinstance(item.get("data"), dict)
         ],
         "raw_events": events,
     }
@@ -261,7 +266,13 @@ def _run_mode_switch_case(client: TestClient, workspace: str, session_id: str) -
     assistants = [
         message
         for message in messages
-        if str(((message.get("info") or {}) if isinstance(message.get("info"), dict) else {}).get("role") or "") == "assistant"
+        if str(
+            ((message.get("info") or {}) if isinstance(message.get("info"), dict) else {}).get(
+                "role"
+            )
+            or ""
+        )
+        == "assistant"
     ]
     latest = assistants[-1] if assistants else {}
     latest_info = latest.get("info") if isinstance(latest.get("info"), dict) else {}
@@ -277,12 +288,13 @@ def _run_mode_switch_case(client: TestClient, workspace: str, session_id: str) -
             "assistant_mode": str(latest_info.get("mode") or ""),
             "assistant_variant": str(latest_info.get("variant") or ""),
             "assistant_finish": str(latest_info.get("finish") or ""),
-            "assistant_text_preview": _text_from_parts(latest.get("parts") if isinstance(latest.get("parts"), list) else [])[:1200],
+            "assistant_text_preview": _text_from_parts(
+                latest.get("parts") if isinstance(latest.get("parts"), list) else []
+            )[:1200],
             "errors": [
                 dict(item.get("data") or {})
                 for item in second_events
-                if str(item.get("event") or "") == "error"
-                and isinstance(item.get("data"), dict)
+                if str(item.get("event") or "") == "error" and isinstance(item.get("data"), dict)
             ],
         },
     }
@@ -431,8 +443,12 @@ def main() -> int:
             for item in report["cases"]
         ],
         "mode_switch": {
-            "plan_session_mode_after": report["mode_switch"]["first_turn"]["session_mode_after"] if isinstance(report["mode_switch"], dict) else None,
-            "build_session_mode_after": report["mode_switch"]["second_turn"]["session_mode_after"] if isinstance(report["mode_switch"], dict) else None,
+            "plan_session_mode_after": report["mode_switch"]["first_turn"]["session_mode_after"]
+            if isinstance(report["mode_switch"], dict)
+            else None,
+            "build_session_mode_after": report["mode_switch"]["second_turn"]["session_mode_after"]
+            if isinstance(report["mode_switch"], dict)
+            else None,
         },
     }
     print("---")

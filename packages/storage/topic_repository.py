@@ -35,11 +35,7 @@ class TopicRepository:
         if normalized_type not in {"all", "conference", "journal"}:
             normalized_type = "all"
 
-        normalized_names = [
-            str(item).strip()
-            for item in (venue_names or [])
-            if str(item).strip()
-        ]
+        normalized_names = [str(item).strip() for item in (venue_names or []) if str(item).strip()]
 
         normalized_year: int | None = None
         if from_year is not None:
@@ -101,8 +97,7 @@ class TopicRepository:
                 or "topic_subscriptions.last_run_error" in str(exc)
             ):
                 logger.warning(
-                    "topic_subscriptions schema is outdated; "
-                    "returning empty topic list as fallback"
+                    "topic_subscriptions schema is outdated; returning empty topic list as fallback"
                 )
                 return []
             raise
@@ -138,13 +133,14 @@ class TopicRepository:
         date_filter_days: int = 7,
         date_filter_start: date | None = None,
         date_filter_end: date | None = None,
-
     ) -> TopicSubscription:
-        normalized_tier, normalized_type, normalized_names, normalized_year = self._normalize_external_filter_values(
-            venue_tier=venue_tier,
-            venue_type=venue_type,
-            venue_names=venue_names,
-            from_year=from_year,
+        normalized_tier, normalized_type, normalized_names, normalized_year = (
+            self._normalize_external_filter_values(
+                venue_tier=venue_tier,
+                venue_type=venue_type,
+                venue_names=venue_names,
+                from_year=from_year,
+            )
         )
         normalized_days, normalized_start, normalized_end = self._normalize_date_filter_values(
             enable_date_filter=enable_date_filter,
@@ -253,11 +249,13 @@ class TopicRepository:
             or venue_names is not _UNSET
             or from_year is not _UNSET
         ):
-            normalized_tier, normalized_type, normalized_names, normalized_year = self._normalize_external_filter_values(
-                venue_tier=venue_tier or topic.venue_tier,
-                venue_type=venue_type or topic.venue_type,
-                venue_names=topic.venue_names_json if venue_names is _UNSET else venue_names,
-                from_year=topic.from_year if from_year is _UNSET else from_year,
+            normalized_tier, normalized_type, normalized_names, normalized_year = (
+                self._normalize_external_filter_values(
+                    venue_tier=venue_tier or topic.venue_tier,
+                    venue_type=venue_type or topic.venue_type,
+                    venue_names=topic.venue_names_json if venue_names is _UNSET else venue_names,
+                    from_year=topic.from_year if from_year is _UNSET else from_year,
+                )
             )
             topic.venue_tier = normalized_tier
             topic.venue_type = normalized_type

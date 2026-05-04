@@ -2,13 +2,15 @@
 学术写作助手服务 - 封装高质量写作 Prompt 模板
 Prompt 模板来源：https://github.com/Leey21/awesome-ai-research-writing
 """
+
 from __future__ import annotations
 
-import httpx
 import logging
 from dataclasses import dataclass
 from enum import Enum
 from urllib.parse import quote, urlparse
+
+import httpx
 
 from packages.config import get_settings
 from packages.integrations.llm_client import LLMClient, LLMResult
@@ -173,11 +175,10 @@ WRITING_TEMPLATES: list[WritingTemplate] = [
     ),
 ]
 
-TEMPLATE_MAP: dict[WritingAction, WritingTemplate] = {
-    t.action: t for t in WRITING_TEMPLATES
-}
+TEMPLATE_MAP: dict[WritingAction, WritingTemplate] = {t.action: t for t in WRITING_TEMPLATES}
 
 # Prompt 模板构建函数
+
 
 def _build_zh_to_en(text: str) -> str:
     return (
@@ -526,22 +527,41 @@ class WritingService:
         except Exception:
             logger.debug("Failed to resolve active LLM config for image generation", exc_info=True)
 
-        active_provider = _normalize_image_provider(getattr(active, "provider", None)) if active else None
+        active_provider = (
+            _normalize_image_provider(getattr(active, "provider", None)) if active else None
+        )
         active_api_key = _clean_optional_text(getattr(active, "api_key", None)) if active else None
-        active_api_base_url = _clean_optional_text(getattr(active, "api_base_url", None)) if active else None
+        active_api_base_url = (
+            _clean_optional_text(getattr(active, "api_base_url", None)) if active else None
+        )
 
-        configured_provider = _normalize_image_provider(getattr(active, "image_provider", None)) if active else None
-        configured_api_key = _clean_optional_text(getattr(active, "image_api_key", None)) if active else None
-        configured_api_base_url = _clean_optional_text(getattr(active, "image_api_base_url", None)) if active else None
-        configured_model = _clean_optional_text(getattr(active, "model_image", None)) if active else None
+        configured_provider = (
+            _normalize_image_provider(getattr(active, "image_provider", None)) if active else None
+        )
+        configured_api_key = (
+            _clean_optional_text(getattr(active, "image_api_key", None)) if active else None
+        )
+        configured_api_base_url = (
+            _clean_optional_text(getattr(active, "image_api_base_url", None)) if active else None
+        )
+        configured_model = (
+            _clean_optional_text(getattr(active, "model_image", None)) if active else None
+        )
 
         settings_provider = _normalize_image_provider(self.settings.image_provider)
-        settings_api_key = _clean_optional_text(self.settings.image_api_key) or _clean_optional_text(self.settings.gemini_api_key)
+        settings_api_key = _clean_optional_text(
+            self.settings.image_api_key
+        ) or _clean_optional_text(self.settings.gemini_api_key)
         settings_api_base_url = _clean_optional_text(self.settings.image_api_base_url)
         settings_model = _clean_optional_text(self.settings.image_model)
 
         provider = configured_provider or settings_provider
-        if provider is None and (configured_api_key or settings_api_key or configured_api_base_url or settings_api_base_url):
+        if provider is None and (
+            configured_api_key
+            or settings_api_key
+            or configured_api_base_url
+            or settings_api_base_url
+        ):
             provider = "gemini"
         if provider is None and active_provider == "gemini":
             provider = "gemini"
@@ -601,7 +621,9 @@ class WritingService:
 
         prompt = builder(text)
         result: LLMResult = self.llm.summarize_text(
-            prompt, stage="writing", max_tokens=max_tokens,
+            prompt,
+            stage="writing",
+            max_tokens=max_tokens,
         )
         self.llm.trace_result(
             result,
@@ -689,7 +711,9 @@ class WritingService:
 
         prompt = "\n".join(parts)
         result: LLMResult = self.llm.summarize_text(
-            prompt, stage="writing", max_tokens=max_tokens,
+            prompt,
+            stage="writing",
+            max_tokens=max_tokens,
         )
 
         last_user = ""
@@ -799,7 +823,8 @@ class WritingService:
             "action": WritingAction.IMAGE_GENERATE.value,
             "label": TEMPLATE_MAP[WritingAction.IMAGE_GENERATE].label,
             "kind": "image",
-            "content": "\n\n".join(part for part in text_parts if part) or "已生成论文配图，可继续微调提示词或参考图。",
+            "content": "\n\n".join(part for part in text_parts if part)
+            or "已生成论文配图，可继续微调提示词或参考图。",
             "image_base64": image_result,
             "mime_type": mime_type,
             "provider": cfg.provider,

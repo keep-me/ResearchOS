@@ -40,6 +40,7 @@ def test_claw_normalizes_to_auto_and_keeps_local_execution_when_workspace_server
     assert claw_service._resolve_execution_mode(normalized, workspace_server_id=None) == "local"
     assert claw_service._resolve_execution_mode(normalized, workspace_server_id="xdu") == "local"
 
+
 def test_run_local_claw_remote_bridge_sets_allowed_tools_and_context_env(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -67,8 +68,14 @@ def test_run_local_claw_remote_bridge_sets_allowed_tools_and_context_env(
             stderr="",
         )
 
-    monkeypatch.setattr(cli_agent_service, "_ensure_claw_workspace_settings", lambda _workspace_dir: settings_path)
-    monkeypatch.setattr(cli_agent_service, "bridge_qualified_tool_names", lambda: ["mcp__ResearchOS__read", "mcp__ResearchOS__bash"])
+    monkeypatch.setattr(
+        cli_agent_service, "_ensure_claw_workspace_settings", lambda _workspace_dir: settings_path
+    )
+    monkeypatch.setattr(
+        cli_agent_service,
+        "bridge_qualified_tool_names",
+        lambda: ["mcp__ResearchOS__read", "mcp__ResearchOS__bash"],
+    )
     monkeypatch.setattr(cli_agent_service, "_session_mode_for_claw", lambda _session_id: "plan")
     monkeypatch.setattr(cli_agent_service.time, "perf_counter", lambda: 100.0)
     monkeypatch.setattr(cli_agent_service.subprocess, "run", _fake_subprocess_run)
@@ -158,7 +165,9 @@ def test_execute_prompt_routes_remote_claw_through_local_bridge(
     monkeypatch.setattr(
         claw_service,
         "_execute_remote",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("_execute_remote should not be used")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("_execute_remote should not be used")
+        ),
     )
 
     def _fake_execute_local(config: dict[str, object], **kwargs):
@@ -207,7 +216,9 @@ def test_local_claw_workspace_settings_use_packaged_mcp_flag_when_frozen(
     tmp_path: Path,
 ):
     monkeypatch.setattr(cli_agent_service.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(cli_agent_service.sys, "executable", r"C:\Program Files\ResearchOS\researchos-server.exe")
+    monkeypatch.setattr(
+        cli_agent_service.sys, "executable", r"C:\Program Files\ResearchOS\researchos-server.exe"
+    )
     monkeypatch.setenv("RESEARCHOS_DATA_DIR", r"D:\ResearchOS\data")
 
     settings_path = cli_agent_service._ensure_claw_workspace_settings(tmp_path)
@@ -256,7 +267,9 @@ def test_packaged_missing_claw_message_does_not_point_to_meipass_build_dir(
     claw_service: cli_agent_service.CliAgentService,
 ):
     monkeypatch.setattr(cli_agent_service.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(cli_agent_service.sys, "executable", r"C:\Program Files\ResearchOS\researchos-server.exe")
+    monkeypatch.setattr(
+        cli_agent_service.sys, "executable", r"C:\Program Files\ResearchOS\researchos-server.exe"
+    )
     monkeypatch.delenv("RESEARCHOS_CLAW_BINARY", raising=False)
 
     capability = claw_service._build_chat_capability(
@@ -284,7 +297,9 @@ def test_frozen_claw_resolves_bundled_binary_from_env_override(
     bundled.write_bytes(b"MZfake")
 
     monkeypatch.setattr(cli_agent_service.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(cli_agent_service.sys, "executable", str(tmp_path / "researchos-server.exe"))
+    monkeypatch.setattr(
+        cli_agent_service.sys, "executable", str(tmp_path / "researchos-server.exe")
+    )
     monkeypatch.setenv("RESEARCHOS_CLAW_BINARY", str(bundled))
 
     resolved = claw_service._resolve_config(claw_service._normalize_config({"agent_type": "claw"}))
@@ -333,8 +348,15 @@ def test_packaged_temp_runtime_still_prefers_install_dir_claw_binary(
     temp_runtime_root.mkdir(parents=True)
 
     monkeypatch.chdir(install_dir)
-    monkeypatch.setattr(cli_agent_service.sys, "executable", str(tmp_path / "_MEI12345" / "researchos-server.exe"))
-    monkeypatch.setattr(cli_agent_service.sys, "argv", [str(tmp_path / "_MEI12345" / "researchos-server.exe")], raising=False)
+    monkeypatch.setattr(
+        cli_agent_service.sys, "executable", str(tmp_path / "_MEI12345" / "researchos-server.exe")
+    )
+    monkeypatch.setattr(
+        cli_agent_service.sys,
+        "argv",
+        [str(tmp_path / "_MEI12345" / "researchos-server.exe")],
+        raising=False,
+    )
     monkeypatch.delenv("RESEARCHOS_CLAW_BINARY", raising=False)
     monkeypatch.setattr(cli_agent_service, "_claw_runtime_root", lambda: temp_runtime_root)
 

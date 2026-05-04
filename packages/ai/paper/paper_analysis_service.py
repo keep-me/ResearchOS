@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-import time
 from uuid import UUID
 
 from packages.ai.paper.analysis_options import (
@@ -51,7 +51,13 @@ class PaperAnalysisService:
         profile_text_chars = int(profile["text_chars"])
         if normalized_evidence_mode == "full":
             profile_text_pages = 0
-            profile_text_chars = 28000 if normalized_detail == "high" else 22000 if normalized_detail == "medium" else 14000
+            profile_text_chars = (
+                28000
+                if normalized_detail == "high"
+                else 22000
+                if normalized_detail == "medium"
+                else 14000
+            )
         else:
             profile_text_pages = max(2, min(profile_text_pages, 6))
             profile_text_chars = max(2600, min(profile_text_chars, 5200))
@@ -87,8 +93,16 @@ class PaperAnalysisService:
             existing = session.execute(
                 select(AnalysisReport).where(AnalysisReport.paper_id == str(paper_id))
             ).scalar_one_or_none()
-            skim_report = existing.summary_md if existing and existing.summary_md else metadata.get("skim_report")
-            deep_report = existing.deep_dive_md if existing and existing.deep_dive_md else metadata.get("deep_report")
+            skim_report = (
+                existing.summary_md
+                if existing and existing.summary_md
+                else metadata.get("skim_report")
+            )
+            deep_report = (
+                existing.deep_dive_md
+                if existing and existing.deep_dive_md
+                else metadata.get("deep_report")
+            )
             reasoning_chain = metadata.get("reasoning_chain")
 
         _report("正在提取论文文本...", 10)
@@ -176,7 +190,9 @@ class PaperAnalysisService:
                 max_chars=0,
             )
         else:
-            rough_evidence = evidence.build_analysis_context(max_chars=max(3200, profile_text_chars))
+            rough_evidence = evidence.build_analysis_context(
+                max_chars=max(3200, profile_text_chars)
+            )
             overview_evidence = rough_evidence[: max(2200, min(len(rough_evidence), 3200))]
             comprehension_evidence = rough_evidence[: max(3000, min(len(rough_evidence), 4200))]
             deep_analysis_evidence = rough_evidence[: max(3600, min(len(rough_evidence), 5200))]

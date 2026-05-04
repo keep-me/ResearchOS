@@ -13,6 +13,8 @@ from packages.agent.workspace.workspace_remote import DEFAULT_SSH_PORT, clean_te
 from packages.config import get_settings
 
 LOCAL_SERVER_ID = "local"
+_SESSION_SECRETS: dict[str, str] = {}
+_SECRET_FIELDS = {"password", "private_key", "passphrase"}
 
 
 class WorkspaceServerRegistryError(RuntimeError):
@@ -43,23 +45,74 @@ def _slugify_server_id(value: str) -> str:
     return text or "server"
 
 
-def _parse_ssh_target(raw_value: str, default_port: int = DEFAULT_SSH_PORT) -> tuple[str, int, str | None]:
+def _parse_ssh_target(
+    raw_value: str, default_port: int = DEFAULT_SSH_PORT
+) -> tuple[str, int, str | None]:
     raw = clean_text(raw_value)
     if not raw:
         return "", default_port, None
     parsed_input = raw if "://" in raw else f"ssh://{raw}"
     parsed = urlparse(parsed_input)
-    return (parsed.hostname or "").strip("[]"), parsed.port or default_port, clean_text(parsed.username) or None
+    return (
+        (parsed.hostname or "").strip("[]"),
+        parsed.port or default_port,
+        clean_text(parsed.username) or None,
+    )
 
 
-def _merge_secret_value(incoming: str | None, existing: object = None) -> str:
+def _secret_ref(server_id: str, field: str) -> str:
+    return f"session:{server_id}:{field}"
+
+
+def _store_session_secret(server_id: str, field: str, value: str) -> str:
+    ref = _secret_ref(server_id, field)
+    _SESSION_SECRETS[ref] = value
+    return ref
+
+
+def _resolve_secret_value(value: object = None, ref: object = None) -> str:
+    raw_ref = clean_text(ref)
+    if raw_ref.startswith("env:"):
+        import os
+
+        return clean_text(os.environ.get(raw_ref[len("env:") :]))
+    if raw_ref.startswith("session:"):
+        return clean_text(_SESSION_SECRETS.get(raw_ref))
+    return clean_text(value)
+
+
+def _persistable_secret_fields(entry: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(entry)
+    server_id = clean_text(payload.get("id"))
+    for field in _SECRET_FIELDS:
+        value = clean_text(payload.pop(field, None))
+        ref_key = f"{field}_ref"
+        ref = clean_text(payload.get(ref_key))
+        if value and server_id:
+            payload[ref_key] = _store_session_secret(server_id, field, value)
+        elif ref:
+            payload[ref_key] = ref
+        else:
+            payload.pop(ref_key, None)
+    return payload
+
+
+def _merge_secret_value(
+    field: str,
+    server_id: str,
+    incoming: str | None,
+    existing: Mapping[str, Any],
+) -> tuple[str, str]:
     incoming_clean = clean_text(incoming)
-    existing_clean = clean_text(existing)
-    if incoming is None:
-        return existing_clean
-    if not incoming_clean:
-        return existing_clean
-    return incoming_clean
+    existing_ref = clean_text(existing.get(f"{field}_ref"))
+    existing_value = _resolve_secret_value(existing.get(field), existing_ref)
+    if incoming is None or not incoming_clean:
+        if existing_ref:
+            return existing_value, existing_ref
+        return existing_value, _store_session_secret(
+            server_id, field, existing_value
+        ) if existing_value else ""
+    return incoming_clean, _store_session_secret(server_id, field, incoming_clean)
 
 
 def _as_payload_dict(payload: Mapping[str, Any] | Any) -> dict[str, Any]:
@@ -86,7 +139,13 @@ def _load_server_entries() -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         server_id = _slugify_server_id(
-            str(item.get("id") or item.get("label") or item.get("host") or item.get("base_url") or "")
+            str(
+                item.get("id")
+                or item.get("label")
+                or item.get("host")
+                or item.get("base_url")
+                or ""
+            )
         )
         if not server_id or server_id == LOCAL_SERVER_ID:
             continue
@@ -105,10 +164,18 @@ def _load_server_entries() -> list[dict[str, Any]]:
                 "host": host,
                 "port": port,
                 "username": username,
-                "password": clean_text(item.get("password")),
-                "private_key": clean_text(item.get("private_key")),
-                "passphrase": clean_text(item.get("passphrase")),
+                "password": _resolve_secret_value(item.get("password"), item.get("password_ref")),
+                "password_ref": clean_text(item.get("password_ref")),
+                "private_key": _resolve_secret_value(
+                    item.get("private_key"), item.get("private_key_ref")
+                ),
+                "private_key_ref": clean_text(item.get("private_key_ref")),
+                "passphrase": _resolve_secret_value(
+                    item.get("passphrase"), item.get("passphrase_ref")
+                ),
+                "passphrase_ref": clean_text(item.get("passphrase_ref")),
                 "workspace_root": clean_text(item.get("workspace_root")),
+                "host_key_fingerprint": clean_text(item.get("host_key_fingerprint")),
                 "enabled": bool(item.get("enabled", True)),
             }
         )
@@ -128,34 +195,61 @@ def _normalize_server_entry(
     )
     if not host:
         raise WorkspaceServerValidationError("SSH 主机不能为空")
-    username = clean_text(source.get("username")) or parsed_username or clean_text(existing_payload.get("username"))
+    username = (
+        clean_text(source.get("username"))
+        or parsed_username
+        or clean_text(existing_payload.get("username"))
+    )
     if not username:
         raise WorkspaceServerValidationError("SSH 用户名不能为空")
-    password = _merge_secret_value(source.get("password"), existing_payload.get("password"))
-    private_key = _merge_secret_value(source.get("private_key"), existing_payload.get("private_key"))
-    passphrase = _merge_secret_value(source.get("passphrase"), existing_payload.get("passphrase"))
+    entry_id = _slugify_server_id(
+        str(source.get("id") or existing_payload.get("id") or source.get("label") or host)
+    )
+    password, password_ref = _merge_secret_value(
+        "password", entry_id, source.get("password"), existing_payload
+    )
+    private_key, private_key_ref = _merge_secret_value(
+        "private_key",
+        entry_id,
+        source.get("private_key"),
+        existing_payload,
+    )
+    passphrase, passphrase_ref = _merge_secret_value(
+        "passphrase",
+        entry_id,
+        source.get("passphrase"),
+        existing_payload,
+    )
     if not password and not private_key:
         raise WorkspaceServerValidationError("请提供 SSH 密码或私钥")
     workspace_root = clean_text(source.get("workspace_root"))
     if source.get("workspace_root") is None:
         workspace_root = clean_text(existing_payload.get("workspace_root"))
+    host_key_fingerprint = clean_text(source.get("host_key_fingerprint"))
+    if source.get("host_key_fingerprint") is None:
+        host_key_fingerprint = clean_text(existing_payload.get("host_key_fingerprint"))
     return {
-        "id": _slugify_server_id(str(source.get("id") or source.get("label") or host)),
+        "id": entry_id,
         "label": clean_text(source.get("label")) or host,
         "host": host,
         "port": int(port or DEFAULT_SSH_PORT),
         "username": username,
         "password": password,
+        "password_ref": password_ref,
         "private_key": private_key,
+        "private_key_ref": private_key_ref,
         "passphrase": passphrase,
+        "passphrase_ref": passphrase_ref,
         "workspace_root": workspace_root,
+        "host_key_fingerprint": host_key_fingerprint,
         "enabled": bool(source.get("enabled", True)),
     }
 
 
 def _save_server_entries(entries: list[dict[str, Any]]) -> None:
     store = _server_store_path()
-    store.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = [_persistable_secret_fields(entry) for entry in entries]
+    store.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _local_server_item() -> dict[str, Any]:
@@ -182,18 +276,22 @@ def _serialize_server(entry: Mapping[str, Any]) -> dict[str, Any]:
     port = int(entry.get("port") or DEFAULT_SSH_PORT)
     enabled = bool(entry.get("enabled", True))
     workspace_root = clean_text(entry.get("workspace_root")) or None
+    host_key_fingerprint = clean_text(entry.get("host_key_fingerprint")) or None
     return {
         "id": entry["id"],
         "label": entry["label"],
         "kind": "ssh",
         "available": enabled,
         "phase": "ready" if enabled else "disabled",
-        "message": None if workspace_root else "未配置远程工作区目录时，将优先使用请求中的远程路径。",
+        "message": None
+        if workspace_root
+        else "未配置远程工作区目录时，将优先使用请求中的远程路径。",
         "base_url": f"ssh://{host}:{port}",
         "host": host,
         "port": port,
         "username": clean_text(entry.get("username")) or None,
         "workspace_root": workspace_root,
+        "host_key_fingerprint": host_key_fingerprint,
         "has_password": has_password,
         "password_masked": mask_secret(entry.get("password")),
         "has_private_key": has_private_key,
@@ -264,4 +362,3 @@ def delete_workspace_server(server_id: str) -> str:
         raise WorkspaceServerNotFoundError("未找到要删除的服务器")
     _save_server_entries(remaining)
     return normalized_id
-

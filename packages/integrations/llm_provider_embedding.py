@@ -30,9 +30,9 @@ def embedding_candidates(
     ):
         if alias not in model_candidates:
             model_candidates.append(alias)
-    if (base_url or "").lower().find("aliyuncs.com") >= 0 or (
-        primary_base_url or ""
-    ).lower().find("aliyuncs.com") >= 0:
+    if (base_url or "").lower().find("aliyuncs.com") >= 0 or (primary_base_url or "").lower().find(
+        "aliyuncs.com"
+    ) >= 0:
         for alias in ("text-embedding-v3", "text-embedding-v2"):
             if alias not in model_candidates:
                 model_candidates.append(alias)
@@ -40,11 +40,7 @@ def embedding_candidates(
     base_candidates: list[str | None] = []
     if base_url:
         base_candidates.append(base_url)
-    if (
-        not explicit_embedding_base_url
-        and primary_base_url
-        and primary_base_url != base_url
-    ):
+    if not explicit_embedding_base_url and primary_base_url and primary_base_url != base_url:
         base_candidates.append(primary_base_url)
     if not base_candidates:
         base_candidates.append(None)
@@ -141,8 +137,7 @@ def embed_openai_compatible_or_raise(
                     payload = client._to_dict(response)
                     keys = ",".join(sorted(payload.keys()))[:200]
                     raise RuntimeError(
-                        "No embedding data received"
-                        + (f" (response_keys={keys})" if keys else "")
+                        "No embedding data received" + (f" (response_keys={keys})" if keys else "")
                     )
                 in_tokens = client._extract_embedding_tokens(response)
                 in_cost, _ = client._estimate_cost(
@@ -173,11 +168,9 @@ def embed_openai_compatible_or_raise(
                 return vector, candidate_model, candidate_base
             except Exception as exc:
                 last_exc = exc
-                if (
-                    preferred_exc is None
-                    or embedding_error_priority(exc)
-                    > embedding_error_priority(preferred_exc)
-                ):
+                if preferred_exc is None or embedding_error_priority(
+                    exc
+                ) > embedding_error_priority(preferred_exc):
                     preferred_exc = exc
 
     if preferred_exc is not None:

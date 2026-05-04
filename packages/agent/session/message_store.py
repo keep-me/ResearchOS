@@ -19,7 +19,9 @@ _part_sort_key = session_store._part_sort_key
 
 
 def delete_session_message(session_id: str | None, message_id: str) -> bool:
-    from packages.agent.session.session_runtime import delete_session_message as _delete_session_message
+    from packages.agent.session.session_runtime import (
+        delete_session_message as _delete_session_message,
+    )
 
     return _delete_session_message(session_id, message_id)
 
@@ -40,4 +42,3 @@ __all__ = [
     "load_message_parts",
     "update_message_parts",
 ]
-

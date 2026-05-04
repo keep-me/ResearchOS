@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 
 from apps.api.routers import jobs as jobs_router
-from packages.ai.project.aris_smoke_service import build_aris_smoke_command, extract_aris_smoke_items
+from packages.ai.project.aris_smoke_service import (
+    build_aris_smoke_command,
+    extract_aris_smoke_items,
+)
 from packages.domain.task_tracker import global_tracker
 
 
@@ -24,7 +27,9 @@ def test_build_aris_smoke_command_quick_uses_python() -> None:
     command = build_aris_smoke_command("quick")
 
     assert command[0]
-    assert command[-1].endswith("scripts\\aris_workflow_smoke.py") or command[-1].endswith("scripts/aris_workflow_smoke.py")
+    assert command[-1].endswith("scripts\\aris_workflow_smoke.py") or command[-1].endswith(
+        "scripts/aris_workflow_smoke.py"
+    )
 
 
 def test_build_aris_smoke_command_full_requires_pwsh(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -34,7 +39,9 @@ def test_build_aris_smoke_command_full_requires_pwsh(monkeypatch: pytest.MonkeyP
         build_aris_smoke_command("full")
 
 
-def test_run_aris_smoke_job_writes_task_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_run_aris_smoke_job_writes_task_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     report_path = tmp_path / "aris-smoke-report.json"
     expected_result = {
         "mode": "quick",
@@ -55,13 +62,17 @@ def test_run_aris_smoke_job_writes_task_result(monkeypatch: pytest.MonkeyPatch, 
         assert mode == "quick"
         return report_path
 
-    def _fake_run_aris_smoke(*, mode="quick", progress_callback=None, log_callback=None, report_path=None):
+    def _fake_run_aris_smoke(
+        *, mode="quick", progress_callback=None, log_callback=None, report_path=None
+    ):
         assert mode == "quick"
         if progress_callback:
             progress_callback("fake run", 50, 100)
         if log_callback:
             log_callback("fake smoke log")
-        Path(str(report_path)).write_text(json.dumps(expected_result, ensure_ascii=False), encoding="utf-8")
+        Path(str(report_path)).write_text(
+            json.dumps(expected_result, ensure_ascii=False), encoding="utf-8"
+        )
         return expected_result
 
     monkeypatch.setattr(jobs_router, "build_aris_smoke_report_path", _fake_report_path)

@@ -9,4 +9,3 @@ def execute(*args: Any, **kwargs: Any) -> Any:
     from packages.ai.project.workflow_runner import _execute_paper_writing
 
     return _execute_paper_writing(*args, **kwargs)
-

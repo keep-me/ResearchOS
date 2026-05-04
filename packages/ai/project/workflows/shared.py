@@ -77,4 +77,3 @@ __all__ = [
     "resolve_idea_payloads",
     "resolve_literature_markdown",
 ]
-

@@ -14,6 +14,8 @@ from packages.ai.project.multi_agent_runner import (
 from packages.ai.project.workflow_catalog import build_run_orchestration
 from packages.ai.project.workflow_runner import (
     submit_project_run as submit_native_project_run,
+)
+from packages.ai.project.workflow_runner import (
     supports_project_workflow as supports_native_project_workflow,
 )
 from packages.storage.db import session_scope
@@ -21,7 +23,9 @@ from packages.storage.repository_facades import ProjectDataFacade
 
 
 def supports_project_run(workflow_type) -> bool:
-    return supports_native_project_workflow(workflow_type) or supports_multi_agent_project_workflow(workflow_type)
+    return supports_native_project_workflow(workflow_type) or supports_multi_agent_project_workflow(
+        workflow_type
+    )
 
 
 def submit_project_run(run_id: str) -> str | None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from packages.agent.mcp.claw_mcp_runtime import (
     RemotePathRef,
-    build_dynamic_bridge_function,
     bridge_tool_context,
+    build_dynamic_bridge_function,
     execute_bridge_tool,
     register_dynamic_bridge_tools,
     remote_path_display,
@@ -30,4 +30,3 @@ __all__ = [
     "serialize_tool_result",
     "tool_annotations",
 ]
-

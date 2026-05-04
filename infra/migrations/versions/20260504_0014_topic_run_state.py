@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import inspect, text
-
 
 # revision identifiers, used by Alembic.
 revision: str = "20260504_0014_topic_run_state"
@@ -50,8 +49,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)
     if not (
-        _has_table(inspector, "topic_subscriptions")
-        and _has_table(inspector, "collection_actions")
+        _has_table(inspector, "topic_subscriptions") and _has_table(inspector, "collection_actions")
     ):
         return
 

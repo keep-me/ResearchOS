@@ -21,6 +21,7 @@ from packages.domain.schemas import DeepDiveReport, SkimReport
 from packages.storage import agent_session_repository as _agent_session_repository
 from packages.storage import paper_repository as _paper_repository
 from packages.storage import project_repository as _project_repository
+from packages.storage import task_repository as _task_repository
 from packages.storage import topic_repository as _topic_repository
 from packages.storage.models import (
     ActionPaper,
@@ -33,18 +34,15 @@ from packages.storage.models import (
     LLMProviderConfig,
     Paper,
     PipelineRun,
+    ProjectGpuLease,
     ProjectResearchWikiEdge,
     ProjectResearchWikiNode,
-    ProjectGpuLease,
     PromptTrace,
     ResearchKGEdge,
     ResearchKGNode,
     ResearchKGPaperState,
     SourceCheckpoint,
 )
-from packages.storage import task_repository as _task_repository
-
-
 
 logger = logging.getLogger(__name__)
 _UNSET = object()
@@ -147,7 +145,9 @@ class ProjectGpuLeaseRepository:
             query = query.where(ProjectGpuLease.workspace_server_id == workspace_server_id)
         if active_only:
             query = query.where(ProjectGpuLease.active == True)  # noqa: E712
-        query = query.order_by(ProjectGpuLease.workspace_server_id.asc(), ProjectGpuLease.gpu_index.asc())
+        query = query.order_by(
+            ProjectGpuLease.workspace_server_id.asc(), ProjectGpuLease.gpu_index.asc()
+        )
         return list(self.session.execute(query).scalars().all())
 
     def acquire(
@@ -202,7 +202,10 @@ class ProjectGpuLeaseRepository:
             return None
         if run_id and str(row.run_id or "").strip() not in {"", str(run_id).strip()}:
             return None
-        if remote_session_name and str(row.remote_session_name or "").strip() not in {"", str(remote_session_name).strip()}:
+        if remote_session_name and str(row.remote_session_name or "").strip() not in {
+            "",
+            str(remote_session_name).strip(),
+        }:
             return None
         now = datetime.now(UTC)
         row.active = False
@@ -235,7 +238,9 @@ class ProjectGpuLeaseRepository:
         active_session_names: list[str],
         reason: str = "remote_session_missing",
     ) -> list[ProjectGpuLease]:
-        active_names = {str(item or "").strip() for item in active_session_names if str(item or "").strip()}
+        active_names = {
+            str(item or "").strip() for item in active_session_names if str(item or "").strip()
+        }
         now = datetime.now(UTC)
         released: list[ProjectGpuLease] = []
         for row in self.list_leases(workspace_server_id=workspace_server_id, active_only=True):
@@ -258,7 +263,9 @@ class AnalysisRepository:
 
     def upsert_skim(self, paper_id: UUID, skim: SkimReport) -> None:
         report = self._get_or_create(paper_id)
-        normalized_innovations = [str(x).strip() for x in (skim.innovations or []) if str(x).strip()]
+        normalized_innovations = [
+            str(x).strip() for x in (skim.innovations or []) if str(x).strip()
+        ]
         one_liner = str(skim.one_liner or "").strip()
         if not one_liner and normalized_innovations:
             one_liner = normalized_innovations[0][:140]
@@ -381,9 +388,7 @@ class PipelineRunRepository:
         if decision_note is not None:
             values["decision_note"] = decision_note
         self.session.execute(
-            update(PipelineRun)
-            .where(PipelineRun.id == str(run_id))
-            .values(**values)
+            update(PipelineRun).where(PipelineRun.id == str(run_id)).values(**values)
         )
 
     def fail(self, run_id: UUID, error_message: str) -> None:
@@ -765,7 +770,12 @@ class ResearchKGRepository:
     def search_nodes(self, query_text: str, *, limit: int = 20) -> list[ResearchKGNode]:
         tokens = [
             token
-            for token in str(query_text or "").strip().casefold().replace("/", " ").replace("-", " ").split()
+            for token in str(query_text or "")
+            .strip()
+            .casefold()
+            .replace("/", " ")
+            .replace("-", " ")
+            .split()
             if len(token) >= 2
         ]
         if not tokens:
@@ -841,7 +851,9 @@ class ResearchKGRepository:
     def stats(self) -> dict:
         node_count = int(self.session.scalar(select(func.count()).select_from(ResearchKGNode)) or 0)
         edge_count = int(self.session.scalar(select(func.count()).select_from(ResearchKGEdge)) or 0)
-        state_count = int(self.session.scalar(select(func.count()).select_from(ResearchKGPaperState)) or 0)
+        state_count = int(
+            self.session.scalar(select(func.count()).select_from(ResearchKGPaperState)) or 0
+        )
         complete_count = int(
             self.session.scalar(
                 select(func.count())
@@ -1219,12 +1231,16 @@ class ProjectResearchWikiRepository:
         status: str | None = None,
         limit: int | None = None,
     ) -> list[ProjectResearchWikiNode]:
-        query = select(ProjectResearchWikiNode).where(ProjectResearchWikiNode.project_id == project_id)
+        query = select(ProjectResearchWikiNode).where(
+            ProjectResearchWikiNode.project_id == project_id
+        )
         if node_type:
             query = query.where(ProjectResearchWikiNode.node_type == node_type)
         if status:
             query = query.where(ProjectResearchWikiNode.status == status)
-        query = query.order_by(ProjectResearchWikiNode.updated_at.desc(), ProjectResearchWikiNode.created_at.desc())
+        query = query.order_by(
+            ProjectResearchWikiNode.updated_at.desc(), ProjectResearchWikiNode.created_at.desc()
+        )
         if isinstance(limit, int) and limit > 0:
             query = query.limit(limit)
         return list(self.session.execute(query).scalars().all())
@@ -1280,7 +1296,9 @@ class ProjectResearchWikiRepository:
         edge_type: str | None = None,
         limit: int | None = None,
     ) -> list[ProjectResearchWikiEdge]:
-        query = select(ProjectResearchWikiEdge).where(ProjectResearchWikiEdge.project_id == project_id)
+        query = select(ProjectResearchWikiEdge).where(
+            ProjectResearchWikiEdge.project_id == project_id
+        )
         if edge_type:
             query = query.where(ProjectResearchWikiEdge.edge_type == edge_type)
         query = query.order_by(ProjectResearchWikiEdge.created_at.desc())

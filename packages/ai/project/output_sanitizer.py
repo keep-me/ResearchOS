@@ -31,9 +31,7 @@ _INTERACTIVE_LINE_PATTERNS = (
     re.compile(r"默认按 top-ranked direction", re.IGNORECASE),
 )
 
-_CHECKPOINT_SECTION_PATTERN = re.compile(
-    r"(?ims)^#{1,6}\s+Checkpoint\b.*?(?=^#{1,6}\s|\Z)"
-)
+_CHECKPOINT_SECTION_PATTERN = re.compile(r"(?ims)^#{1,6}\s+Checkpoint\b.*?(?=^#{1,6}\s|\Z)")
 
 _MARKDOWN_KEYS = {
     "workflow_output_markdown",
@@ -81,7 +79,9 @@ def sanitize_project_run_metadata(metadata: dict[str, Any] | None) -> dict[str, 
     return _sanitize_value(metadata, parent_key=None)
 
 
-def sanitize_project_artifact_preview_content(relative_path: str | None, content: str | None) -> str:
+def sanitize_project_artifact_preview_content(
+    relative_path: str | None, content: str | None
+) -> str:
     text = str(content or "")
     if not _should_sanitize_artifact_path(relative_path):
         return text
@@ -135,7 +135,10 @@ def _looks_like_json_document(value: str) -> bool:
     stripped = str(value or "").strip()
     if not stripped:
         return False
-    if not ((stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]"))):
+    if not (
+        (stripped.startswith("{") and stripped.endswith("}"))
+        or (stripped.startswith("[") and stripped.endswith("]"))
+    ):
         return False
     try:
         json.loads(stripped)

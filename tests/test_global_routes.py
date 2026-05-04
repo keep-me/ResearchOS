@@ -95,7 +95,9 @@ def test_global_event_stream_mirrors_global_bus(monkeypatch: pytest.MonkeyPatch)
     assert '"directory": "D:/workspace/demo"' in second
 
 
-def test_global_event_stream_serializes_session_bus_events(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_global_event_stream_serializes_session_bus_events(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _configure_test_db(monkeypatch)
     _reset_runtime_state()
     workspace_dir = str(tmp_path.resolve())
@@ -149,7 +151,9 @@ def test_project_current_ensures_instance_project(monkeypatch: pytest.MonkeyPatc
     assert payload["sandboxes"] == [workspace_dir]
 
 
-def test_session_abort_route_delegates_to_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_session_abort_route_delegates_to_runtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _configure_test_db(monkeypatch)
     _reset_runtime_state()
     client = TestClient(_build_app())
@@ -166,7 +170,11 @@ def test_session_abort_route_delegates_to_runtime(monkeypatch: pytest.MonkeyPatc
     assert created.status_code == 200
 
     observed: list[str] = []
-    monkeypatch.setattr(session_runtime_router, "request_session_abort", lambda session_id: observed.append(session_id))
+    monkeypatch.setattr(
+        session_runtime_router,
+        "request_session_abort",
+        lambda session_id: observed.append(session_id),
+    )
 
     resp = client.post("/session/abort_route_session/abort")
 
@@ -175,7 +183,9 @@ def test_session_abort_route_delegates_to_runtime(monkeypatch: pytest.MonkeyPatc
     assert observed == ["abort_route_session"]
 
 
-def test_instance_provide_and_state_follow_directory_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_instance_provide_and_state_follow_directory_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _configure_test_db(monkeypatch)
     _reset_runtime_state()
 
@@ -220,7 +230,9 @@ def test_instance_provide_and_state_follow_directory_scope(monkeypatch: pytest.M
     assert third["value"] == 2
 
 
-def test_instance_reload_disposes_prompt_sessions_for_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_instance_reload_disposes_prompt_sessions_for_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _configure_test_db(monkeypatch)
     _reset_runtime_state()
     workspace_dir = str(tmp_path.resolve())
@@ -350,12 +362,16 @@ def test_instance_dispose_and_reload_do_not_allow_stale_loop_to_restore_lifecycl
     instance = acquire_prompt_instance("dispose_reload_busy_session", wait=False)
     assert instance is not None
     session_lifecycle.set_session_status("dispose_reload_busy_session", {"type": "busy"})
-    queued = session_lifecycle.queue_prompt_callback("dispose_reload_busy_session", payload={"kind": "prompt"})
+    queued = session_lifecycle.queue_prompt_callback(
+        "dispose_reload_busy_session", payload={"kind": "prompt"}
+    )
     assert queued.closed is False
 
     disposed = session_instance.Instance.dispose(workspace_dir)
 
-    session_lifecycle.finish_prompt_instance("dispose_reload_busy_session", result={"messageID": "ghost_message"})
+    session_lifecycle.finish_prompt_instance(
+        "dispose_reload_busy_session", result={"messageID": "ghost_message"}
+    )
     session_lifecycle.set_session_status("dispose_reload_busy_session", {"type": "busy"})
     disposed_callback = session_lifecycle.queue_prompt_callback(
         "dispose_reload_busy_session",
@@ -379,4 +395,3 @@ def test_instance_dispose_and_reload_do_not_allow_stale_loop_to_restore_lifecycl
     assert reloaded["directory"] == workspace_dir
     assert session_lifecycle.get_prompt_instance("dispose_reload_busy_session") is not None
     assert session_lifecycle.get_session_status("dispose_reload_busy_session") == {"type": "busy"}
-

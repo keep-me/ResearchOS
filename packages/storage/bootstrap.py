@@ -54,10 +54,7 @@ def _ensure_initial_import_action() -> None:
 
     with engine.begin() as conn:
         orphan_rows = conn.execute(
-            text(
-                "SELECT p.id FROM papers p "
-                "WHERE p.id NOT IN (SELECT paper_id FROM action_papers)"
-            )
+            text("SELECT p.id FROM papers p WHERE p.id NOT IN (SELECT paper_id FROM action_papers)")
         ).fetchall()
         if not orphan_rows:
             return

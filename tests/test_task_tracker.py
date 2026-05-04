@@ -1,10 +1,10 @@
 import time
 
-from packages.domain.task_tracker import TaskTracker
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from packages.domain.task_tracker import TaskTracker
 from packages.storage import db
 from packages.storage.db import Base
 
@@ -151,7 +151,9 @@ def test_submit_marks_failed_result_status_as_failed(monkeypatch):
 def test_task_tracker_persists_tasks_and_results(monkeypatch):
     _configure_test_db(monkeypatch)
     tracker = TaskTracker()
-    tracker.start("task-1", "sync", "Sync Workspace", total=10, metadata={"project_id": "project-1"})
+    tracker.start(
+        "task-1", "sync", "Sync Workspace", total=10, metadata={"project_id": "project-1"}
+    )
     tracker.update("task-1", 6, "syncing", total=10)
     tracker.append_log("task-1", "sync started")
     tracker.set_result("task-1", {"status": "ok"})

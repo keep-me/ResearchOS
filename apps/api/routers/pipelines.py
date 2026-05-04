@@ -1,5 +1,4 @@
-"""Pipeline / RAG / 任务追踪路由
-"""
+"""Pipeline / RAG / 任务追踪路由"""
 
 import logging
 from typing import Literal
@@ -25,6 +24,7 @@ router = APIRouter()
 
 
 # ---------- Pipeline ----------
+
 
 def _paper_title_short(paper_id: UUID) -> str:
     return (get_paper_title(paper_id) or str(paper_id)[:8])[:30]
@@ -143,8 +143,12 @@ def run_deep_async(
             "evidence_mode": normalized_evidence_mode,
         },
     )
-    global_tracker.append_log(task_id, f"请求来源: {paper_content_source_label(requested_content_source)}")
-    global_tracker.append_log(task_id, f"证据模式: {'完整' if normalized_evidence_mode == 'full' else '粗略'}")
+    global_tracker.append_log(
+        task_id, f"请求来源: {paper_content_source_label(requested_content_source)}"
+    )
+    global_tracker.append_log(
+        task_id, f"证据模式: {'完整' if normalized_evidence_mode == 'full' else '粗略'}"
+    )
     return {"task_id": task_id, "status": "running", "message": "精读任务已启动"}
 
 
@@ -333,7 +337,7 @@ def get_task_result(task_id: str) -> dict:
     if not status:
         raise NotFoundError(f"Task {task_id} not found")
     if not status.get("finished"):
-        raise HTTPException(400, f"Task not finished yet")
+        raise HTTPException(400, "Task not finished yet")
     result = global_tracker.get_result(task_id)
     return result or {}
 

@@ -17,7 +17,14 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
         },
         spec=ToolSpec(permission="websearch", managed_permission=True),
         handler="packages.agent.tools.web_tool_runtime:_search_web",
-        provider_tools=[{"type": "provider-defined", "id": "openai.web_search", "name": "web_search", "args": {}}],
+        provider_tools=[
+            {
+                "type": "provider-defined",
+                "id": "openai.web_search",
+                "name": "web_search",
+                "args": {},
+            }
+        ],
     ),
     ToolDef(
         name="websearch",
@@ -37,7 +44,14 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
             default_remote_enabled=True,
         ),
         handler="packages.agent.tools.web_tool_runtime:_websearch",
-        provider_tools=[{"type": "provider-defined", "id": "openai.web_search", "name": "web_search", "args": {}}],
+        provider_tools=[
+            {
+                "type": "provider-defined",
+                "id": "openai.web_search",
+                "name": "web_search",
+                "args": {},
+            }
+        ],
     ),
     ToolDef(
         name="webfetch",
@@ -114,7 +128,10 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "skill_ref": {"type": "string", "description": "skill 的 id、名称、相对路径或目录路径"},
+                "skill_ref": {
+                    "type": "string",
+                    "description": "skill 的 id、名称、相对路径或目录路径",
+                },
                 "max_chars": {"type": "integer", "description": "最大返回字符数", "default": 12000},
             },
             "required": ["skill_ref"],
@@ -167,8 +184,16 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
                 "workspace_path": {"type": "string", "description": "工作区目录路径"},
                 "relative_path": {"type": "string", "description": "相对工作区根目录的文件路径"},
                 "content": {"type": "string", "description": "完整文件内容"},
-                "create_dirs": {"type": "boolean", "description": "父目录不存在时是否自动创建", "default": True},
-                "overwrite": {"type": "boolean", "description": "文件已存在时是否允许覆盖", "default": True},
+                "create_dirs": {
+                    "type": "boolean",
+                    "description": "父目录不存在时是否自动创建",
+                    "default": True,
+                },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": "文件已存在时是否允许覆盖",
+                    "default": True,
+                },
             },
             "required": ["workspace_path", "relative_path", "content"],
         },
@@ -188,9 +213,16 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
             "properties": {
                 "workspace_path": {"type": "string", "description": "工作区目录路径"},
                 "relative_path": {"type": "string", "description": "相对工作区根目录的文件路径"},
-                "search_text": {"type": "string", "description": "需要被替换的原始文本，默认要求唯一匹配"},
+                "search_text": {
+                    "type": "string",
+                    "description": "需要被替换的原始文本，默认要求唯一匹配",
+                },
                 "replace_text": {"type": "string", "description": "替换后的新文本"},
-                "replace_all": {"type": "boolean", "description": "是否替换全部匹配", "default": False},
+                "replace_all": {
+                    "type": "boolean",
+                    "description": "是否替换全部匹配",
+                    "default": False,
+                },
             },
             "required": ["workspace_path", "relative_path", "search_text", "replace_text"],
         },
@@ -211,7 +243,11 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
                 "workspace_path": {"type": "string", "description": "工作区目录路径"},
                 "command": {"type": "string", "description": "要执行的命令"},
                 "timeout_sec": {"type": "integer", "description": "超时秒数", "default": 120},
-                "background": {"type": "boolean", "description": "是否作为后台任务提交", "default": False},
+                "background": {
+                    "type": "boolean",
+                    "description": "是否作为后台任务提交",
+                    "default": False,
+                },
             },
             "required": ["workspace_path", "command"],
         },
@@ -245,7 +281,10 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "绝对路径；也可结合 workspace_path 传相对路径"},
+                "path": {
+                    "type": "string",
+                    "description": "绝对路径；也可结合 workspace_path 传相对路径",
+                },
                 "recursive": {"type": "boolean", "description": "是否递归列出", "default": False},
                 "max_depth": {"type": "integer", "description": "递归时的最大深度", "default": 2},
                 "max_entries": {"type": "integer", "description": "最大返回条目数", "default": 120},
@@ -260,7 +299,10 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "绝对路径；也可结合 workspace_path 传相对路径"},
+                "path": {
+                    "type": "string",
+                    "description": "绝对路径；也可结合 workspace_path 传相对路径",
+                },
                 "recursive": {"type": "boolean", "description": "是否递归列出", "default": False},
                 "max_depth": {"type": "integer", "description": "递归时的最大深度", "default": 2},
                 "max_entries": {"type": "integer", "description": "最大返回条目数", "default": 120},
@@ -276,7 +318,10 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
             "type": "object",
             "properties": {
                 "pattern": {"type": "string", "description": "glob 模式，例如 **/*.py"},
-                "path": {"type": "string", "description": "搜索目录；可省略并使用当前 workspace_path"},
+                "path": {
+                    "type": "string",
+                    "description": "搜索目录；可省略并使用当前 workspace_path",
+                },
                 "limit": {"type": "integer", "description": "最大返回数量", "default": 40},
             },
             "required": ["pattern"],
@@ -296,7 +341,10 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
             "type": "object",
             "properties": {
                 "pattern": {"type": "string", "description": "正则搜索模式"},
-                "path": {"type": "string", "description": "搜索目录；可省略并使用当前 workspace_path"},
+                "path": {
+                    "type": "string",
+                    "description": "搜索目录；可省略并使用当前 workspace_path",
+                },
                 "include": {"type": "string", "description": "可选文件过滤模式，例如 *.ts"},
                 "limit": {"type": "integer", "description": "最大返回命中数", "default": 40},
             },
@@ -339,8 +387,16 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
             "properties": {
                 "file_path": {"type": "string", "description": "文件路径"},
                 "content": {"type": "string", "description": "完整文件内容"},
-                "create_dirs": {"type": "boolean", "description": "父目录不存在时自动创建", "default": True},
-                "overwrite": {"type": "boolean", "description": "是否允许覆盖已有文件", "default": True},
+                "create_dirs": {
+                    "type": "boolean",
+                    "description": "父目录不存在时自动创建",
+                    "default": True,
+                },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": "是否允许覆盖已有文件",
+                    "default": True,
+                },
             },
             "required": ["file_path", "content"],
         },
@@ -363,7 +419,11 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
                 "file_path": {"type": "string", "description": "文件路径"},
                 "old_string": {"type": "string", "description": "原始文本"},
                 "new_string": {"type": "string", "description": "替换后的文本"},
-                "replace_all": {"type": "boolean", "description": "是否替换全部匹配", "default": False},
+                "replace_all": {
+                    "type": "boolean",
+                    "description": "是否替换全部匹配",
+                    "default": False,
+                },
             },
             "required": ["file_path", "old_string", "new_string"],
         },
@@ -389,10 +449,17 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "file_path": {"type": "string", "description": "当前 edit 的文件路径，可省略并复用外层 file_path"},
+                            "file_path": {
+                                "type": "string",
+                                "description": "当前 edit 的文件路径，可省略并复用外层 file_path",
+                            },
                             "old_string": {"type": "string", "description": "原始文本"},
                             "new_string": {"type": "string", "description": "替换后的文本"},
-                            "replace_all": {"type": "boolean", "description": "是否替换全部匹配", "default": False},
+                            "replace_all": {
+                                "type": "boolean",
+                                "description": "是否替换全部匹配",
+                                "default": False,
+                            },
                         },
                         "required": ["old_string", "new_string"],
                     },
@@ -416,7 +483,10 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "patchText": {"type": "string", "description": "完整 patch 文本，必须包含 *** Begin Patch / *** End Patch"},
+                "patchText": {
+                    "type": "string",
+                    "description": "完整 patch 文本，必须包含 *** Begin Patch / *** End Patch",
+                },
             },
             "required": ["patchText"],
         },
@@ -437,9 +507,16 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "要执行的命令"},
-                "workdir": {"type": "string", "description": "工作目录；可省略并使用当前 workspace_path"},
+                "workdir": {
+                    "type": "string",
+                    "description": "工作目录；可省略并使用当前 workspace_path",
+                },
                 "timeout_sec": {"type": "integer", "description": "超时秒数", "default": 120},
-                "background": {"type": "boolean", "description": "是否作为后台任务提交", "default": False},
+                "background": {
+                    "type": "boolean",
+                    "description": "是否作为后台任务提交",
+                    "default": False,
+                },
             },
             "required": ["command"],
         },
@@ -452,7 +529,14 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
             local_only=True,
         ),
         handler="_bash_command",
-        provider_tools=[{"type": "provider-defined", "id": "openai.local_shell", "name": "local_shell", "args": {}}],
+        provider_tools=[
+            {
+                "type": "provider-defined",
+                "id": "openai.local_shell",
+                "name": "local_shell",
+                "args": {},
+            }
+        ],
     ),
     ToolDef(
         name="todoread",
@@ -542,7 +626,10 @@ _BASE_TOOL_REGISTRY: list[ToolDef] = [
                                     "type": "object",
                                     "properties": {
                                         "label": {"type": "string", "description": "选项标签"},
-                                        "description": {"type": "string", "description": "选项说明"},
+                                        "description": {
+                                            "type": "string",
+                                            "description": "选项说明",
+                                        },
                                     },
                                     "required": ["label", "description"],
                                 },
@@ -582,4 +669,3 @@ TOOL_REGISTRY: list[ToolDef] = [
     *_BASE_TOOL_REGISTRY,
     *RESEARCH_TOOL_REGISTRY,
 ]
-

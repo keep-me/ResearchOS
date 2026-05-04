@@ -1,5 +1,4 @@
-"""ResearchOS API — 共享依赖
-"""
+"""ResearchOS API — 共享依赖"""
 
 import logging
 import threading
@@ -8,9 +7,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from packages.ai.paper.pipelines import PaperPipelines
 from packages.ai.research.brief_service import DailyBriefService
 from packages.ai.research.graph_service import GraphService
-from packages.ai.paper.pipelines import PaperPipelines
 from packages.ai.research.rag_service import RAGService
 from packages.config import get_settings
 from packages.storage.db import session_scope
@@ -82,6 +81,7 @@ def iso_dt(dt: datetime | None) -> str | None:
 
 def brief_date() -> str:
     from packages.timezone import user_date_str
+
     return user_date_str()
 
 

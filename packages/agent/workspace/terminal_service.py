@@ -5,7 +5,6 @@ import queue
 import secrets
 import shlex
 import shutil
-import socket
 import struct
 import subprocess
 import threading
@@ -13,12 +12,12 @@ import time
 from pathlib import Path
 from typing import Protocol
 
+from packages.agent.workspace.workspace_executor import WorkspaceAccessError, resolve_workspace_dir
 from packages.agent.workspace.workspace_remote import (
     clean_text,
     open_ssh_session,
     resolve_remote_workspace_path,
 )
-from packages.agent.workspace.workspace_executor import WorkspaceAccessError, resolve_workspace_dir
 
 if os.name != "nt":
     import errno
@@ -56,9 +55,18 @@ def _build_local_shell_argv() -> list[str]:
                 (
                     str(candidate)
                     for candidate in (
-                        Path(os.environ.get("ProgramW6432") or r"C:\Program Files") / "PowerShell" / "7" / "pwsh.exe",
-                        Path(os.environ.get("ProgramFiles") or r"C:\Program Files") / "PowerShell" / "7" / "pwsh.exe",
-                        Path(os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)") / "PowerShell" / "7" / "pwsh.exe",
+                        Path(os.environ.get("ProgramW6432") or r"C:\Program Files")
+                        / "PowerShell"
+                        / "7"
+                        / "pwsh.exe",
+                        Path(os.environ.get("ProgramFiles") or r"C:\Program Files")
+                        / "PowerShell"
+                        / "7"
+                        / "pwsh.exe",
+                        Path(os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)")
+                        / "PowerShell"
+                        / "7"
+                        / "pwsh.exe",
                     )
                     if candidate.exists()
                 ),
@@ -85,23 +93,17 @@ class TerminalBackend(Protocol):
     shell_label: str
     workspace_path: str
 
-    def read(self, size: int = 4096) -> str:
-        ...
+    def read(self, size: int = 4096) -> str: ...
 
-    def write(self, data: str) -> None:
-        ...
+    def write(self, data: str) -> None: ...
 
-    def resize(self, cols: int, rows: int) -> None:
-        ...
+    def resize(self, cols: int, rows: int) -> None: ...
 
-    def is_alive(self) -> bool:
-        ...
+    def is_alive(self) -> bool: ...
 
-    def exit_code(self) -> int | None:
-        ...
+    def exit_code(self) -> int | None: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 class _WindowsTerminalBackend:
@@ -237,7 +239,9 @@ class _SshTerminalBackend:
     def __init__(self, server_entry: dict, requested_path: str, cols: int, rows: int) -> None:
         self._context = open_ssh_session(server_entry)
         self._session = self._context.__enter__()
-        self.workspace_path = resolve_remote_workspace_path(server_entry, requested_path, self._session)
+        self.workspace_path = resolve_remote_workspace_path(
+            server_entry, requested_path, self._session
+        )
         username = clean_text(server_entry.get("username")) or "user"
         host = clean_text(server_entry.get("host")) or "remote"
         self.shell_label = f"ssh://{username}@{host}"
@@ -259,7 +263,7 @@ class _SshTerminalBackend:
             return ""
         try:
             data = self._channel.recv(size)
-        except socket.timeout:
+        except TimeoutError:
             return ""
         except Exception as exc:
             raise WorkspaceAccessError(f"读取远程终端失败: {exc}") from exc
@@ -552,4 +556,3 @@ def get_terminal_service() -> TerminalService:
     if _terminal_service is None:
         _terminal_service = TerminalService()
     return _terminal_service
-

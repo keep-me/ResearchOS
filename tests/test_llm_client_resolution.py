@@ -46,9 +46,18 @@ def test_parse_model_target_understands_provider_and_variant_suffix() -> None:
 
 
 def test_resolve_transport_base_url_normalizes_openai_and_zhipu() -> None:
-    assert resolve_transport_base_url("openai", "https://api.openai.com") == "https://api.openai.com/v1"
-    assert resolve_transport_base_url("zhipu", "https://open.bigmodel.cn/api/paas/v4") == "https://open.bigmodel.cn/api/paas/v4/"
-    assert resolve_transport_base_url("custom", "https://wlxctech.cn/codex") == "https://wlxctech.cn/codex"
+    assert (
+        resolve_transport_base_url("openai", "https://api.openai.com")
+        == "https://api.openai.com/v1"
+    )
+    assert (
+        resolve_transport_base_url("zhipu", "https://open.bigmodel.cn/api/paas/v4")
+        == "https://open.bigmodel.cn/api/paas/v4/"
+    )
+    assert (
+        resolve_transport_base_url("custom", "https://wlxctech.cn/codex")
+        == "https://wlxctech.cn/codex"
+    )
 
 
 def test_resolve_embedding_config_infers_provider_from_embedding_base_url() -> None:
@@ -112,7 +121,9 @@ def test_resolve_model_target_uses_engine_profile_runtime_config() -> None:
     assert resolved.variant == "medium"
 
 
-def test_resolve_model_target_uses_provider_prefixed_override_with_default_provider_credentials() -> None:
+def test_resolve_model_target_uses_provider_prefixed_override_with_default_provider_credentials() -> (
+    None
+):
     resolved = resolve_model_target(
         "build",
         "zhipu/glm-4.7/high",

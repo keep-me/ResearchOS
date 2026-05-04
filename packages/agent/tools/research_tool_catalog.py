@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from packages.agent.tools.tool_schema import ToolDef, ToolSpec
 
-
 _DEFAULT_RESEARCH_READ_TOOL_SPEC = ToolSpec(
     default_local_enabled=True,
     default_remote_enabled=True,
@@ -229,7 +228,10 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
             "type": "object",
             "properties": {
                 "arxiv_id": {"type": "string", "description": "arXiv ID 或 arXiv URL"},
-                "section_name": {"type": "string", "description": "章节名，例如 Introduction、Method、Experiments"},
+                "section_name": {
+                    "type": "string",
+                    "description": "章节名，例如 Introduction、Method、Experiments",
+                },
             },
             "required": ["arxiv_id", "section_name"],
         },
@@ -389,7 +391,10 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "project_id": {"type": "string", "description": "可选的项目 UUID；缺省时尝试按当前工作区推断"},
+                "project_id": {
+                    "type": "string",
+                    "description": "可选的项目 UUID；缺省时尝试按当前工作区推断",
+                },
             },
         },
     ),
@@ -399,7 +404,10 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "project_id": {"type": "string", "description": "可选的项目 UUID；缺省时尝试按当前工作区推断"},
+                "project_id": {
+                    "type": "string",
+                    "description": "可选的项目 UUID；缺省时尝试按当前工作区推断",
+                },
             },
         },
         spec=_DEFAULT_RESEARCH_READ_TOOL_SPEC,
@@ -410,8 +418,14 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "project_id": {"type": "string", "description": "可选的项目 UUID；缺省时尝试按当前工作区推断"},
-                "query": {"type": "string", "description": "可选的聚焦查询，例如某个子方向、方法或风险点"},
+                "project_id": {
+                    "type": "string",
+                    "description": "可选的项目 UUID；缺省时尝试按当前工作区推断",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "可选的聚焦查询，例如某个子方向、方法或风险点",
+                },
                 "limit": {"type": "integer", "description": "返回节点数量上限", "default": 5},
             },
         },
@@ -423,10 +437,22 @@ RESEARCH_TOOL_REGISTRY: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "project_id": {"type": "string", "description": "可选的项目 UUID；缺省时尝试按当前工作区推断"},
-                "node_id": {"type": "string", "description": "已有 wiki 节点 ID；提供后优先按该节点更新"},
-                "node_key": {"type": "string", "description": "节点稳定键，例如 note:eval-plan、gap:data-coverage"},
-                "node_type": {"type": "string", "description": "节点类型，例如 note、gap、claim、experiment、idea"},
+                "project_id": {
+                    "type": "string",
+                    "description": "可选的项目 UUID；缺省时尝试按当前工作区推断",
+                },
+                "node_id": {
+                    "type": "string",
+                    "description": "已有 wiki 节点 ID；提供后优先按该节点更新",
+                },
+                "node_key": {
+                    "type": "string",
+                    "description": "节点稳定键，例如 note:eval-plan、gap:data-coverage",
+                },
+                "node_type": {
+                    "type": "string",
+                    "description": "节点类型，例如 note、gap、claim、experiment、idea",
+                },
                 "title": {"type": "string", "description": "节点标题"},
                 "summary": {"type": "string", "description": "节点摘要"},
                 "body_md": {"type": "string", "description": "节点 Markdown 正文"},

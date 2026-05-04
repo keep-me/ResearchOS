@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -145,7 +145,11 @@ def _fake_open_ssh_session_factory(roots: dict[str, Path]):
 def _fake_build_remote_overview_factory(roots: dict[str, Path]):
     def _build(server_entry, requested_path, *, depth, max_entries):
         root = roots[str(server_entry["id"])]
-        workspace_root = root.joinpath(*str(requested_path).strip("/").split("/")) if str(requested_path).strip("/") else root
+        workspace_root = (
+            root.joinpath(*str(requested_path).strip("/").split("/"))
+            if str(requested_path).strip("/")
+            else root
+        )
         files: list[str] = []
         tree_lines = [requested_path]
         total_entries = 0
@@ -213,7 +217,11 @@ def test_multi_agent_runner_executes_codex_role_without_cli(monkeypatch):
                 assert item.get("model") == "mock-reviewer"
         trace = metadata.get("stage_trace") or []
         assert trace
-        assert all(item.get("model_role") in {"executor", "reviewer"} for item in trace if isinstance(item, dict))
+        assert all(
+            item.get("model_role") in {"executor", "reviewer"}
+            for item in trace
+            if isinstance(item, dict)
+        )
 
 
 def test_multi_agent_runner_autoresearch_bootstrap_and_baseline(monkeypatch, tmp_path):
@@ -318,9 +326,15 @@ def test_multi_agent_runner_materializes_paper_write_workspace(monkeypatch, tmp_
     result = run_multi_agent_project_workflow(run_id)
 
     assert result["workflow_type"] == ProjectWorkflowType.paper_write.value
-    assert (Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id / "paper" / "main.tex").exists()
-    assert (Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id / "reports" / "PAPER_WRITE.md").exists()
-    assert (Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id / "paper" / "references.bib").exists()
+    assert (
+        Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id / "paper" / "main.tex"
+    ).exists()
+    assert (
+        Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id / "reports" / "PAPER_WRITE.md"
+    ).exists()
+    assert (
+        Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id / "paper" / "references.bib"
+    ).exists()
 
 
 def test_multi_agent_runner_stage_checkpoint_resumes_standalone_workflow(monkeypatch, tmp_path):
@@ -389,7 +403,9 @@ def test_multi_agent_runner_stage_checkpoint_resumes_standalone_workflow(monkeyp
         assert metadata["workflow_output_markdown"].startswith("# PAPER_PLAN")
 
 
-def test_multi_agent_runner_materializes_paper_improvement_with_explicit_review_parsing(monkeypatch, tmp_path):
+def test_multi_agent_runner_materializes_paper_improvement_with_explicit_review_parsing(
+    monkeypatch, tmp_path
+):
     _configure_test_db(monkeypatch)
     run_id = _seed_run(
         ProjectWorkflowType.paper_improvement,
@@ -438,7 +454,9 @@ def test_multi_agent_runner_materializes_paper_improvement_with_explicit_review_
     assert result["workflow_type"] == ProjectWorkflowType.paper_improvement.value
     run_root = Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id
     progression = (run_root / "reports" / "paper-score-progression.md").read_text(encoding="utf-8")
-    metadata_payload = json.loads((run_root / "paper" / "improvement-metadata.json").read_text(encoding="utf-8"))
+    metadata_payload = json.loads(
+        (run_root / "paper" / "improvement-metadata.json").read_text(encoding="utf-8")
+    )
 
     assert "| 1 | 内容评审 | N/A | ready |" in progression
     assert "| 2 | 修订后复审 | 7.8 | almost |" in progression
@@ -465,12 +483,12 @@ def test_multi_agent_runner_materializes_experiment_audit_artifacts(monkeypatch,
     (workspace / "configs").mkdir(parents=True, exist_ok=True)
     (workspace / "paper" / "sections").mkdir(parents=True, exist_ok=True)
     (workspace / "eval_metric.py").write_text(
-        "def main():\n"
-        "    return 'results/metrics.json'\n",
+        "def main():\n    return 'results/metrics.json'\n",
         encoding="utf-8",
     )
     (workspace / "results" / "metrics.json").write_text(
-        json.dumps({"accuracy": 0.89, "normalized_score": 0.96}, ensure_ascii=False, indent=2) + "\n",
+        json.dumps({"accuracy": 0.89, "normalized_score": 0.96}, ensure_ascii=False, indent=2)
+        + "\n",
         encoding="utf-8",
     )
     (workspace / "EXPERIMENT_TRACKER.md").write_text(
@@ -510,19 +528,45 @@ def test_multi_agent_runner_materializes_experiment_audit_artifacts(monkeypatch,
             "evaluation_type": "mixed",
             "summary": "主要结果可用，但单 seed 和归一化说明不足。",
             "checks": {
-                "gt_provenance": {"status": "PASS", "evidence": ["configs/eval.yaml:1"], "details": "数据来源已声明。"},
-                "score_normalization": {"status": "WARN", "evidence": ["results/metrics.json:3"], "details": "normalized_score 口径不清晰。"},
-                "result_existence": {"status": "PASS", "evidence": ["results/metrics.json:2"], "details": "主结果文件存在。"},
-                "dead_code": {"status": "PASS", "evidence": ["eval_metric.py:1"], "details": "评测脚本参与执行链路。"},
-                "scope": {"status": "WARN", "evidence": ["EXPERIMENT_TRACKER.md:3"], "details": "仍然只有单 seed。"},
-                "eval_type": {"status": "PASS", "evidence": ["paper/sections/experiments.tex:2"], "details": "归类为 mixed。"},
+                "gt_provenance": {
+                    "status": "PASS",
+                    "evidence": ["configs/eval.yaml:1"],
+                    "details": "数据来源已声明。",
+                },
+                "score_normalization": {
+                    "status": "WARN",
+                    "evidence": ["results/metrics.json:3"],
+                    "details": "normalized_score 口径不清晰。",
+                },
+                "result_existence": {
+                    "status": "PASS",
+                    "evidence": ["results/metrics.json:2"],
+                    "details": "主结果文件存在。",
+                },
+                "dead_code": {
+                    "status": "PASS",
+                    "evidence": ["eval_metric.py:1"],
+                    "details": "评测脚本参与执行链路。",
+                },
+                "scope": {
+                    "status": "WARN",
+                    "evidence": ["EXPERIMENT_TRACKER.md:3"],
+                    "details": "仍然只有单 seed。",
+                },
+                "eval_type": {
+                    "status": "PASS",
+                    "evidence": ["paper/sections/experiments.tex:2"],
+                    "details": "归类为 mixed。",
+                },
             },
             "action_items": ["补多 seed", "补充 normalized_score 解释"],
             "claims": [{"id": "C1", "impact": "needs_qualifier", "details": "不要过度泛化结论。"}],
         }
         return LLMResult(content=json.dumps(payload, ensure_ascii=False), parsed_json=payload)
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json
+    )
 
     result = run_multi_agent_project_workflow(run_id)
 
@@ -541,13 +585,30 @@ def test_multi_agent_runner_materializes_experiment_audit_artifacts(monkeypatch,
         artifact_refs = list(metadata.get("artifact_refs") or [])
 
         assert run.status == ProjectRunStatus.succeeded
-        assert "results/metrics.json" in str(stage_outputs["collect_artifacts"].get("content") or "")
-        assert str(stage_outputs["issue_audit_report"].get("content") or "").startswith("# Experiment Audit Report")
+        assert "results/metrics.json" in str(
+            stage_outputs["collect_artifacts"].get("content") or ""
+        )
+        assert str(stage_outputs["issue_audit_report"].get("content") or "").startswith(
+            "# Experiment Audit Report"
+        )
         assert metadata["overall_verdict"] == "WARN"
         assert metadata["integrity_status"] == "warn"
-        assert any(str(item.get("relative_path") or "").replace("\\", "/").endswith("EXPERIMENT_AUDIT.md") for item in artifact_refs)
-        assert any(str(item.get("relative_path") or "").replace("\\", "/").endswith("EXPERIMENT_AUDIT.json") for item in artifact_refs)
-        assert any(str(item.get("relative_path") or "").replace("\\", "/").endswith("reports/experiment-audit.md") for item in artifact_refs)
+        assert any(
+            str(item.get("relative_path") or "").replace("\\", "/").endswith("EXPERIMENT_AUDIT.md")
+            for item in artifact_refs
+        )
+        assert any(
+            str(item.get("relative_path") or "")
+            .replace("\\", "/")
+            .endswith("EXPERIMENT_AUDIT.json")
+            for item in artifact_refs
+        )
+        assert any(
+            str(item.get("relative_path") or "")
+            .replace("\\", "/")
+            .endswith("reports/experiment-audit.md")
+            for item in artifact_refs
+        )
 
 
 def test_multi_agent_runner_paper_compile_collects_generated_pdf_artifact(monkeypatch, tmp_path):
@@ -566,8 +627,8 @@ def test_multi_agent_runner_paper_compile_collects_generated_pdf_artifact(monkey
         metadata={
             "compile_command": (
                 "New-Item -ItemType Directory -Force -Path paper | Out-Null; "
-                "Set-Content -Path paper/main.pdf -Value \"pdf stub\"; "
-                "Write-Output \"compile-ok\""
+                'Set-Content -Path paper/main.pdf -Value "pdf stub"; '
+                'Write-Output "compile-ok"'
             ),
         },
     )
@@ -582,7 +643,9 @@ def test_multi_agent_runner_paper_compile_collects_generated_pdf_artifact(monkey
         request_timeout=None,
     ):
         if stage.endswith("_summarize_compile"):
-            return LLMResult(content="# Summary\n\n- compile finished\n- paper/main.pdf generated\n")
+            return LLMResult(
+                content="# Summary\n\n- compile finished\n- paper/main.pdf generated\n"
+            )
         raise AssertionError(f"unexpected stage: {stage}")
 
     monkeypatch.setattr(
@@ -601,7 +664,9 @@ def test_multi_agent_runner_paper_compile_collects_generated_pdf_artifact(monkey
         assert run is not None
         metadata = dict(run.metadata_json or {})
         artifact_refs = list(metadata.get("artifact_refs") or [])
-        assert any(str(item.get("relative_path") or "") == "paper/main.pdf" for item in artifact_refs)
+        assert any(
+            str(item.get("relative_path") or "") == "paper/main.pdf" for item in artifact_refs
+        )
         assert any(str(item.get("kind") or "") == "pdf" for item in artifact_refs)
 
 
@@ -712,7 +777,12 @@ def test_multi_agent_runner_sync_workspace_copies_remote_to_remote(monkeypatch, 
 
     monkeypatch.setattr(
         "packages.ai.project.multi_agent_runner.get_workspace_server_entry",
-        lambda server_id: {"id": server_id, "host": f"{server_id}.example.com", "username": "tester", "enabled": True},
+        lambda server_id: {
+            "id": server_id,
+            "host": f"{server_id}.example.com",
+            "username": "tester",
+            "enabled": True,
+        },
     )
     monkeypatch.setattr(
         "packages.ai.project.multi_agent_runner.open_ssh_session",
@@ -740,7 +810,9 @@ def test_multi_agent_runner_sync_workspace_copies_remote_to_remote(monkeypatch, 
     assert result["workflow_type"] == ProjectWorkflowType.sync_workspace.value
     assert (target_root / "src" / "train.py").exists()
     assert (target_root / "README.md").exists()
-    assert (target_root / "src" / "train.py").read_text(encoding="utf-8") == "print('remote sync ok')\n"
+    assert (target_root / "src" / "train.py").read_text(
+        encoding="utf-8"
+    ) == "print('remote sync ok')\n"
 
 
 def test_multi_agent_runner_monitor_experiment_collects_screen_state(monkeypatch):
@@ -1079,13 +1151,27 @@ def test_multi_agent_runner_monitor_experiment_collects_multiple_screen_sessions
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 180, "memory_total_mb": 81920, "utilization_gpu_pct": 3},
-                {"index": 1, "name": "A100", "memory_used_mb": 220, "memory_total_mb": 81920, "utilization_gpu_pct": 5},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 180,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 3,
+                },
+                {
+                    "index": 1,
+                    "name": "A100",
+                    "memory_used_mb": 220,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 5,
+                },
             ],
             "reason": None,
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
     monkeypatch.setattr(
         "packages.ai.project.multi_agent_runner.get_workspace_server_entry",
         lambda server_id: {
@@ -1106,13 +1192,30 @@ def test_multi_agent_runner_monitor_experiment_collects_multiple_screen_sessions
             "enabled": True,
         },
     )
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.build_remote_overview", _fake_build_remote_overview)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_terminal_result", _fake_remote_terminal_result)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_list_screen_sessions", _fake_list_screen_sessions)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_capture_screen_session", _fake_capture_screen_session)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_probe_gpus", _fake_probe_gpus)
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.build_remote_overview", _fake_build_remote_overview
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_terminal_result",
+        _fake_remote_terminal_result,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_list_screen_sessions",
+        _fake_list_screen_sessions,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_capture_screen_session",
+        _fake_capture_screen_session,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_probe_gpus", _fake_probe_gpus
+    )
     monkeypatch.setattr(
         "packages.ai.project.multi_agent_runner.remote_read_file",
         lambda server_entry, requested_path, relative_path, *, max_chars: {
@@ -1178,7 +1281,10 @@ def test_multi_agent_runner_monitor_experiment_collects_structured_results(monke
                 "orchestration": orchestration,
                 "stage_trace": build_stage_trace(orchestration, reset=True),
                 "remote_session_name": "aris-structured-monitor",
-                "remote_session_names": ["aris-structured-monitor-baseline", "aris-structured-monitor-improved"],
+                "remote_session_names": [
+                    "aris-structured-monitor-baseline",
+                    "aris-structured-monitor-improved",
+                ],
                 "remote_experiments": [
                     {"name": "baseline", "remote_session_name": "aris-structured-monitor-baseline"},
                     {"name": "improved", "remote_session_name": "aris-structured-monitor-improved"},
@@ -1191,9 +1297,15 @@ def test_multi_agent_runner_monitor_experiment_collects_structured_results(monke
         run_id = run.id
 
     file_payloads = {
-        "outputs/baseline/results.json": json.dumps({"status": "done", "accuracy": 0.82, "loss": 0.43}),
-        "outputs/improved/results.json": json.dumps({"status": "done", "accuracy": 0.87, "loss": 0.39}),
-        "wandb/run-123/files/wandb-summary.json": json.dumps({"best_accuracy": 0.87, "best_loss": 0.39}),
+        "outputs/baseline/results.json": json.dumps(
+            {"status": "done", "accuracy": 0.82, "loss": 0.43}
+        ),
+        "outputs/improved/results.json": json.dumps(
+            {"status": "done", "accuracy": 0.87, "loss": 0.39}
+        ),
+        "wandb/run-123/files/wandb-summary.json": json.dumps(
+            {"best_accuracy": 0.87, "best_loss": 0.39}
+        ),
     }
 
     def _fake_summarize(
@@ -1291,12 +1403,20 @@ def test_multi_agent_runner_monitor_experiment_collects_structured_results(monke
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 220, "memory_total_mb": 81920, "utilization_gpu_pct": 8},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 220,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 8,
+                },
             ],
             "reason": None,
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
     monkeypatch.setattr(
         "packages.ai.project.multi_agent_runner.get_workspace_server_entry",
         lambda server_id: {
@@ -1317,13 +1437,30 @@ def test_multi_agent_runner_monitor_experiment_collects_structured_results(monke
             "enabled": True,
         },
     )
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.build_remote_overview", _fake_build_remote_overview)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_terminal_result", _fake_remote_terminal_result)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_list_screen_sessions", _fake_list_screen_sessions)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_capture_screen_session", _fake_capture_screen_session)
-    monkeypatch.setattr("packages.ai.project.multi_agent_runner.remote_probe_gpus", _fake_probe_gpus)
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.build_remote_overview", _fake_build_remote_overview
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_terminal_result",
+        _fake_remote_terminal_result,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_list_screen_sessions",
+        _fake_list_screen_sessions,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_capture_screen_session",
+        _fake_capture_screen_session,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.multi_agent_runner.remote_probe_gpus", _fake_probe_gpus
+    )
     monkeypatch.setattr(
         "packages.ai.project.multi_agent_runner.remote_read_file",
         lambda server_entry, requested_path, relative_path, *, max_chars: {

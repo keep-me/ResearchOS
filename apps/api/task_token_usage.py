@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from packages.storage.db import session_scope
 from packages.storage.models import PromptTrace
 
-
 _TASK_STAGE_MAP: dict[str, tuple[str, ...]] = {
     "skim": ("skim",),
     "deep": ("deep", "deep_dive"),
@@ -107,8 +106,12 @@ def _normalize_usage(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     tokens = value.get("tokens") if isinstance(value.get("tokens"), dict) else value
-    input_tokens = _to_int(tokens.get("input_tokens", tokens.get("input", tokens.get("prompt_tokens"))))
-    output_tokens = _to_int(tokens.get("output_tokens", tokens.get("output", tokens.get("completion_tokens"))))
+    input_tokens = _to_int(
+        tokens.get("input_tokens", tokens.get("input", tokens.get("prompt_tokens")))
+    )
+    output_tokens = _to_int(
+        tokens.get("output_tokens", tokens.get("output", tokens.get("completion_tokens")))
+    )
     reasoning_tokens = _to_int(tokens.get("reasoning_tokens", tokens.get("reasoning")))
     total_tokens = _to_int(tokens.get("total_tokens", tokens.get("total")))
     computed_total = input_tokens + output_tokens + reasoning_tokens
@@ -173,7 +176,9 @@ def _task_time_bounds(task: dict[str, Any]) -> tuple[datetime | None, datetime |
     started = _timestamp_to_datetime(task.get("created_at"))
     if started is None:
         return None, None
-    finished = _timestamp_to_datetime(task.get("finished_at") or task.get("updated_at")) or datetime.now()
+    finished = (
+        _timestamp_to_datetime(task.get("finished_at") or task.get("updated_at")) or datetime.now()
+    )
     return started - timedelta(minutes=2), max(finished, started) + timedelta(minutes=15)
 
 

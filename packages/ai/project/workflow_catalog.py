@@ -5,7 +5,10 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from packages.agent.runtime.agent_backends import DEFAULT_AGENT_BACKEND_ID, normalize_agent_backend_id
+from packages.agent.runtime.agent_backends import (
+    DEFAULT_AGENT_BACKEND_ID,
+    normalize_agent_backend_id,
+)
 from packages.ai.project.amadeus_compat import apply_amadeus_workflow_defaults
 from packages.domain.enums import ProjectWorkflowType
 
@@ -1212,14 +1215,10 @@ _WORKFLOW_PRESETS: list[dict[str, Any]] = [
     ),
 ]
 
-_WORKFLOW_PRESET_BY_TYPE = {
-    item["workflow_type"]: item for item in _WORKFLOW_PRESETS
-}
+_WORKFLOW_PRESET_BY_TYPE = {item["workflow_type"]: item for item in _WORKFLOW_PRESETS}
 
 _WORKFLOW_PRESETS = [apply_amadeus_workflow_defaults(item) for item in _WORKFLOW_PRESETS]
-_WORKFLOW_PRESET_BY_TYPE = {
-    item["workflow_type"]: item for item in _WORKFLOW_PRESETS
-}
+_WORKFLOW_PRESET_BY_TYPE = {item["workflow_type"]: item for item in _WORKFLOW_PRESETS}
 
 
 def list_project_agent_templates() -> list[dict[str, Any]]:
@@ -1236,7 +1235,9 @@ def list_public_project_workflow_presets() -> list[dict[str, Any]]:
         preset = get_project_workflow_preset(workflow_type)
         if not preset:
             continue
-        preset["label"] = _PRIMARY_PUBLIC_WORKFLOW_LABELS.get(workflow_type, preset.get("label") or workflow_type)
+        preset["label"] = _PRIMARY_PUBLIC_WORKFLOW_LABELS.get(
+            workflow_type, preset.get("label") or workflow_type
+        )
         preset["entry_command"] = _PRIMARY_PUBLIC_WORKFLOW_COMMANDS.get(workflow_type)
         preset["source_skills"] = list(_PRIMARY_PUBLIC_WORKFLOW_SKILLS.get(workflow_type, []))
         preset["workflow_group"] = "primary"
@@ -1246,12 +1247,16 @@ def list_public_project_workflow_presets() -> list[dict[str, Any]]:
 
 
 def is_active_project_workflow(workflow_type: ProjectWorkflowType | str) -> bool:
-    key = str(workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type)
+    key = str(
+        workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type
+    )
     return key in _ACTIVE_WORKFLOW_TYPES
 
 
 def get_project_workflow_preset(workflow_type: ProjectWorkflowType | str) -> dict[str, Any] | None:
-    key = str(workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type)
+    key = str(
+        workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type
+    )
     preset = _WORKFLOW_PRESET_BY_TYPE.get(key)
     return _normalize_preset_agent_fields(deepcopy(preset)) if preset else None
 
@@ -1265,7 +1270,9 @@ def build_run_orchestration(
     reset_stage_status: bool = False,
 ) -> dict[str, Any]:
     preset = get_project_workflow_preset(workflow_type)
-    key = str(workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type)
+    key = str(
+        workflow_type.value if isinstance(workflow_type, ProjectWorkflowType) else workflow_type
+    )
     existing = existing if isinstance(existing, dict) else {}
 
     stages_source = list(preset.get("stages", [])) if preset else []
@@ -1278,11 +1285,7 @@ def build_run_orchestration(
     stages: list[dict[str, Any]] = []
     for order, stage in enumerate(stages_source, start=1):
         current = existing_stages.get(str(stage["id"]), {})
-        status = (
-            "pending"
-            if reset_stage_status
-            else _normalize_stage_status(current.get("status"))
-        )
+        status = "pending" if reset_stage_status else _normalize_stage_status(current.get("status"))
         execution_target = _normalize_execution_target(
             current.get("execution_target"),
             fallback=str(stage.get("execution_target") or "workspace_target"),
@@ -1293,11 +1296,15 @@ def build_run_orchestration(
                 **deepcopy(stage),
                 "order": order,
                 "selected_agent_id": _normalize_agent_id(
-                    current.get("selected_agent_id") or current.get("agent_id") or stage.get("default_agent_id")
+                    current.get("selected_agent_id")
+                    or current.get("agent_id")
+                    or stage.get("default_agent_id")
                 ),
                 "selected_engine_id": _normalize_engine_id(current.get("selected_engine_id")),
                 "execution_target": execution_target,
-                "model_role": _normalize_model_role(current.get("model_role"), fallback=str(stage.get("model_role") or "executor")),
+                "model_role": _normalize_model_role(
+                    current.get("model_role"), fallback=str(stage.get("model_role") or "executor")
+                ),
                 "mcp_enabled": bool(
                     current.get("mcp_enabled")
                     if current.get("mcp_enabled") is not None
@@ -1348,12 +1355,18 @@ def build_stage_trace(
                 "label": stage.get("label"),
                 "description": stage.get("description"),
                 "deliverable": stage.get("deliverable"),
-                "status": "pending" if reset else _normalize_stage_status(current.get("status") or stage.get("status")),
-                "model_role": _normalize_model_role(current.get("model_role") or stage.get("model_role"), fallback="executor"),
+                "status": "pending"
+                if reset
+                else _normalize_stage_status(current.get("status") or stage.get("status")),
+                "model_role": _normalize_model_role(
+                    current.get("model_role") or stage.get("model_role"), fallback="executor"
+                ),
                 "message": "" if reset else str(current.get("message") or ""),
                 "progress_pct": 0 if reset else int(current.get("progress_pct") or 0),
                 "agent_id": stage.get("selected_agent_id") or stage.get("default_agent_id"),
-                "engine_id": None if reset else current.get("engine_id") or stage.get("selected_engine_id"),
+                "engine_id": None
+                if reset
+                else current.get("engine_id") or stage.get("selected_engine_id"),
                 "engine_label": None if reset else current.get("engine_label"),
                 "execution_target": stage.get("execution_target"),
                 "mcp_enabled": bool(stage.get("mcp_enabled")),
@@ -1396,7 +1409,9 @@ def _normalize_preset_agent_fields(preset: dict[str, Any]) -> dict[str, Any]:
             continue
         stage = dict(raw_stage)
         stage["default_agent_id"] = _normalize_agent_id(stage.get("default_agent_id"))
-        stage["supported_agent_ids"] = _normalize_supported_agent_ids(stage.get("supported_agent_ids"))
+        stage["supported_agent_ids"] = _normalize_supported_agent_ids(
+            stage.get("supported_agent_ids")
+        )
         if stage.get("selected_agent_id") is not None:
             stage["selected_agent_id"] = _normalize_agent_id(stage.get("selected_agent_id"))
         stages.append(stage)
@@ -1435,6 +1450,3 @@ def _normalize_model_role(value: Any, *, fallback: str) -> str:
     if role not in _ALLOWED_MODEL_ROLES:
         return "executor"
     return role
-
-
-

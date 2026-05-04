@@ -159,4 +159,3 @@ async def update_mcp_config(payload: McpConfigPayload) -> dict[str, Any]:
         return config
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-

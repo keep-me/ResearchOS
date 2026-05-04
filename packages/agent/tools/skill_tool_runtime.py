@@ -4,8 +4,10 @@ from pathlib import Path
 
 from packages.agent.tools.skill_registry import (
     get_local_skill_detail,
-    list_local_skills as scan_local_skills,
     list_skill_scan_roots,
+)
+from packages.agent.tools.skill_registry import (
+    list_local_skills as scan_local_skills,
 )
 from packages.agent.tools.tool_runtime import AgentToolContext, ToolResult
 
@@ -74,7 +76,9 @@ def _resolve_accessible_skill_detail(
         "content": text[:max_chars],
         "truncated": truncated,
         "match_count": 1 if exact_match else len(fuzzy_matches),
-        "matched_ids": [item["id"] for item in fuzzy_matches[:8]] if not exact_match else [match["id"]],
+        "matched_ids": [item["id"] for item in fuzzy_matches[:8]]
+        if not exact_match
+        else [match["id"]],
     }
 
 
@@ -165,4 +169,3 @@ def _read_local_skill(
     if int(item.get("match_count") or 0) > 1:
         summary += f"（存在 {item.get('match_count')} 个匹配，已返回最接近的一项）"
     return ToolResult(success=True, data=item, summary=summary)
-

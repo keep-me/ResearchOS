@@ -5,9 +5,8 @@ Revises:
 Create Date: 2026-02-16 00:00:00.000000
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260216_0001"
@@ -33,8 +32,12 @@ def upgrade() -> None:
         sa.Column("embedding", sa.JSON(), nullable=True),
         sa.Column("read_status", read_status, nullable=False, server_default="Unread"),
         sa.Column("metadata", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
         sa.UniqueConstraint("arxiv_id"),
     )
     op.create_index("ix_papers_arxiv_id", "papers", ["arxiv_id"], unique=True)
@@ -47,8 +50,12 @@ def upgrade() -> None:
         sa.Column("deep_dive_md", sa.Text(), nullable=True),
         sa.Column("key_insights", sa.JSON(), nullable=False),
         sa.Column("skim_score", sa.Float(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
         sa.ForeignKeyConstraint(["paper_id"], ["papers.id"], ondelete="CASCADE"),
     )
     op.create_index("ix_analysis_reports_paper_id", "analysis_reports", ["paper_id"], unique=False)
@@ -75,12 +82,18 @@ def upgrade() -> None:
         sa.Column("retry_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("elapsed_ms", sa.Integer(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
         sa.ForeignKeyConstraint(["paper_id"], ["papers.id"], ondelete="SET NULL"),
     )
     op.create_index("ix_pipeline_runs_paper_id", "pipeline_runs", ["paper_id"], unique=False)
-    op.create_index("ix_pipeline_runs_pipeline_name", "pipeline_runs", ["pipeline_name"], unique=False)
+    op.create_index(
+        "ix_pipeline_runs_pipeline_name", "pipeline_runs", ["pipeline_name"], unique=False
+    )
 
     op.create_table(
         "prompt_traces",
@@ -92,7 +105,9 @@ def upgrade() -> None:
         sa.Column("prompt_digest", sa.Text(), nullable=False),
         sa.Column("input_tokens", sa.Integer(), nullable=True),
         sa.Column("output_tokens", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
         sa.ForeignKeyConstraint(["paper_id"], ["papers.id"], ondelete="SET NULL"),
     )
     op.create_index("ix_prompt_traces_paper_id", "prompt_traces", ["paper_id"], unique=False)
@@ -104,7 +119,9 @@ def upgrade() -> None:
         sa.Column("source", sa.String(length=64), nullable=False),
         sa.Column("last_fetch_at", sa.DateTime(), nullable=True),
         sa.Column("last_published_date", sa.Date(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
         sa.UniqueConstraint("source"),
     )
 

@@ -1,5 +1,5 @@
-"""引用图谱 & 引用同步路由
-"""
+"""引用图谱 & 引用同步路由"""
+
 import logging
 from uuid import UUID
 
@@ -304,9 +304,7 @@ def insight_async(
         try:
             analysis = gaps.get("analysis", {}) if isinstance(gaps, dict) else {}
             summary = str(
-                analysis.get("overall_summary", "")
-                if isinstance(analysis, dict)
-                else ""
+                analysis.get("overall_summary", "") if isinstance(analysis, dict) else ""
             ).strip()
             if not summary:
                 summary = f"领域洞察结果（关键词: {kw}）"

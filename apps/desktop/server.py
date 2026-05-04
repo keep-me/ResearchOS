@@ -2,6 +2,7 @@
 ResearchOS Desktop Server — PyInstaller 入口
 Tauri sidecar 调用此二进制，自动选端口 + 内嵌 scheduler。
 """
+
 from __future__ import annotations
 
 import json
@@ -70,6 +71,8 @@ def _setup_data_dir(data_dir: Path) -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     (data_dir / "papers").mkdir(exist_ok=True)
     (data_dir / "briefs").mkdir(exist_ok=True)
+
+
 def _select_database_file(data_dir: Path) -> Path:
     return default_database_file(data_dir)
 
@@ -86,6 +89,7 @@ def _apply_env_overrides(data_dir: Path, env_file: Path | None) -> None:
     if env_file and env_file.is_file():
         os.environ["RESEARCHOS_ENV_FILE"] = str(env_file)
         from dotenv import load_dotenv
+
         load_dotenv(env_file, override=True)
         logger.info("Loaded .env from %s", env_file)
 
@@ -149,6 +153,7 @@ def main() -> None:
     logger.info("Data dir: %s", data_dir)
 
     import uvicorn
+
     from apps.api.main import app
 
     def _handle_signal(sig, _frame):

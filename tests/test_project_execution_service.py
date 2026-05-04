@@ -151,7 +151,11 @@ def test_submit_project_run_resumes_multi_agent_from_stage_checkpoint(monkeypatc
         calls.append((_run_id, resume_stage_id))
         return "multi-task-resume"
 
-    monkeypatch.setattr(project_execution_service, "submit_native_project_run", lambda _run_id, *, resume_stage_id=None: "unused")
+    monkeypatch.setattr(
+        project_execution_service,
+        "submit_native_project_run",
+        lambda _run_id, *, resume_stage_id=None: "unused",
+    )
     monkeypatch.setattr(project_execution_service, "submit_multi_agent_project_run", _multi)
 
     task_id = project_execution_service.submit_project_run(run_id)
@@ -177,10 +181,16 @@ def test_submit_project_run_pauses_for_preflight_checkpoint(monkeypatch):
         "submit_native_project_run",
         lambda _run_id, *, resume_stage_id=None: calls.__setitem__("native", calls["native"] + 1),
     )
-    monkeypatch.setattr(project_execution_service, "submit_multi_agent_project_run", lambda _run_id: calls.__setitem__("multi", calls["multi"] + 1))
+    monkeypatch.setattr(
+        project_execution_service,
+        "submit_multi_agent_project_run",
+        lambda _run_id: calls.__setitem__("multi", calls["multi"] + 1),
+    )
     monkeypatch.setattr(
         "packages.ai.project.checkpoint_service.notify_project_run_status",
-        lambda run_id, event: calls.__setitem__("notify", calls["notify"] + 1) or {"sent": True, "event": event},
+        lambda run_id, event: (
+            calls.__setitem__("notify", calls["notify"] + 1) or {"sent": True, "event": event}
+        ),
     )
 
     task_id = project_execution_service.submit_project_run(run_id)
@@ -224,7 +234,9 @@ def test_submit_project_run_dispatches_after_checkpoint_approval(monkeypatch):
         return "native-task-approved"
 
     monkeypatch.setattr(project_execution_service, "submit_native_project_run", _native)
-    monkeypatch.setattr(project_execution_service, "submit_multi_agent_project_run", lambda _run_id: "unused")
+    monkeypatch.setattr(
+        project_execution_service, "submit_multi_agent_project_run", lambda _run_id: "unused"
+    )
 
     task_id = project_execution_service.submit_project_run(run_id)
 
@@ -251,7 +263,9 @@ def test_submit_project_run_resumes_from_stage_checkpoint(monkeypatch):
         return "native-task-resume"
 
     monkeypatch.setattr(project_execution_service, "submit_native_project_run", _native)
-    monkeypatch.setattr(project_execution_service, "submit_multi_agent_project_run", lambda _run_id: "unused")
+    monkeypatch.setattr(
+        project_execution_service, "submit_multi_agent_project_run", lambda _run_id: "unused"
+    )
 
     task_id = project_execution_service.submit_project_run(run_id)
 

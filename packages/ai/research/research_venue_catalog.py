@@ -39,7 +39,10 @@ _CCF_A_VENUES: tuple[VenueCatalogEntry, ...] = (
     _conference("IEEE International Symposium on High-Performance Computer Architecture", "HPCA"),
     _conference("International Symposium on Computer Architecture", "ISCA"),
     _conference("IEEE/ACM International Symposium on Microarchitecture", "MICRO"),
-    _conference("International Conference for High Performance Computing, Networking, Storage and Analysis", "SC"),
+    _conference(
+        "International Conference for High Performance Computing, Networking, Storage and Analysis",
+        "SC",
+    ),
     _conference("USENIX Annual Technical Conference", "USENIX ATC", "ATC"),
     _conference("Design Automation Conference", "DAC"),
     _conference("IEEE/ACM International Conference on Computer-Aided Design", "ICCAD"),
@@ -50,7 +53,10 @@ _CCF_A_VENUES: tuple[VenueCatalogEntry, ...] = (
     _conference("IEEE International Conference on Computer Communications", "INFOCOM"),
     _conference("USENIX Symposium on Networked Systems Design and Implementation", "NSDI"),
     _conference("ACM Conference on Computer and Communications Security", "CCS"),
-    _conference("Annual International Conference on the Theory and Applications of Cryptographic Techniques", "EUROCRYPT"),
+    _conference(
+        "Annual International Conference on the Theory and Applications of Cryptographic Techniques",
+        "EUROCRYPT",
+    ),
     _conference(
         "IEEE Symposium on Security and Privacy",
         "S&P",
@@ -79,7 +85,10 @@ _CCF_A_VENUES: tuple[VenueCatalogEntry, ...] = (
     _conference("European Joint Conferences on Theory and Practice of Software", "ETAPS"),
     _conference("International Conference on Management of Data", "SIGMOD", "ACM SIGMOD"),
     _conference("ACM SIGKDD Conference on Knowledge Discovery and Data Mining", "SIGKDD", "KDD"),
-    _conference("International ACM SIGIR Conference on Research and Development in Information Retrieval", "SIGIR"),
+    _conference(
+        "International ACM SIGIR Conference on Research and Development in Information Retrieval",
+        "SIGIR",
+    ),
     _conference("International Conference on Very Large Data Bases", "VLDB"),
     _conference("IEEE International Conference on Data Engineering", "ICDE"),
     _conference("Annual ACM Symposium on Theory of Computing", "STOC"),
@@ -102,7 +111,9 @@ _CCF_A_VENUES: tuple[VenueCatalogEntry, ...] = (
     _conference("IEEE/CVF International Conference on Computer Vision", "ICCV"),
     _conference("International Conference on Machine Learning", "ICML"),
     _conference("International Joint Conference on Artificial Intelligence", "IJCAI"),
-    _conference("ACM Conference on Computer Supported Cooperative Work and Social Computing", "CSCW"),
+    _conference(
+        "ACM Conference on Computer Supported Cooperative Work and Social Computing", "CSCW"
+    ),
     _conference("CHI Conference on Human Factors in Computing Systems", "CHI"),
     _conference("ACM Symposium on User Interface Software and Technology", "UIST"),
     _conference("The Web Conference", "WWW", "International World Wide Web Conference"),

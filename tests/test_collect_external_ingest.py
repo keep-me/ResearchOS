@@ -28,7 +28,9 @@ def _configure_test_db(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(db, "SessionLocal", session_local)
 
 
-def test_ingest_external_entries_persists_openalex_metadata_and_dedupes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ingest_external_entries_persists_openalex_metadata_and_dedupes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
     monkeypatch.setattr(pipelines_module, "_bg_auto_link", lambda paper_ids: None)
     monkeypatch.setattr(pipelines_module, "LLMClient", lambda: object())
@@ -69,7 +71,9 @@ def test_ingest_external_entries_persists_openalex_metadata_and_dedupes(monkeypa
         assert paper.metadata_json["venue"] == "Conference on Neural Information Processing Systems"
 
 
-def test_search_external_literature_route_filters_dates_and_sorts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_external_literature_route_filters_dates_and_sorts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
     app = FastAPI()
     app.include_router(topics_router.router)

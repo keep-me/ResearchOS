@@ -4,7 +4,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from apps.api.routers import jobs, settings as settings_router
+from apps.api.routers import jobs
+from apps.api.routers import settings as settings_router
 
 
 def _build_app() -> FastAPI:

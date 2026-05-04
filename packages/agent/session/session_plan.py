@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
-import re
 from typing import Any
 
 from packages.agent.tools.apply_patch_runtime import patch_paths
@@ -82,7 +82,7 @@ def _data_dir() -> Path:
     database_url = _clean(getattr(settings, "database_url", ""))
     prefix = "sqlite:///"
     if database_url.startswith(prefix):
-        raw = database_url[len(prefix):]
+        raw = database_url[len(prefix) :]
         if raw:
             try:
                 return Path(raw).expanduser().resolve().parent
@@ -139,7 +139,9 @@ def _plan_filename(session_payload: dict[str, Any]) -> str | None:
     slug = _clean(session_payload.get("slug") or session_payload.get("id"))
     if not slug:
         return None
-    time_payload = session_payload.get("time") if isinstance(session_payload.get("time"), dict) else {}
+    time_payload = (
+        session_payload.get("time") if isinstance(session_payload.get("time"), dict) else {}
+    )
     created = int(time_payload.get("created") or 0)
     return f"{created}-{slug}.md" if created > 0 else f"{slug}.md"
 
@@ -170,9 +172,13 @@ def resolve_session_plan_info(session_payload: dict[str, Any] | None) -> Session
         )
 
     project = _project_row(session_payload.get("projectID"))
-    worktree = _local_path(
-        project.get("worktree") if isinstance(project, dict) else None,
-    ) or _local_path(directory) or _local_path(workspace_path)
+    worktree = (
+        _local_path(
+            project.get("worktree") if isinstance(project, dict) else None,
+        )
+        or _local_path(directory)
+        or _local_path(workspace_path)
+    )
     if worktree is None:
         return None
 
@@ -287,7 +293,9 @@ def build_plan_mode_reminder(session_payload: dict[str, Any] | None) -> str:
     )
 
 
-def _local_targets_for_call(call_name: str, arguments: dict[str, Any], session_payload: dict[str, Any]) -> list[str]:
+def _local_targets_for_call(
+    call_name: str, arguments: dict[str, Any], session_payload: dict[str, Any]
+) -> list[str]:
     base = _local_path(session_payload.get("workspace_path") or session_payload.get("directory"))
     targets: list[str] = []
     if call_name in {"write", "edit"}:
@@ -319,19 +327,28 @@ def _local_targets_for_call(call_name: str, arguments: dict[str, Any], session_p
     return list(dict.fromkeys(targets))
 
 
-def _remote_targets_for_call(call_name: str, arguments: dict[str, Any], session_payload: dict[str, Any]) -> list[str]:
+def _remote_targets_for_call(
+    call_name: str, arguments: dict[str, Any], session_payload: dict[str, Any]
+) -> list[str]:
     base = _remote_path(session_payload.get("workspace_path") or session_payload.get("directory"))
     targets: list[str] = []
     if call_name in {"write_workspace_file", "replace_workspace_text"}:
         workspace = _remote_path(arguments.get("workspace_path"), base=base) or base
         relative_path = _clean(arguments.get("relative_path"))
-        target = _remote_path(relative_path, base=workspace) if workspace and relative_path else None
+        target = (
+            _remote_path(relative_path, base=workspace) if workspace and relative_path else None
+        )
         if target:
             targets.append(target)
     return list(dict.fromkeys(targets))
 
 
-def _targets_for_call(call_name: str, arguments: dict[str, Any], session_payload: dict[str, Any], info: SessionPlanInfo) -> list[str]:
+def _targets_for_call(
+    call_name: str,
+    arguments: dict[str, Any],
+    session_payload: dict[str, Any],
+    info: SessionPlanInfo,
+) -> list[str]:
     if info.storage == "remote":
         return _remote_targets_for_call(call_name, arguments, session_payload)
     return _local_targets_for_call(call_name, arguments, session_payload)
@@ -397,7 +414,9 @@ def _plan_read_only_shell_violation(call_name: str, arguments: dict[str, Any]) -
         if re.search(pattern, normalized):
             return "Plan mode only allows read-only shell inspection commands."
 
-    segments = [segment.strip() for segment in re.split(r"&&|\|\||;|\r?\n", normalized) if segment.strip()]
+    segments = [
+        segment.strip() for segment in re.split(r"&&|\|\||;|\r?\n", normalized) if segment.strip()
+    ]
     if not segments:
         return "Plan mode only allows read-only shell inspection commands."
 
@@ -406,7 +425,10 @@ def _plan_read_only_shell_violation(call_name: str, arguments: dict[str, Any]) -
         if not pipeline_parts:
             return "Plan mode only allows read-only shell inspection commands."
         for part in pipeline_parts:
-            if any(part == prefix or part.startswith(f"{prefix} ") for prefix in _PLAN_READ_ONLY_BASH_ALLOW_PREFIXES):
+            if any(
+                part == prefix or part.startswith(f"{prefix} ")
+                for prefix in _PLAN_READ_ONLY_BASH_ALLOW_PREFIXES
+            ):
                 continue
             return "Plan mode only allows read-only shell inspection commands."
     return None
@@ -452,4 +474,3 @@ def check_plan_mode_tool_access(
         return None
 
     return f"Plan mode is active. The only writable target is the plan file: {info.path}"
-

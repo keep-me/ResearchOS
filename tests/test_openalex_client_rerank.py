@@ -32,7 +32,10 @@ def test_search_works_prefers_exact_title_and_published_venue(monkeypatch) -> No
                 },
                 "locations": [
                     {
-                        "source": {"display_name": "Neural Information Processing Systems", "type": "conference"},
+                        "source": {
+                            "display_name": "Neural Information Processing Systems",
+                            "type": "conference",
+                        },
                     },
                 ],
                 "authorships": [],
@@ -55,9 +58,17 @@ def test_search_works_prefers_exact_title_and_published_venue(monkeypatch) -> No
     }
 
     def fake_get(path: str, params=None):  # noqa: ANN001
-        if path == "/works" and isinstance(params, dict) and params.get("search") == "Attention Is All You Need":
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and params.get("search") == "Attention Is All You Need"
+        ):
             return broad_results
-        if path == "/works" and isinstance(params, dict) and str(params.get("filter") or "").startswith("title.search:"):
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and str(params.get("filter") or "").startswith("title.search:")
+        ):
             return broad_results
         return None
 
@@ -81,7 +92,10 @@ def test_search_works_prefers_exact_doi_lookup(monkeypatch) -> None:
         "publication_date": "2017-12-01",
         "cited_by_count": 900,
         "primary_location": {
-            "source": {"display_name": "Neural Information Processing Systems", "type": "conference"},
+            "source": {
+                "display_name": "Neural Information Processing Systems",
+                "type": "conference",
+            },
         },
         "locations": [],
         "authorships": [],
@@ -89,7 +103,11 @@ def test_search_works_prefers_exact_doi_lookup(monkeypatch) -> None:
     }
 
     def fake_get(path: str, params=None):  # noqa: ANN001
-        if path == "/works" and isinstance(params, dict) and params.get("filter") == f"doi:{doi_query}":
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and params.get("filter") == f"doi:{doi_query}"
+        ):
             return {"results": [exact_work]}
         if path == "/works" and isinstance(params, dict):
             return {"results": []}
@@ -107,9 +125,17 @@ def test_search_works_does_not_fallback_to_broad_results_for_missing_exact_doi(m
     client = OpenAlexClient()
 
     def fake_get(path: str, params=None):  # noqa: ANN001
-        if path == "/works" and isinstance(params, dict) and str(params.get("filter") or "").startswith("doi:10.1234/not-found"):
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and str(params.get("filter") or "").startswith("doi:10.1234/not-found")
+        ):
             return {"results": []}
-        if path == "/works" and isinstance(params, dict) and params.get("search") == "10.1234/not-found":
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and params.get("search") == "10.1234/not-found"
+        ):
             return {
                 "results": [
                     {
@@ -150,7 +176,10 @@ def test_search_works_prefers_exact_arxiv_lookup(monkeypatch) -> None:
         },
         "locations": [
             {
-                "source": {"display_name": "Neural Information Processing Systems", "type": "conference"},
+                "source": {
+                    "display_name": "Neural Information Processing Systems",
+                    "type": "conference",
+                },
             },
         ],
         "authorships": [],
@@ -158,7 +187,11 @@ def test_search_works_prefers_exact_arxiv_lookup(monkeypatch) -> None:
     }
 
     def fake_get(path: str, params=None):  # noqa: ANN001
-        if path == "/works" and isinstance(params, dict) and str(params.get("filter") or "").startswith("doi:10.48550/arxiv.1706.03762"):
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and str(params.get("filter") or "").startswith("doi:10.48550/arxiv.1706.03762")
+        ):
             return {"results": [exact_work]}
         if path == "/works" and isinstance(params, dict):
             return {"results": []}
@@ -200,7 +233,10 @@ def test_search_works_recovers_published_variant_from_same_title_family(monkeypa
         },
         "locations": [
             {
-                "source": {"display_name": "Neural Information Processing Systems", "type": "conference"},
+                "source": {
+                    "display_name": "Neural Information Processing Systems",
+                    "type": "conference",
+                },
             },
         ],
         "authorships": [],
@@ -208,9 +244,19 @@ def test_search_works_recovers_published_variant_from_same_title_family(monkeypa
     }
 
     def fake_get(path: str, params=None):  # noqa: ANN001
-        if path == "/works" and isinstance(params, dict) and str(params.get("filter") or "").startswith("doi:10.48550/arxiv.1706.03762"):
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and str(params.get("filter") or "").startswith("doi:10.48550/arxiv.1706.03762")
+        ):
             return {"results": [repo_work]}
-        if path == "/works" and isinstance(params, dict) and str(params.get("filter") or "").startswith('title.search:"Attention Is All You Need"'):
+        if (
+            path == "/works"
+            and isinstance(params, dict)
+            and str(params.get("filter") or "").startswith(
+                'title.search:"Attention Is All You Need"'
+            )
+        ):
             return {"results": [repo_work, conference_variant]}
         if path == "/works" and isinstance(params, dict):
             return {"results": []}

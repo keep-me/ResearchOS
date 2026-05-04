@@ -75,7 +75,9 @@ def test_chat_dispatch_distinguishes_official_openai_from_compatible_gateways() 
         )
     )
     anthropic = resolve_chat_dispatch(
-        _target(provider="anthropic", base_url="https://api.anthropic.com", model="claude-sonnet-4-5")
+        _target(
+            provider="anthropic", base_url="https://api.anthropic.com", model="claude-sonnet-4-5"
+        )
     )
 
     assert official_openai.route == "openai-responses"
@@ -85,7 +87,10 @@ def test_chat_dispatch_distinguishes_official_openai_from_compatible_gateways() 
 
 def test_chat_test_dispatch_preserves_openai_zhipu_and_anthropic_routes() -> None:
     assert resolve_chat_test_dispatch(_target(provider="none", api_key=None)).route == "disabled"
-    assert resolve_chat_test_dispatch(_target(provider="openai", api_key=None)).route == "missing_api_key"
+    assert (
+        resolve_chat_test_dispatch(_target(provider="openai", api_key=None)).route
+        == "missing_api_key"
+    )
     assert resolve_chat_test_dispatch(_target(provider="openai")).route == "openai"
     assert resolve_chat_test_dispatch(_target(provider="zhipu")).route == "openai-compatible"
     assert resolve_chat_test_dispatch(_target(provider="custom")).route == "openai-compatible"
@@ -108,11 +113,25 @@ def test_embedding_dispatch_reports_supported_and_fallback_routes() -> None:
 
 
 def test_embedding_test_dispatch_tracks_disabled_and_unsupported_routes() -> None:
-    assert resolve_embedding_test_dispatch("none", _embedding(provider="openai")).route == "disabled"
-    assert resolve_embedding_test_dispatch("openai", _embedding(provider="anthropic")).route == "unsupported"
-    assert resolve_embedding_test_dispatch(
-        "openai",
-        _embedding(provider="openai", api_key=None),
-    ).route == "missing_api_key"
-    assert resolve_embedding_test_dispatch("openai", _embedding(provider="zhipu")).route == "openai-compatible"
-    assert resolve_embedding_test_dispatch("custom", _embedding(provider="custom")).route == "openai-compatible"
+    assert (
+        resolve_embedding_test_dispatch("none", _embedding(provider="openai")).route == "disabled"
+    )
+    assert (
+        resolve_embedding_test_dispatch("openai", _embedding(provider="anthropic")).route
+        == "unsupported"
+    )
+    assert (
+        resolve_embedding_test_dispatch(
+            "openai",
+            _embedding(provider="openai", api_key=None),
+        ).route
+        == "missing_api_key"
+    )
+    assert (
+        resolve_embedding_test_dispatch("openai", _embedding(provider="zhipu")).route
+        == "openai-compatible"
+    )
+    assert (
+        resolve_embedding_test_dispatch("custom", _embedding(provider="custom")).route
+        == "openai-compatible"
+    )

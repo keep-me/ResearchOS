@@ -396,7 +396,9 @@ def test_build_responses_input_skips_provider_executed_tool_history_when_store_f
     assert result == [{"role": "user", "content": "继续"}]
 
 
-def test_build_responses_input_replays_provider_executed_tool_result_as_item_reference_when_store_true() -> None:
+def test_build_responses_input_replays_provider_executed_tool_result_as_item_reference_when_store_true() -> (
+    None
+):
     messages = [
         {"role": "user", "content": "继续"},
         {
@@ -609,7 +611,9 @@ def test_chat_stream_openai_responses_emits_reasoning_metadata(monkeypatch) -> N
     class _FakeClient:
         responses = _FakeResponses()
 
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     cfg = LLMConfig(
@@ -676,7 +680,9 @@ def test_chat_stream_openai_responses_emits_tool_call_metadata(monkeypatch) -> N
     class _FakeClient:
         responses = _FakeResponses()
 
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     cfg = LLMConfig(
@@ -736,7 +742,9 @@ def test_chat_stream_openai_responses_emits_provider_executed_builtin_tool_event
     class _FakeClient:
         responses = _FakeResponses()
 
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     cfg = LLMConfig(
@@ -799,7 +807,9 @@ def test_chat_stream_openai_responses_adds_builtin_include_fields(monkeypatch) -
     class _FakeClient:
         responses = _FakeResponses()
 
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     cfg = LLMConfig(
@@ -849,7 +859,9 @@ def test_chat_stream_openai_compatible_strips_provider_defined_tools(monkeypatch
     class _FakeClient:
         chat = type("Chat", (), {"completions": _FakeChatCompletions()})()
 
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     cfg = LLMConfig(
@@ -934,7 +946,9 @@ def test_chat_stream_openai_responses_preserves_output_annotations_metadata(monk
     class _FakeClient:
         responses = _FakeResponses()
 
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     client = LLMClient()
     cfg = LLMConfig(
@@ -1003,7 +1017,9 @@ def test_chat_stream_openai_responses_reuses_previous_response_id_when_store_tru
     class _FakeClient:
         responses = _FakeResponses()
 
-    monkeypatch.setattr(llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        llm_client_module, "_get_openai_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     original_apply = LLMClient._apply_variant_to_responses_kwargs
 
@@ -1084,24 +1100,30 @@ def test_chat_stream_uses_openai_compatible_for_non_official_openai_targets(monk
     monkeypatch.setattr(
         LLMClient,
         "_resolve_model_target",
-        lambda self, stage, model_override=None, variant_override=None, cfg=None: ResolvedModelTarget(
-            provider="openai",
-            api_key="test-key",
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-            model="qwen-plus",
-            variant=None,
-            stage="rag",
+        lambda self, stage, model_override=None, variant_override=None, cfg=None: (
+            ResolvedModelTarget(
+                provider="openai",
+                api_key="test-key",
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                model="qwen-plus",
+                variant=None,
+                stage="rag",
+            )
         ),
     )
 
     called = {"responses": 0, "compatible": 0}
 
-    def _fake_responses(self, messages, tools, max_tokens, cfg, target=None, session_cache_key=None):  # noqa: ANN001, ANN202
+    def _fake_responses(
+        self, messages, tools, max_tokens, cfg, target=None, session_cache_key=None
+    ):  # noqa: ANN001, ANN202
         del messages, tools, max_tokens, cfg, target, session_cache_key
         called["responses"] += 1
         yield llm_client_module.StreamEvent(type="done")
 
-    def _fake_compatible(self, messages, tools, max_tokens, cfg, target=None, session_cache_key=None):  # noqa: ANN001, ANN202
+    def _fake_compatible(
+        self, messages, tools, max_tokens, cfg, target=None, session_cache_key=None
+    ):  # noqa: ANN001, ANN202
         del messages, tools, max_tokens, cfg, target, session_cache_key
         called["compatible"] += 1
         yield llm_client_module.StreamEvent(type="done")

@@ -18,7 +18,9 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from packages.config import get_settings
-from packages.integrations.llm_provider_schema import normalize_provider_name as _normalize_provider_name
+from packages.integrations.llm_provider_schema import (
+    normalize_provider_name as _normalize_provider_name,
+)
 from packages.storage.db import session_scope
 from packages.storage.repositories import LLMConfigRepository
 
@@ -143,11 +145,7 @@ def _policy_to_opencode_permission(policy: dict | None) -> str | dict[str, objec
     )
     allowed_prefixes = list(current.get("allowed_command_prefixes") or [])
 
-    if (
-        workspace_access == "read_write"
-        and command_execution == "full"
-        and approval_mode == "off"
-    ):
+    if workspace_access == "read_write" and command_execution == "full" and approval_mode == "off":
         return "allow"
 
     read_action = "allow" if workspace_access != "none" else "deny"
@@ -519,7 +517,9 @@ class OpenCodeRuntimeManager:
                 return
             shutil.rmtree(target, ignore_errors=False)
         except OSError:
-            logger.warning("failed to remove path during opencode bootstrap: %s", target, exc_info=True)
+            logger.warning(
+                "failed to remove path during opencode bootstrap: %s", target, exc_info=True
+            )
 
     def _active_model_summary(self) -> tuple[str | None, str | None]:
         with session_scope() as session:
@@ -548,12 +548,16 @@ class OpenCodeRuntimeManager:
         fallback = self._settings_llm_record()
         if fallback:
             return fallback
-        raise RuntimeError("当前没有激活的 LLM 配置，且 .env 中也没有可用默认模型，无法启动 opencode")
+        raise RuntimeError(
+            "当前没有激活的 LLM 配置，且 .env 中也没有可用默认模型，无法启动 opencode"
+        )
 
     def _settings_llm_record(self):
         settings = get_settings()
 
-        opencode_provider = _normalize_provider_name(settings.opencode_provider or settings.llm_provider)
+        opencode_provider = _normalize_provider_name(
+            settings.opencode_provider or settings.llm_provider
+        )
         opencode_model = settings.opencode_model or None
         opencode_small_model = settings.opencode_small_model or None
         opencode_api_key = settings.opencode_api_key or None
@@ -571,7 +575,9 @@ class OpenCodeRuntimeManager:
             )
 
         provider = _normalize_provider_name(settings.llm_provider)
-        model_deep = settings.llm_model_deep or settings.llm_model_fallback or settings.llm_model_skim
+        model_deep = (
+            settings.llm_model_deep or settings.llm_model_fallback or settings.llm_model_skim
+        )
         if not provider or not model_deep:
             return None
 
@@ -673,9 +679,7 @@ class OpenCodeRuntimeManager:
 
         settings = get_settings()
         cors_origins = [
-            origin.strip()
-            for origin in settings.cors_allow_origins.split(",")
-            if origin.strip()
+            origin.strip() for origin in settings.cors_allow_origins.split(",") if origin.strip()
         ]
         permission = _policy_to_opencode_permission(None)
 
@@ -736,11 +740,7 @@ class OpenCodeRuntimeManager:
 
         env = os.environ.copy()
         env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config, ensure_ascii=False)
-        provider_api = (
-            config.get("provider", {})
-            .get("researchos", {})
-            .get("api")
-        )
+        provider_api = config.get("provider", {}).get("researchos", {}).get("api")
         if isinstance(provider_api, str) and _requires_custom_tls_compat(provider_api):
             # Custom OpenAI-compatible endpoints on Windows/Bun often fail due to
             # incomplete certificate chains. Keep this scoped to the sidecar only.
@@ -803,4 +803,3 @@ def get_opencode_runtime_manager() -> OpenCodeRuntimeManager:
 
 def get_opencode_llm_record():
     return _manager._load_active_llm_record()
-

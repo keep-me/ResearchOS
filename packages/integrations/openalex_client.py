@@ -2,6 +2,7 @@
 OpenAlex API 客户端
 高速率引用数据源（10 req/s, 100k/day），覆盖 4.7 亿论文
 """
+
 from __future__ import annotations
 
 import difflib
@@ -50,8 +51,10 @@ class OpenAlexClient:
             try:
                 resp = self.client.get(path, params=params)
                 if resp.status_code == 429:
-                    delay = _RETRY_DELAY * (2 ** attempt)
-                    logger.warning("OpenAlex 429, retry %d/%d in %.1fs", attempt + 1, _MAX_RETRIES, delay)
+                    delay = _RETRY_DELAY * (2**attempt)
+                    logger.warning(
+                        "OpenAlex 429, retry %d/%d in %.1fs", attempt + 1, _MAX_RETRIES, delay
+                    )
                     time.sleep(delay)
                     continue
                 if resp.status_code == 404:
@@ -71,7 +74,9 @@ class OpenAlexClient:
     # 论文查找
     # ------------------------------------------------------------------
 
-    def _resolve_work(self, *, arxiv_id: str | None = None, title: str | None = None) -> dict | None:
+    def _resolve_work(
+        self, *, arxiv_id: str | None = None, title: str | None = None
+    ) -> dict | None:
         """通过 arXiv ID 或标题找到 OpenAlex Work"""
         if arxiv_id:
             clean = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
@@ -80,21 +85,26 @@ class OpenAlexClient:
                 return data
 
         if title:
-            data = self._get("/works", params={
-                "filter": f'title.search:"{title[:200]}"',
-                "per_page": 1,
-                "select": (
-                    "id,title,publication_year,cited_by_count,primary_location,"
-                    "referenced_works,related_works,ids,locations,open_access,best_oa_location"
-                ),
-            })
+            data = self._get(
+                "/works",
+                params={
+                    "filter": f'title.search:"{title[:200]}"',
+                    "per_page": 1,
+                    "select": (
+                        "id,title,publication_year,cited_by_count,primary_location,"
+                        "referenced_works,related_works,ids,locations,open_access,best_oa_location"
+                    ),
+                },
+            )
             if data:
                 results = data.get("results", [])
                 if results:
                     return results[0]
         return None
 
-    def _resolve_work_id(self, *, arxiv_id: str | None = None, title: str | None = None) -> str | None:
+    def _resolve_work_id(
+        self, *, arxiv_id: str | None = None, title: str | None = None
+    ) -> str | None:
         work = self._resolve_work(arxiv_id=arxiv_id, title=title)
         if work:
             return work.get("id")
@@ -128,7 +138,11 @@ class OpenAlexClient:
     # ------------------------------------------------------------------
 
     def fetch_edges_by_title(
-        self, title: str, limit: int = 8, *, arxiv_id: str | None = None,
+        self,
+        title: str,
+        limit: int = 8,
+        *,
+        arxiv_id: str | None = None,
     ) -> list[CitationEdge]:
         work = self._resolve_work(arxiv_id=arxiv_id, title=title)
         if not work:
@@ -144,19 +158,26 @@ class OpenAlexClient:
             for rw in ref_works:
                 t = (rw.get("title") or "").strip()
                 if t:
-                    edges.append(CitationEdge(source_title=title, target_title=t, context="reference"))
+                    edges.append(
+                        CitationEdge(source_title=title, target_title=t, context="reference")
+                    )
 
         # 被引用（cited_by → 用 filter 查询）
-        cited_data = self._get("/works", params={
-            "filter": f"cites:{work_id}",
-            "per_page": min(limit, 50),
-            "select": "id,title",
-        })
+        cited_data = self._get(
+            "/works",
+            params={
+                "filter": f"cites:{work_id}",
+                "per_page": min(limit, 50),
+                "select": "id,title",
+            },
+        )
         if cited_data:
             for cw in (cited_data.get("results") or [])[:limit]:
                 t = (cw.get("title") or "").strip()
                 if t:
-                    edges.append(CitationEdge(source_title=t, target_title=title, context="citation"))
+                    edges.append(
+                        CitationEdge(source_title=t, target_title=title, context="citation")
+                    )
 
         return edges
 
@@ -189,11 +210,14 @@ class OpenAlexClient:
                     results.append(info)
 
         # 被引
-        cited_data = self._get("/works", params={
-            "filter": f"cites:{work_id}",
-            "per_page": min(cite_limit, 50),
-            "select": "id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index",
-        })
+        cited_data = self._get(
+            "/works",
+            params={
+                "filter": f"cites:{work_id}",
+                "per_page": min(cite_limit, 50),
+                "select": "id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index",
+            },
+        )
         if cited_data:
             for cw in (cited_data.get("results") or [])[:cite_limit]:
                 info = self._work_to_rich_info(cw, direction="citation")
@@ -216,15 +240,17 @@ class OpenAlexClient:
             venue = ""
             if src:
                 venue = src.get("display_name", "")
-            results.append({
-                "title": (work.get("title") or "").strip(),
-                "year": work.get("publication_year"),
-                "citationCount": work.get("cited_by_count"),
-                "influentialCitationCount": None,
-                "venue": venue or None,
-                "fieldsOfStudy": [],
-                "tldr": None,
-            })
+            results.append(
+                {
+                    "title": (work.get("title") or "").strip(),
+                    "year": work.get("publication_year"),
+                    "citationCount": work.get("cited_by_count"),
+                    "influentialCitationCount": None,
+                    "venue": venue or None,
+                    "fieldsOfStudy": [],
+                    "tldr": None,
+                }
+            )
         return results
 
     def fetch_paper_metadata(self, title: str, *, arxiv_id: str | None = None) -> dict | None:
@@ -237,9 +263,12 @@ class OpenAlexClient:
             return None
 
         path = self._work_api_path(work_id)
-        detail = self._get(path, params={
-            "select": "id,title,publication_year,cited_by_count,primary_location,concepts",
-        })
+        detail = self._get(
+            path,
+            params={
+                "select": "id,title,publication_year,cited_by_count,primary_location,concepts",
+            },
+        )
         _, venue_info = OpenAlexClient._pick_best_source_location(detail or work)
         concepts = (detail or work).get("concepts") or []
         fields = [
@@ -284,7 +313,10 @@ class OpenAlexClient:
             if not isinstance(work, dict):
                 return
             work_id = str(work.get("id") or "").strip()
-            key = work_id or f"title:{str(work.get('title') or work.get('display_name') or '').strip().lower()}"
+            key = (
+                work_id
+                or f"title:{str(work.get('title') or work.get('display_name') or '').strip().lower()}"
+            )
             if not key:
                 return
             merged[key] = work
@@ -383,7 +415,11 @@ class OpenAlexClient:
         direct = self._get(self._work_api_path(f"https://arxiv.org/abs/{normalized}"))
         merged: list[dict] = []
         seen: set[str] = set()
-        if isinstance(direct, dict) and direct.get("id") and _is_exact_arxiv_work(direct, normalized):
+        if (
+            isinstance(direct, dict)
+            and direct.get("id")
+            and _is_exact_arxiv_work(direct, normalized)
+        ):
             direct_id = str(direct.get("id") or "").strip()
             if direct_id:
                 seen.add(direct_id)
@@ -441,8 +477,13 @@ class OpenAlexClient:
             normalized_title = _normalize_match_text(work_title)
             similarity = difflib.SequenceMatcher(None, normalized_query, normalized_title).ratio()
             has_identifier_match = (
-                (doi and OpenAlexClient.extract_doi(work) and OpenAlexClient.extract_doi(work) == doi.lower())
-                or (arxiv_id and OpenAlexClient.extract_arxiv_id(work) and OpenAlexClient.extract_arxiv_id(work) == arxiv_id)
+                doi
+                and OpenAlexClient.extract_doi(work)
+                and OpenAlexClient.extract_doi(work) == doi.lower()
+            ) or (
+                arxiv_id
+                and OpenAlexClient.extract_arxiv_id(work)
+                and OpenAlexClient.extract_arxiv_id(work) == arxiv_id
             )
             if has_identifier_match or similarity >= 0.92:
                 _push_seed_title(work_title, prefer_published=bool(has_identifier_match))
@@ -484,17 +525,20 @@ class OpenAlexClient:
         # OpenAlex 的 filter 一次最多支持 ~50 个 ID
         all_works: list[dict] = []
         for i in range(0, len(openalex_ids), 50):
-            batch = openalex_ids[i:i + 50]
+            batch = openalex_ids[i : i + 50]
             id_filter = "|".join(batch)
             select = "id,title,publication_year,cited_by_count,primary_location"
             if detailed:
                 select += ",authorships,abstract_inverted_index"
             select += ",ids,locations,open_access,best_oa_location"
-            data = self._get("/works", params={
-                "filter": f"openalex:{id_filter}",
-                "per_page": 50,
-                "select": select,
-            })
+            data = self._get(
+                "/works",
+                params={
+                    "filter": f"openalex:{id_filter}",
+                    "per_page": 50,
+                    "select": select,
+                },
+            )
             if data:
                 all_works.extend(data.get("results") or [])
         return all_works
@@ -527,7 +571,9 @@ class OpenAlexClient:
             "authors": authors,
             "arxiv_id": OpenAlexClient.extract_arxiv_id(work),
             "openalex_id": str(work.get("id") or "").strip() or None,
-            "source_url": OpenAlexClient.extract_source_url(work) or str(work.get("id") or "").strip() or None,
+            "source_url": OpenAlexClient.extract_source_url(work)
+            or str(work.get("id") or "").strip()
+            or None,
             "pdf_url": OpenAlexClient.extract_pdf_url(work),
             "source": "openalex",
         }
@@ -536,7 +582,9 @@ class OpenAlexClient:
     def _pick_best_source_location(work: dict) -> tuple[dict, dict]:
         candidates: list[tuple[int, dict, dict]] = []
 
-        def _push_candidate(loc: dict | None, *, is_primary: bool = False, is_best_oa: bool = False) -> None:
+        def _push_candidate(
+            loc: dict | None, *, is_primary: bool = False, is_best_oa: bool = False
+        ) -> None:
             if not isinstance(loc, dict):
                 return
             src = loc.get("source") or {}
@@ -611,8 +659,12 @@ class OpenAlexClient:
                 title_score = 3000.0
                 similarity = 1.0
             else:
-                similarity = difflib.SequenceMatcher(None, normalized_query, normalized_title).ratio()
-                if normalized_title.startswith(normalized_query) or normalized_query.startswith(normalized_title):
+                similarity = difflib.SequenceMatcher(
+                    None, normalized_query, normalized_title
+                ).ratio()
+                if normalized_title.startswith(normalized_query) or normalized_query.startswith(
+                    normalized_title
+                ):
                     title_score = 900.0
                 elif normalized_query in normalized_title or normalized_title in normalized_query:
                     title_score = 650.0
@@ -634,11 +686,19 @@ class OpenAlexClient:
         if similarity >= 0.92 and source_type in {"conference", "journal", "book-series"}:
             exact_non_repository_bonus = 120.0
         family_bonus = 0.0
-        if work.get("_researchos_family_match") == "identifier" and source_type in {"conference", "journal", "book-series"}:
+        if work.get("_researchos_family_match") == "identifier" and source_type in {
+            "conference",
+            "journal",
+            "book-series",
+        }:
             family_bonus = 900.0
 
         return (
-            identifier_score + title_score + published_score + exact_non_repository_bonus + family_bonus,
+            identifier_score
+            + title_score
+            + published_score
+            + exact_non_repository_bonus
+            + family_bonus,
             similarity,
             1.0 if source_type in {"conference", "journal", "book-series"} else 0.0,
             float(cited_by),

@@ -15,9 +15,12 @@ from apps.api.routers import session_runtime as session_runtime_router
 from packages.agent import (
     agent_service,
     session_lifecycle,
+    session_snapshot,
 )
-from packages.agent import session_snapshot
-from packages.agent.session.session_runtime import request_session_abort, wrap_stream_with_persistence
+from packages.agent.session.session_runtime import (
+    request_session_abort,
+    wrap_stream_with_persistence,
+)
 from packages.agent.workspace.workspace_executor import WorkspaceAccessError
 from packages.integrations.llm_client import StreamEvent
 from packages.storage import db
@@ -172,8 +175,8 @@ def _fake_abort_snapshot_stream_chat(*_args, **kwargs):
     Path(FakeAbortSnapshotStream.file_path).write_text("after\n", encoding="utf-8")
     request_session_abort(session_id)
     chunks = [
-        f'event: session_step_start\ndata: {json.dumps({"step": 1, "snapshot": snapshot_hash}, ensure_ascii=False)}\n\n',
-        'event: done\ndata: {}\n\n',
+        f"event: session_step_start\ndata: {json.dumps({'step': 1, 'snapshot': snapshot_hash}, ensure_ascii=False)}\n\n",
+        "event: done\ndata: {}\n\n",
     ]
     persistence = kwargs.get("persistence")
     if persistence is None:
@@ -439,7 +442,9 @@ def test_remote_workspace_diff_revert_and_unrevert(
     def _remote_target(workspace_path: str, relative_path: str) -> str:
         return f"{workspace_path.rstrip('/')}/{relative_path.lstrip('/')}"
 
-    def _fake_remote_read_file(_server_entry, requested_path: str, relative_path: str, *, max_chars: int):  # noqa: ANN001, ANN202
+    def _fake_remote_read_file(
+        _server_entry, requested_path: str, relative_path: str, *, max_chars: int
+    ):  # noqa: ANN001, ANN202
         target = _remote_target(requested_path, relative_path)
         if target not in remote_files:
             raise WorkspaceAccessError(f"文件不存在: {relative_path}")
@@ -452,7 +457,15 @@ def test_remote_workspace_diff_revert_and_unrevert(
             "size_bytes": len(content.encode("utf-8")),
         }
 
-    def _fake_remote_write_file(_server_entry, *, path: str, relative_path: str, content: str, create_dirs=True, overwrite=True):  # noqa: ANN001, ANN202
+    def _fake_remote_write_file(
+        _server_entry,
+        *,
+        path: str,
+        relative_path: str,
+        content: str,
+        create_dirs=True,
+        overwrite=True,
+    ):  # noqa: ANN001, ANN202
         del create_dirs, overwrite
         target = _remote_target(path, relative_path)
         previous = remote_files.get(target)
@@ -479,12 +492,26 @@ def test_remote_workspace_diff_revert_and_unrevert(
         return {"path": path, "exists": True, "deleted": False}
 
     monkeypatch.setattr(agent_service, "LLMClient", FakeRemoteEditLLM)
-    monkeypatch.setattr(agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"})
-    monkeypatch.setattr("packages.agent.tools.agent_tools._resolve_remote_server_entry", lambda _context: server_entry)
-    monkeypatch.setattr("packages.agent.workspace.workspace_remote.remote_read_file", _fake_remote_read_file)
-    monkeypatch.setattr("packages.agent.workspace.workspace_remote.remote_write_file", _fake_remote_write_file)
-    monkeypatch.setattr("packages.agent.workspace.workspace_remote.remote_restore_file", _fake_remote_restore_file)
-    monkeypatch.setattr("packages.agent.workspace.workspace_server_registry.get_workspace_server_entry", lambda _server_id: server_entry)
+    monkeypatch.setattr(
+        agent_service, "get_assistant_exec_policy", lambda: {"approval_mode": "off"}
+    )
+    monkeypatch.setattr(
+        "packages.agent.tools.agent_tools._resolve_remote_server_entry",
+        lambda _context: server_entry,
+    )
+    monkeypatch.setattr(
+        "packages.agent.workspace.workspace_remote.remote_read_file", _fake_remote_read_file
+    )
+    monkeypatch.setattr(
+        "packages.agent.workspace.workspace_remote.remote_write_file", _fake_remote_write_file
+    )
+    monkeypatch.setattr(
+        "packages.agent.workspace.workspace_remote.remote_restore_file", _fake_remote_restore_file
+    )
+    monkeypatch.setattr(
+        "packages.agent.workspace.workspace_server_registry.get_workspace_server_entry",
+        lambda _server_id: server_entry,
+    )
     client = TestClient(_build_app())
 
     created = client.post(
@@ -719,4 +746,3 @@ def test_revert_and_unrevert_reject_busy_session(
     finally:
         session_lifecycle.finish_prompt_instance("busy_revert_session")
         _reset_runtime_state()
-

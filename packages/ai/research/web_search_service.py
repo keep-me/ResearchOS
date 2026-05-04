@@ -86,7 +86,9 @@ def parse_duckduckgo_results(payload: str, max_results: int) -> list[dict]:
                 "title": title,
                 "url": url,
                 "snippet": _strip_html(snippet_match.group("snippet")) if snippet_match else "",
-                "display_url": _strip_html(display_match.group("display")) if display_match else urlparse(url).netloc,
+                "display_url": _strip_html(display_match.group("display"))
+                if display_match
+                else urlparse(url).netloc,
                 "source": "duckduckgo_lite",
             }
         )

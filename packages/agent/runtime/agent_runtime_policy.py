@@ -163,8 +163,12 @@ def should_hard_stop_after_repeated_tool_calls(
     previous_signatures: list[str] | tuple[str, ...] | None,
     requested_signatures: list[str] | tuple[str, ...] | None,
 ) -> bool:
-    previous = tuple(str(item or "").strip() for item in (previous_signatures or []) if str(item or "").strip())
-    current = tuple(str(item or "").strip() for item in (requested_signatures or []) if str(item or "").strip())
+    previous = tuple(
+        str(item or "").strip() for item in (previous_signatures or []) if str(item or "").strip()
+    )
+    current = tuple(
+        str(item or "").strip() for item in (requested_signatures or []) if str(item or "").strip()
+    )
     return current_step > 0 and bool(current) and current == previous
 
 

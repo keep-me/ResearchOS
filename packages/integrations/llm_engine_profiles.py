@@ -93,7 +93,11 @@ def recommend_llm_engine_profiles(
     reviewer = _pick_profile(
         ordered,
         [
-            lambda item: bool(item.get("is_active")) and item.get("provider") == "openai" and item.get("channel") == "deep",
+            lambda item: (
+                bool(item.get("is_active"))
+                and item.get("provider") == "openai"
+                and item.get("channel") == "deep"
+            ),
             lambda item: item.get("provider") == "openai" and item.get("channel") == "deep",
             lambda item: bool(item.get("is_active")) and item.get("channel") == "deep",
             lambda item: item.get("channel") == "deep",
@@ -103,7 +107,9 @@ def recommend_llm_engine_profiles(
     )
     return {
         "executor_engine_id": str(executor.get("id")) if executor else None,
-        "reviewer_engine_id": str((reviewer or executor or {}).get("id")) if (reviewer or executor) else None,
+        "reviewer_engine_id": str((reviewer or executor or {}).get("id"))
+        if (reviewer or executor)
+        else None,
     }
 
 
@@ -164,9 +170,14 @@ def _profiles_for_config(config, *, include_runtime_config: bool = False) -> lis
                 "model_skim": str(getattr(config, "model_skim", "") or "").strip(),
                 "model_deep": str(getattr(config, "model_deep", "") or "").strip(),
                 "model_vision": str(getattr(config, "model_vision", "") or "").strip() or None,
-                "embedding_provider": str(getattr(config, "embedding_provider", "") or "").strip() or None,
-                "embedding_api_key": str(getattr(config, "embedding_api_key", "") or "").strip() or None,
-                "embedding_api_base_url": str(getattr(config, "embedding_api_base_url", "") or "").strip() or None,
+                "embedding_provider": str(getattr(config, "embedding_provider", "") or "").strip()
+                or None,
+                "embedding_api_key": str(getattr(config, "embedding_api_key", "") or "").strip()
+                or None,
+                "embedding_api_base_url": str(
+                    getattr(config, "embedding_api_base_url", "") or ""
+                ).strip()
+                or None,
                 "model_embedding": str(getattr(config, "model_embedding", "") or "").strip(),
                 "model_fallback": str(getattr(config, "model_fallback", "") or "").strip(),
             }

@@ -52,7 +52,11 @@ def pending_questions(permission_request: dict[str, Any] | None) -> list[dict[st
         return []
     if _clean(permission_request.get("permission")) != "question":
         return []
-    metadata = permission_request.get("metadata") if isinstance(permission_request.get("metadata"), dict) else {}
+    metadata = (
+        permission_request.get("metadata")
+        if isinstance(permission_request.get("metadata"), dict)
+        else {}
+    )
     return normalize_questions_payload(metadata.get("questions"))
 
 
@@ -67,7 +71,11 @@ def normalize_answers_payload(
     raw_answers = value if isinstance(value, list) else []
     normalized: list[list[str]] = []
     for index, _question in enumerate(questions):
-        entry = raw_answers[index] if index < len(raw_answers) and isinstance(raw_answers[index], list) else []
+        entry = (
+            raw_answers[index]
+            if index < len(raw_answers) and isinstance(raw_answers[index], list)
+            else []
+        )
         answers: list[str] = []
         for item in entry:
             cleaned = _clean(item)

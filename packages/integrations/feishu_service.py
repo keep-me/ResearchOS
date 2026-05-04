@@ -4,10 +4,10 @@ import base64
 import hashlib
 import hmac
 import json
-from urllib.parse import urlencode
 import time
 from typing import Any
 from urllib import error, request
+from urllib.parse import urlencode
 
 
 class FeishuNotificationService:
@@ -27,7 +27,11 @@ class FeishuNotificationService:
         self.bridge_url = str(bridge_url or "").strip().rstrip("/") or None
         self.timeout_seconds = max(5, min(int(timeout_seconds or 300), 3600))
         normalized_timeout_action = str(timeout_action or "approve").strip().lower() or "approve"
-        self.timeout_action = normalized_timeout_action if normalized_timeout_action in {"approve", "reject", "wait"} else "approve"
+        self.timeout_action = (
+            normalized_timeout_action
+            if normalized_timeout_action in {"approve", "reject", "wait"}
+            else "approve"
+        )
 
     def send_event(
         self,
@@ -116,7 +120,9 @@ class FeishuNotificationService:
         result["bridge_sent"] = bool(result.get("sent"))
         return result
 
-    def _post_json(self, url: str | None, payload: dict[str, Any], *, signed: bool) -> dict[str, Any]:
+    def _post_json(
+        self, url: str | None, payload: dict[str, Any], *, signed: bool
+    ) -> dict[str, Any]:
         if not url:
             return {"sent": False, "reason": "url_missing"}
         headers = {"Content-Type": "application/json; charset=utf-8"}
@@ -133,7 +139,9 @@ class FeishuNotificationService:
         req = request.Request(url, headers={"Accept": "application/json"}, method="GET")
         return self._execute_request(req, expect_reply=True)
 
-    def _execute_request(self, req: request.Request, *, expect_reply: bool = False) -> dict[str, Any]:
+    def _execute_request(
+        self, req: request.Request, *, expect_reply: bool = False
+    ) -> dict[str, Any]:
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
@@ -149,10 +157,16 @@ class FeishuNotificationService:
                     status = parsed.get("StatusCode")
                     code = parsed.get("code")
                     if status not in (None, 0, "0") or code not in (None, 0, "0"):
-                        return {"sent": False, "reason": f"feishu_error:{status or code}", "response": parsed}
+                        return {
+                            "sent": False,
+                            "reason": f"feishu_error:{status or code}",
+                            "response": parsed,
+                        }
                 return {"sent": True, "response": parsed if isinstance(parsed, dict) else raw}
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else str(exc)
+            detail = (
+                exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else str(exc)
+            )
             key = "ok" if expect_reply else "sent"
             return {key: False, "reason": f"http_{exc.code}", "detail": detail[:1000]}
         except Exception as exc:  # pragma: no cover - network/runtime best effort

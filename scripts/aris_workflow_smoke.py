@@ -4,10 +4,11 @@ import json
 import sys
 import tempfile
 import traceback
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -19,16 +20,16 @@ if str(ROOT) not in sys.path:
 
 from apps.api.routers import agent_workspace as agent_workspace_router
 from apps.api.routers import projects as projects_router
-from packages.ai.project.amadeus_compat import build_run_directory, build_run_log_path
 from packages.ai.project import multi_agent_runner as project_multi_agent_runner_module
 from packages.ai.project import workflow_runner as project_workflow_runner_module
+from packages.ai.project.amadeus_compat import build_run_directory, build_run_log_path
 from packages.ai.project.multi_agent_runner import run_multi_agent_project_workflow
-from packages.ai.project.workflow_runner import run_project_workflow
 from packages.ai.project.workflow_catalog import (
     build_run_orchestration,
     build_stage_trace,
     is_active_project_workflow,
 )
+from packages.ai.project.workflow_runner import run_project_workflow
 from packages.domain.enums import ProjectRunStatus, ProjectWorkflowType
 from packages.domain.schemas import PaperCreate
 from packages.integrations import llm_client as llm_client_module
@@ -258,7 +259,9 @@ def _assert_contains(text: str, expected: str, *, context: str) -> None:
         raise AssertionError(f"{context} 缺少预期片段: {expected}")
 
 
-def _assert_artifacts_include(summary: dict[str, Any], expected: list[str], *, context: str) -> None:
+def _assert_artifacts_include(
+    summary: dict[str, Any], expected: list[str], *, context: str
+) -> None:
     labels = _artifact_labels(summary)
     for relative_path in expected:
         if relative_path not in labels:
@@ -309,7 +312,9 @@ def _run_literature_review_smoke(base_dir: Path) -> SmokeResult:
     preview = _preview_primary_report(summary)
     _assert_contains(preview, "# 文献综述报告", context="literature_review report")
     _assert_contains(preview, "AnchorCoT", context="literature_review report")
-    _assert_artifacts_include(summary, ["reports/literature-review.md"], context="literature_review")
+    _assert_artifacts_include(
+        summary, ["reports/literature-review.md"], context="literature_review"
+    )
 
     with db.session_scope() as session:
         run = ProjectRepository(session).get_run(run_id)
@@ -388,7 +393,11 @@ def _run_local_experiment_smoke(base_dir: Path) -> SmokeResult:
     assignments = [
         (llm_client_module.LLMClient, "summarize_text", _fake_summarize),
         (project_workflow_runner_module, "_inspect_workspace_payload", _fake_inspect_workspace),
-        (project_workflow_runner_module, "_run_workspace_command_for_context", _fake_run_workspace_command),
+        (
+            project_workflow_runner_module,
+            "_run_workspace_command_for_context",
+            _fake_run_workspace_command,
+        ),
     ]
 
     with _patch_assignments(assignments):
@@ -425,7 +434,8 @@ def _run_experiment_audit_smoke(base_dir: Path) -> SmokeResult:
         encoding="utf-8",
     )
     (workspace / "results" / "metrics.json").write_text(
-        json.dumps({"accuracy": 0.91, "normalized_score": 0.97}, ensure_ascii=False, indent=2) + "\n",
+        json.dumps({"accuracy": 0.91, "normalized_score": 0.97}, ensure_ascii=False, indent=2)
+        + "\n",
         encoding="utf-8",
     )
     (workspace / "EXPERIMENT_TRACKER.md").write_text(
@@ -713,9 +723,7 @@ def _run_research_review_smoke(base_dir: Path) -> SmokeResult:
         if stage == "project_research_review":
             return LLMResult(
                 content=(
-                    "# Review Notes\n\n"
-                    "Score: 7.4/10\n"
-                    "- 创新性清晰，但实验充分性仍有提升空间。\n"
+                    "# Review Notes\n\nScore: 7.4/10\n- 创新性清晰，但实验充分性仍有提升空间。\n"
                 )
             )
         if stage == "project_research_review_verdict":
@@ -856,7 +864,9 @@ def _run_paper_plan_smoke(base_dir: Path) -> SmokeResult:
         ["reports/PAPER_PLAN.md", "reports/paper-plan-metadata.json"],
         context="paper_plan",
     )
-    report_text = _artifact_path(summary, "reports/PAPER_PLAN.md").read_text(encoding="utf-8", errors="replace")
+    report_text = _artifact_path(summary, "reports/PAPER_PLAN.md").read_text(
+        encoding="utf-8", errors="replace"
+    )
     _assert_contains(report_text, "# PAPER_PLAN", context="paper_plan artifact")
     _assert_contains(report_text, "Claims-Evidence Matrix", context="paper_plan artifact")
 
@@ -883,18 +893,10 @@ def _run_paper_figure_smoke(base_dir: Path) -> SmokeResult:
 
     def _fake_summarize(self, prompt, stage, **kwargs):
         if stage == "project_paper_figure_collect_results":
-            return LLMResult(
-                content=(
-                    "# Result Pack\n\n"
-                    "- 已整理主结果、消融和错误案例素材。\n"
-                )
-            )
+            return LLMResult(content=("# Result Pack\n\n- 已整理主结果、消融和错误案例素材。\n"))
         if stage == "project_paper_figure_design_figures":
             return LLMResult(
-                content=(
-                    "# Figure Design\n\n"
-                    "- 建议至少产出方法图、主结果表和消融表。\n"
-                )
+                content=("# Figure Design\n\n- 建议至少产出方法图、主结果表和消融表。\n")
             )
         raise AssertionError(f"unexpected summarize stage: {stage}")
 
@@ -913,7 +915,9 @@ def _run_paper_figure_smoke(base_dir: Path) -> SmokeResult:
         ],
         context="paper_figure",
     )
-    report_text = _artifact_path(summary, "figures/FIGURE_PLAN.md").read_text(encoding="utf-8", errors="replace")
+    report_text = _artifact_path(summary, "figures/FIGURE_PLAN.md").read_text(
+        encoding="utf-8", errors="replace"
+    )
     _assert_contains(report_text, "# FIGURE_PLAN", context="paper_figure artifact")
     _assert_contains(report_text, "Figure Inventory", context="paper_figure artifact")
 
@@ -941,10 +945,7 @@ def _run_paper_write_smoke(base_dir: Path) -> SmokeResult:
     def _fake_summarize(self, prompt, stage, **kwargs):
         if stage == "project_paper_write_gather_materials":
             return LLMResult(
-                content=(
-                    "# Writing Materials\n\n"
-                    "- 已具备问题定义、相关工作与方法主线。\n"
-                )
+                content=("# Writing Materials\n\n- 已具备问题定义、相关工作与方法主线。\n")
             )
         if stage == "project_paper_write_draft_sections":
             return LLMResult(
@@ -973,7 +974,9 @@ def _run_paper_write_smoke(base_dir: Path) -> SmokeResult:
         ],
         context="paper_write",
     )
-    report_text = _artifact_path(summary, "reports/PAPER_WRITE.md").read_text(encoding="utf-8", errors="replace")
+    report_text = _artifact_path(summary, "reports/PAPER_WRITE.md").read_text(
+        encoding="utf-8", errors="replace"
+    )
     _assert_contains(report_text, "# PAPER_WRITE", context="paper_write artifact")
     _assert_contains(report_text, "paper/main.tex", context="paper_write artifact")
 
@@ -1039,7 +1042,9 @@ def _run_monitor_smoke(base_dir: Path) -> SmokeResult:
         encoding="utf-8",
     )
     (workspace / "checkpoints" / "epoch-3.ckpt").write_text("checkpoint", encoding="utf-8")
-    (workspace / "tensorboard" / "events.out.tfevents.123").write_text("tensorboard", encoding="utf-8")
+    (workspace / "tensorboard" / "events.out.tfevents.123").write_text(
+        "tensorboard", encoding="utf-8"
+    )
 
     run_id = _seed_run(
         workflow_type=ProjectWorkflowType.monitor_experiment,
@@ -1091,8 +1096,8 @@ def _run_paper_compile_smoke(base_dir: Path) -> SmokeResult:
 
     compile_command = (
         "New-Item -ItemType Directory -Force -Path paper | Out-Null; "
-        "Set-Content -Path paper/main.pdf -Value \"pdf stub\"; "
-        "Write-Output \"compile-ok\""
+        'Set-Content -Path paper/main.pdf -Value "pdf stub"; '
+        'Write-Output "compile-ok"'
     )
     run_id = _seed_run(
         workflow_type=ProjectWorkflowType.paper_compile,
@@ -1166,9 +1171,7 @@ def _run_paper_improvement_smoke(base_dir: Path) -> SmokeResult:
         if stage_name.endswith("_revise_sections"):
             return LLMResult(
                 content=(
-                    "# Revision Notes\n\n"
-                    "- 增加 anchor ablation 设计。\n"
-                    "- 补充典型失败案例讨论。\n"
+                    "# Revision Notes\n\n- 增加 anchor ablation 设计。\n- 补充典型失败案例讨论。\n"
                 )
             )
         if stage_name.endswith("_final_check"):
@@ -1271,8 +1274,20 @@ def _run_remote_batch_experiment_smoke(base_dir: Path) -> SmokeResult:
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 220, "memory_total_mb": 81920, "utilization_gpu_pct": 9},
-                {"index": 1, "name": "A100", "memory_used_mb": 120, "memory_total_mb": 81920, "utilization_gpu_pct": 3},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 220,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 9,
+                },
+                {
+                    "index": 1,
+                    "name": "A100",
+                    "memory_used_mb": 120,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 3,
+                },
             ],
             "reason": None,
         }
@@ -1308,7 +1323,9 @@ def _run_remote_batch_experiment_smoke(base_dir: Path) -> SmokeResult:
             "success": True,
             "stdout": "",
             "stderr": "",
-            "sessions": [{"pid": 7000 + len(active_sessions), "name": session_name, "state": "Detached"}],
+            "sessions": [
+                {"pid": 7000 + len(active_sessions), "name": session_name, "state": "Detached"}
+            ],
             "screen_list_stdout": "",
             "screen_list_stderr": "",
         }
@@ -1344,25 +1361,41 @@ def _run_remote_batch_experiment_smoke(base_dir: Path) -> SmokeResult:
 
     assignments = [
         (llm_client_module.LLMClient, "summarize_text", _fake_summarize),
-        (project_workflow_runner_module, "get_workspace_server_entry", lambda server_id: {
-            "id": server_id,
-            "host": "gpu.example.com",
-            "workspace_root": "/srv/research",
-            "username": "tester",
-            "enabled": True,
-        }),
+        (
+            project_workflow_runner_module,
+            "get_workspace_server_entry",
+            lambda server_id: {
+                "id": server_id,
+                "host": "gpu.example.com",
+                "workspace_root": "/srv/research",
+                "username": "tester",
+                "enabled": True,
+            },
+        ),
         (project_workflow_runner_module, "build_remote_overview", _fake_build_remote_overview),
         (project_workflow_runner_module, "remote_terminal_result", _fake_remote_terminal_result),
-        (project_workflow_runner_module, "remote_prepare_run_environment", _fake_prepare_run_environment),
+        (
+            project_workflow_runner_module,
+            "remote_prepare_run_environment",
+            _fake_prepare_run_environment,
+        ),
         (project_workflow_runner_module, "remote_probe_gpus", _fake_probe_gpus),
         (project_workflow_runner_module, "remote_launch_screen_job", _fake_launch_screen_job),
         (project_workflow_runner_module, "remote_list_screen_sessions", _fake_list_screen_sessions),
-        (project_workflow_runner_module, "remote_capture_screen_session", _fake_capture_screen_session),
-        (project_workflow_runner_module, "remote_write_file", lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
-            "workspace_path": path,
-            "relative_path": relative_path,
-            "size_bytes": len(content.encode("utf-8")),
-        }),
+        (
+            project_workflow_runner_module,
+            "remote_capture_screen_session",
+            _fake_capture_screen_session,
+        ),
+        (
+            project_workflow_runner_module,
+            "remote_write_file",
+            lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
+                "workspace_path": path,
+                "relative_path": relative_path,
+                "size_bytes": len(content.encode("utf-8")),
+            },
+        ),
     ]
 
     with _patch_assignments(assignments):
@@ -1382,7 +1415,9 @@ def _run_remote_batch_experiment_smoke(base_dir: Path) -> SmokeResult:
             raise AssertionError("remote batch smoke 未生成 remote_screen_batch_launch")
         if len(remote_experiments) != 2:
             raise AssertionError("remote batch smoke 远程实验数不为 2")
-        gpu_indexes = [int(item.get("selected_gpu", {}).get("index")) for item in remote_experiments]
+        gpu_indexes = [
+            int(item.get("selected_gpu", {}).get("index")) for item in remote_experiments
+        ]
         if gpu_indexes != [1, 0]:
             raise AssertionError(f"remote batch smoke GPU 分配异常: {gpu_indexes}")
 
@@ -1423,9 +1458,15 @@ def _run_remote_monitor_smoke(base_dir: Path) -> SmokeResult:
     )
 
     file_payloads = {
-        "outputs/baseline/results.json": json.dumps({"status": "done", "accuracy": 0.82, "loss": 0.43}),
-        "outputs/improved/results.json": json.dumps({"status": "done", "accuracy": 0.87, "loss": 0.39}),
-        "wandb/run-123/files/wandb-summary.json": json.dumps({"best_accuracy": 0.87, "best_loss": 0.39}),
+        "outputs/baseline/results.json": json.dumps(
+            {"status": "done", "accuracy": 0.82, "loss": 0.43}
+        ),
+        "outputs/improved/results.json": json.dumps(
+            {"status": "done", "accuracy": 0.87, "loss": 0.39}
+        ),
+        "wandb/run-123/files/wandb-summary.json": json.dumps(
+            {"best_accuracy": 0.87, "best_loss": 0.39}
+        ),
     }
 
     def _fake_server(server_id):
@@ -1519,7 +1560,13 @@ def _run_remote_monitor_smoke(base_dir: Path) -> SmokeResult:
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 220, "memory_total_mb": 81920, "utilization_gpu_pct": 8},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 220,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 8,
+                },
             ],
             "reason": None,
             "active_leases": [],
@@ -1533,19 +1580,35 @@ def _run_remote_monitor_smoke(base_dir: Path) -> SmokeResult:
         (project_workflow_runner_module, "build_remote_overview", _fake_build_remote_overview),
         (project_multi_agent_runner_module, "remote_terminal_result", _fake_remote_terminal_result),
         (project_workflow_runner_module, "remote_terminal_result", _fake_remote_terminal_result),
-        (project_multi_agent_runner_module, "remote_list_screen_sessions", _fake_list_screen_sessions),
-        (project_multi_agent_runner_module, "remote_capture_screen_session", _fake_capture_screen_session),
+        (
+            project_multi_agent_runner_module,
+            "remote_list_screen_sessions",
+            _fake_list_screen_sessions,
+        ),
+        (
+            project_multi_agent_runner_module,
+            "remote_capture_screen_session",
+            _fake_capture_screen_session,
+        ),
         (project_multi_agent_runner_module, "remote_probe_gpus", _fake_probe_gpus),
-        (project_multi_agent_runner_module, "remote_read_file", lambda server_entry, requested_path, relative_path, *, max_chars: {
-            "workspace_path": requested_path,
-            "relative_path": relative_path,
-            "content": file_payloads[str(relative_path)][:max_chars],
-        }),
-        (project_workflow_runner_module, "remote_write_file", lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
-            "workspace_path": path,
-            "relative_path": relative_path,
-            "size_bytes": len(content.encode("utf-8")),
-        }),
+        (
+            project_multi_agent_runner_module,
+            "remote_read_file",
+            lambda server_entry, requested_path, relative_path, *, max_chars: {
+                "workspace_path": requested_path,
+                "relative_path": relative_path,
+                "content": file_payloads[str(relative_path)][:max_chars],
+            },
+        ),
+        (
+            project_workflow_runner_module,
+            "remote_write_file",
+            lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
+                "workspace_path": path,
+                "relative_path": relative_path,
+                "size_bytes": len(content.encode("utf-8")),
+            },
+        ),
     ]
 
     with _patch_assignments(assignments):
@@ -1656,8 +1719,20 @@ def _run_remote_gpu_lease_smoke(base_dir: Path) -> SmokeResult:
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 200, "memory_total_mb": 81920, "utilization_gpu_pct": 9},
-                {"index": 1, "name": "A100", "memory_used_mb": 120, "memory_total_mb": 81920, "utilization_gpu_pct": 3},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 200,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 9,
+                },
+                {
+                    "index": 1,
+                    "name": "A100",
+                    "memory_used_mb": 120,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 3,
+                },
             ],
             "reason": None,
         }
@@ -1692,7 +1767,9 @@ def _run_remote_gpu_lease_smoke(base_dir: Path) -> SmokeResult:
             "success": True,
             "stdout": "",
             "stderr": "",
-            "sessions": [{"pid": 5000 + len(active_sessions), "name": session_name, "state": "Detached"}],
+            "sessions": [
+                {"pid": 5000 + len(active_sessions), "name": session_name, "state": "Detached"}
+            ],
             "screen_list_stdout": "",
             "screen_list_stderr": "",
         }
@@ -1731,16 +1808,28 @@ def _run_remote_gpu_lease_smoke(base_dir: Path) -> SmokeResult:
         (project_workflow_runner_module, "get_workspace_server_entry", _fake_server),
         (project_workflow_runner_module, "build_remote_overview", _fake_build_remote_overview),
         (project_workflow_runner_module, "remote_terminal_result", _fake_remote_terminal_result),
-        (project_workflow_runner_module, "remote_prepare_run_environment", _fake_prepare_run_environment),
+        (
+            project_workflow_runner_module,
+            "remote_prepare_run_environment",
+            _fake_prepare_run_environment,
+        ),
         (project_workflow_runner_module, "remote_probe_gpus", _fake_probe_gpus),
         (project_workflow_runner_module, "remote_launch_screen_job", _fake_launch_screen_job),
         (project_workflow_runner_module, "remote_list_screen_sessions", _fake_list_screen_sessions),
-        (project_workflow_runner_module, "remote_capture_screen_session", _fake_capture_screen_session),
-        (project_workflow_runner_module, "remote_write_file", lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
-            "workspace_path": path,
-            "relative_path": relative_path,
-            "size_bytes": len(content.encode("utf-8")),
-        }),
+        (
+            project_workflow_runner_module,
+            "remote_capture_screen_session",
+            _fake_capture_screen_session,
+        ),
+        (
+            project_workflow_runner_module,
+            "remote_write_file",
+            lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
+                "workspace_path": path,
+                "relative_path": relative_path,
+                "size_bytes": len(content.encode("utf-8")),
+            },
+        ),
     ]
 
     with _patch_assignments(assignments):
@@ -1781,15 +1870,25 @@ def _run_paper_writing_smoke(base_dir: Path) -> SmokeResult:
 
     def _fake_summarize(self, prompt, stage, **kwargs):
         if stage == "project_paper_writing_plan":
-            return LLMResult(content="# PAPER_PLAN\n\n## Claims-Evidence Matrix\n- Claim 1 -> Experiment A\n")
+            return LLMResult(
+                content="# PAPER_PLAN\n\n## Claims-Evidence Matrix\n- Claim 1 -> Experiment A\n"
+            )
         if stage == "project_paper_writing_figure":
-            return LLMResult(content="# FIGURE_PLAN\n\n- Fig 1: Main comparison\n- Fig 2: Ablation\n")
+            return LLMResult(
+                content="# FIGURE_PLAN\n\n- Fig 1: Main comparison\n- Fig 2: Ablation\n"
+            )
         if stage == "project_paper_writing_write":
-            return LLMResult(content="# Draft\n\n## Method\nDraft body.\n\n## Experiments\nDraft plan.\n")
+            return LLMResult(
+                content="# Draft\n\n## Method\nDraft body.\n\n## Experiments\nDraft plan.\n"
+            )
         if stage.startswith("project_paper_writing_improve_review_"):
-            return LLMResult(content="# Review\n\nScore: 7.8\nVerdict: READY\n\n- Improve framing.\n")
+            return LLMResult(
+                content="# Review\n\nScore: 7.8\nVerdict: READY\n\n- Improve framing.\n"
+            )
         if stage.startswith("project_paper_writing_improve_revise_"):
-            return LLMResult(content="# Final Draft\n\n## Method\nRevised body.\n\n## Conclusion\nReady.\n")
+            return LLMResult(
+                content="# Final Draft\n\n## Method\nRevised body.\n\n## Conclusion\nReady.\n"
+            )
         raise AssertionError(f"unexpected stage: {stage}")
 
     def _fake_run_workspace_command(context, command, *, timeout_sec, workspace_path_override=None):
@@ -1810,7 +1909,15 @@ def _run_paper_writing_smoke(base_dir: Path) -> SmokeResult:
                 "stderr": "not needed",
             }
         if "latexmk -pdf" in command:
-            pdf_path = workspace / ".auto-researcher" / "aris-runs" / run_id / "paper" / "build" / "main.pdf"
+            pdf_path = (
+                workspace
+                / ".auto-researcher"
+                / "aris-runs"
+                / run_id
+                / "paper"
+                / "build"
+                / "main.pdf"
+            )
             pdf_path.parent.mkdir(parents=True, exist_ok=True)
             pdf_path.write_bytes(b"%PDF-1.4 smoke")
             return {
@@ -1824,7 +1931,11 @@ def _run_paper_writing_smoke(base_dir: Path) -> SmokeResult:
 
     assignments = [
         (llm_client_module.LLMClient, "summarize_text", _fake_summarize),
-        (project_workflow_runner_module, "_run_workspace_command_for_context", _fake_run_workspace_command),
+        (
+            project_workflow_runner_module,
+            "_run_workspace_command_for_context",
+            _fake_run_workspace_command,
+        ),
     ]
 
     with _patch_assignments(assignments):
@@ -1834,7 +1945,11 @@ def _run_paper_writing_smoke(base_dir: Path) -> SmokeResult:
     preview = _preview_primary_report(summary)
     _assert_contains(preview, "# 论文写作报告", context="paper_writing report")
     run_root = workspace / ".auto-researcher" / "aris-runs" / run_id
-    for relative in ("paper/main_round0_original.pdf", "paper/main_round1.pdf", "paper/main_round2.pdf"):
+    for relative in (
+        "paper/main_round0_original.pdf",
+        "paper/main_round1.pdf",
+        "paper/main_round2.pdf",
+    ):
         if not (run_root / relative).exists():
             raise AssertionError(f"paper_writing smoke 缺少 {relative}")
 
@@ -1881,9 +1996,7 @@ def _run_rebuttal_smoke(base_dir: Path) -> SmokeResult:
         if stage == "project_rebuttal_issue_board":
             return LLMResult(
                 content=(
-                    "# ISSUE_BOARD\n\n"
-                    "- R1-C1: novelty clarification\n"
-                    "- R2-C1: empirical support\n"
+                    "# ISSUE_BOARD\n\n- R1-C1: novelty clarification\n- R2-C1: empirical support\n"
                 )
             )
         if stage == "project_rebuttal_strategy":
@@ -1935,7 +2048,9 @@ def _run_rebuttal_smoke(base_dir: Path) -> SmokeResult:
         ],
         context="rebuttal",
     )
-    report_text = _artifact_path(summary, "reports/rebuttal.md").read_text(encoding="utf-8", errors="replace")
+    report_text = _artifact_path(summary, "reports/rebuttal.md").read_text(
+        encoding="utf-8", errors="replace"
+    )
     _assert_contains(report_text, "# Rebuttal 报告", context="rebuttal artifact")
     _assert_contains(report_text, "ICML", context="rebuttal artifact")
     _assert_contains(report_text, "Issue Board", context="rebuttal artifact")
@@ -1975,7 +2090,9 @@ def _run_full_pipeline_smoke(base_dir: Path) -> SmokeResult:
 
     def _fake_summarize(self, prompt, stage, **kwargs):
         if stage == "project_full_pipeline_gate":
-            return LLMResult(content="# IDEA_REPORT\n\n## Recommended Idea\n\nAnchorCoT should be prioritized.\n")
+            return LLMResult(
+                content="# IDEA_REPORT\n\n## Recommended Idea\n\nAnchorCoT should be prioritized.\n"
+            )
         if stage == "project_full_pipeline_auto_review":
             return LLMResult(content="# AUTO_REVIEW\n\n- score: 7/10\n- verdict: ready\n")
         if stage == "project_full_pipeline_handoff":
@@ -2003,7 +2120,11 @@ def _run_full_pipeline_smoke(base_dir: Path) -> SmokeResult:
     assignments = [
         (llm_client_module.LLMClient, "summarize_text", _fake_summarize),
         (project_workflow_runner_module, "_inspect_workspace_payload", _fake_inspect_workspace),
-        (project_workflow_runner_module, "_run_workspace_command_for_context", _fake_run_workspace_command),
+        (
+            project_workflow_runner_module,
+            "_run_workspace_command_for_context",
+            _fake_run_workspace_command,
+        ),
     ]
 
     with _patch_assignments(assignments):
@@ -2022,7 +2143,9 @@ def _run_full_pipeline_smoke(base_dir: Path) -> SmokeResult:
         if effective_command != "conda activate pipeline-env && python train.py --epochs 1":
             raise AssertionError(f"full_pipeline smoke effective command 异常: {effective_command}")
         if Path(execution_workspace) != code_dir:
-            raise AssertionError(f"full_pipeline smoke execution workspace 异常: {execution_workspace}")
+            raise AssertionError(
+                f"full_pipeline smoke execution workspace 异常: {execution_workspace}"
+            )
 
     return SmokeResult(
         workflow=ProjectWorkflowType.full_pipeline.value,
@@ -2092,9 +2215,7 @@ def main() -> int:
                 traceback.print_exc()
 
     covered_active = sorted(
-        result.workflow
-        for result in results
-        if result.workflow in active_workflows
+        result.workflow for result in results if result.workflow in active_workflows
     )
     missing_active = [workflow for workflow in active_workflows if workflow not in covered_active]
 

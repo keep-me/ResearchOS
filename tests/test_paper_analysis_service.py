@@ -190,7 +190,9 @@ def test_paper_analysis_service_prefers_mineru_ocr_context(monkeypatch, tmp_path
     )
     monkeypatch.setattr(
         "packages.ai.paper.paper_analysis_service.PdfTextExtractor.extract_text",
-        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(AssertionError("should not fallback")),
+        lambda self, pdf_path, max_pages=12: (_ for _ in ()).throw(
+            AssertionError("should not fallback")
+        ),
     )
 
     def _fake_summarize_text(
@@ -285,7 +287,9 @@ def test_paper_analysis_service_uses_round_specific_evidence(monkeypatch, tmp_pa
         "packages.ai.paper.paper_evidence.MinerUOcrRuntime.get_cached_bundle",
         lambda *args, **kwargs: SimpleNamespace(
             build_analysis_context=lambda max_chars=0: "OCR正文",
-            build_round_context=lambda round_name, max_chars=0: round_calls.append(round_name) or f"{round_name} 证据",
+            build_round_context=lambda round_name, max_chars=0: (
+                round_calls.append(round_name) or f"{round_name} 证据"
+            ),
         ),
     )
 
@@ -333,7 +337,9 @@ def test_paper_analysis_service_rough_mode_uses_shared_excerpt(monkeypatch):
         lambda **kwargs: SimpleNamespace(
             source="PDF 文本",
             build_analysis_context=lambda max_chars=0: "粗略证据摘录",
-            build_round_context=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("rough mode should skip round builder")),
+            build_round_context=lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("rough mode should skip round builder")
+            ),
         ),
     )
 

@@ -25,13 +25,18 @@ def _configure_test_db(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(db, "SessionLocal", session_local)
 
 
-def test_resolve_research_skill_ids_auto_enables_project_research_skills(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_research_skill_ids_auto_enables_project_research_skills(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         mounted_paper_context,
         "list_local_skills",
         lambda: [
             {"id": "project:researchos-paper-skim", "relative_path": "researchos-paper-skim"},
-            {"id": "project:researchos-paper-three-round", "relative_path": "researchos-paper-three-round"},
+            {
+                "id": "project:researchos-paper-three-round",
+                "relative_path": "researchos-paper-three-round",
+            },
             {"id": "project:researchos-daily-brief", "relative_path": "researchos-daily-brief"},
         ],
     )
@@ -49,7 +54,9 @@ def test_resolve_research_skill_ids_auto_enables_project_research_skills(monkeyp
     ]
 
 
-def test_build_mounted_papers_prompt_includes_pdf_and_existing_analysis(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_mounted_papers_prompt_includes_pdf_and_existing_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_test_db(monkeypatch)
     paper_id = str(uuid4())
     with session_scope() as session:
@@ -81,7 +88,9 @@ def test_build_mounted_papers_prompt_includes_pdf_and_existing_analysis(monkeypa
         lambda current_paper_id: "图表分析：3 项" if current_paper_id == paper_id else None,
     )
 
-    prompt = mounted_paper_context.build_mounted_papers_prompt([paper_id], mounted_primary_paper_id=paper_id)
+    prompt = mounted_paper_context.build_mounted_papers_prompt(
+        [paper_id], mounted_primary_paper_id=paper_id
+    )
 
     assert "Primary paper ID" in prompt
     assert "Mounted Paper [primary]" in prompt

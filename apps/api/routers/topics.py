@@ -1,5 +1,4 @@
-"""主题订阅 & 论文摄入路由
-"""
+"""主题订阅 & 论文摄入路由"""
 
 import logging
 import uuid as _uuid
@@ -11,8 +10,8 @@ from sqlalchemy.exc import IntegrityError
 
 from apps.api.deps import cache, pipelines
 from packages.agent import research_tool_runtime
-from packages.domain.exceptions import NotFoundError
 from packages.domain.enums import ActionType
+from packages.domain.exceptions import NotFoundError
 from packages.domain.schemas import (
     ArxivIdIngestReq,
     ExternalLiteratureIngestReq,
@@ -41,9 +40,9 @@ def _invalidate_topic_related_cache() -> None:
     cache.invalidate_prefix("dashboard_home_")
     cache.invalidate_prefix("graph_")
 
+
 def _topic_data(session):
     return TopicDataFacade.from_session(session)
-
 
 
 def _resolve_topic_priority_sort(topic) -> str:
@@ -79,9 +78,13 @@ def _validate_date_range(
 ) -> None:
     if date_filter_start is not None or date_filter_end is not None or enable_date_filter:
         if (date_filter_start is None) != (date_filter_end is None):
-            raise HTTPException(status_code=400, detail="date filter requires both start and end dates")
+            raise HTTPException(
+                status_code=400, detail="date filter requires both start and end dates"
+            )
         if date_filter_start and date_filter_end and date_filter_start > date_filter_end:
-            raise HTTPException(status_code=400, detail="date filter start must be on or before end")
+            raise HTTPException(
+                status_code=400, detail="date filter start must be on or before end"
+            )
 
 
 def _parse_publication_date(value: str | None, publication_year: int | None = None) -> date | None:
@@ -128,14 +131,18 @@ def _sort_external_papers(papers: list[dict], sort_mode: str) -> list[dict]:
             papers,
             key=lambda item: (
                 int(item.get("citation_count") or 0),
-                _parse_publication_date(item.get("publication_date"), item.get("publication_year")) or date(1900, 1, 1),
+                _parse_publication_date(item.get("publication_date"), item.get("publication_year"))
+                or date(1900, 1, 1),
             ),
             reverse=True,
         )
     if normalized == "time":
         return sorted(
             papers,
-            key=lambda item: _parse_publication_date(item.get("publication_date"), item.get("publication_year")) or date(1900, 1, 1),
+            key=lambda item: (
+                _parse_publication_date(item.get("publication_date"), item.get("publication_year"))
+                or date(1900, 1, 1)
+            ),
             reverse=True,
         )
     return papers
@@ -174,9 +181,10 @@ def _topic_dict(t, session=None) -> dict:
     }
     if session is not None:
         from sqlalchemy import func, select
-        from packages.storage.models import PaperTopic, CollectionAction
 
-    # 论文计数
+        from packages.storage.models import CollectionAction, PaperTopic
+
+        # 论文计数
         cnt = session.scalar(
             select(func.count()).select_from(PaperTopic).where(PaperTopic.topic_id == t.id)
         )
@@ -286,7 +294,13 @@ def update_topic(topic_id: str, req: TopicUpdate) -> dict:
         raise HTTPException(status_code=400, detail="subscription query is required")
     if req.source is not None and req.source not in {"arxiv", "openalex", "manual", "hybrid"}:
         raise HTTPException(status_code=400, detail="invalid topic source")
-    if req.search_field is not None and req.search_field not in {"all", "title", "keywords", "authors", "arxiv_id"}:
+    if req.search_field is not None and req.search_field not in {
+        "all",
+        "title",
+        "keywords",
+        "authors",
+        "arxiv_id",
+    }:
         raise HTTPException(status_code=400, detail="invalid topic search field")
     if req.priority_mode is not None and req.priority_mode not in {"relevance", "time", "impact"}:
         raise HTTPException(status_code=400, detail="invalid topic priority mode")
@@ -397,15 +411,28 @@ def manual_fetch_topic(topic_id: str) -> dict:
 def fetch_topic_status(topic_id: str) -> dict:
     """查询手动抓取任务状态。"""
     task_prefix = f"fetch_{topic_id[:8]}_"
-    for task in global_tracker.get_active():
-        if task.get("task_type") == "fetch" and str(task.get("task_id", "")).startswith(task_prefix):
-            if not task["finished"]:
-                return {"status": "running", **task}
-            result = global_tracker.get_result(task["task_id"]) or {}
-            if isinstance(result, dict) and result:
-                resolved_status = result.get("status") or ("ok" if task["success"] else "failed")
-                return {"status": resolved_status, **task, **result}
-            return {"status": "ok" if task["success"] else "failed", **task}
+    matching_tasks = [
+        task
+        for task in global_tracker.get_active()
+        if task.get("task_type") == "fetch" and str(task.get("task_id", "")).startswith(task_prefix)
+    ]
+    matching_tasks.sort(
+        key=lambda task: float(task.get("updated_at") or task.get("created_at") or 0),
+        reverse=True,
+    )
+    selected_task = next((task for task in matching_tasks if not task.get("finished")), None)
+    if selected_task is None and matching_tasks:
+        selected_task = matching_tasks[0]
+    if selected_task:
+        if not selected_task.get("finished"):
+            return {"status": "running", **selected_task}
+        result = global_tracker.get_result(selected_task["task_id"]) or {}
+        if isinstance(result, dict) and result:
+            resolved_status = result.get("status") or (
+                "ok" if selected_task["success"] else "failed"
+            )
+            return {"status": resolved_status, **selected_task, **result}
+        return {"status": "ok" if selected_task["success"] else "failed", **selected_task}
 
     with session_scope() as session:
         from packages.storage.models import TopicSubscription
@@ -441,9 +468,7 @@ def search_external_literature(body: ExternalLiteratureSearchReq) -> dict:
     payload = dict(result.data or {})
     papers = list(payload.get("papers") or [])
     papers = [
-        item
-        for item in papers
-        if _matches_publication_window(item, body.date_from, body.date_to)
+        item for item in papers if _matches_publication_window(item, body.date_from, body.date_to)
     ]
     papers = _sort_external_papers(papers, body.sort_mode)
     source_counts = {"openalex": 0, "arxiv": 0}
@@ -502,9 +527,7 @@ def ingest_arxiv(
     days_back: int | None = Query(default=None, ge=1, le=3650),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
-    sort_by: str = Query(
-        default="submittedDate", pattern=ARXIV_SORT_PATTERN
-    ),
+    sort_by: str = Query(default="submittedDate", pattern=ARXIV_SORT_PATTERN),
 ) -> dict:
     if date_from is not None and date_to is not None and date_from > date_to:
         raise HTTPException(status_code=400, detail="date_from must be on or before date_to")

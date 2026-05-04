@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from importlib import import_module
 
-
 _LEGACY_MODULES = {
     "acp_service": "packages.agent.runtime.acp_service",
     "agent_backends": "packages.agent.runtime.agent_backends",

@@ -72,7 +72,9 @@ def _project_key(directory: str, workspace_server_id: str | None) -> str:
 def _project_id_for(directory: str, workspace_server_id: str | None) -> str:
     if not directory:
         return "global"
-    digest = hashlib.sha1(_project_key(directory, workspace_server_id).encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(_project_key(directory, workspace_server_id).encode("utf-8")).hexdigest()[
+        :16
+    ]
     return f"project_{digest}"
 
 
@@ -133,7 +135,12 @@ def _ensure_project(
 def _session_summary(row) -> dict[str, Any] | None:  # noqa: ANN001
     has_value = any(
         item is not None
-        for item in (row.summary_additions, row.summary_deletions, row.summary_files, row.summary_diffs)
+        for item in (
+            row.summary_additions,
+            row.summary_deletions,
+            row.summary_files,
+            row.summary_diffs,
+        )
     )
     if not has_value:
         return None
@@ -205,11 +212,15 @@ def ensure_session_record(
         fallback_directory = row.directory if row is not None else str(Path.cwd())
         fallback_workspace_path = row.workspace_path if row is not None else fallback_directory
         fallback_server_id = row.workspace_server_id if row is not None else None
-        fallback_backend_id = getattr(row, "backend_id", None) if row is not None else DEFAULT_AGENT_BACKEND_ID
+        fallback_backend_id = (
+            getattr(row, "backend_id", None) if row is not None else DEFAULT_AGENT_BACKEND_ID
+        )
         resolved_server_id = _clean_text(workspace_server_id) or fallback_server_id
         resolved_backend_id = _session_agent_backend_id(agent_backend_id or fallback_backend_id)
         remote = _is_remote_workspace(resolved_server_id)
-        resolved_directory = _normalize_path(directory or workspace_path or fallback_directory, remote=remote)
+        resolved_directory = _normalize_path(
+            directory or workspace_path or fallback_directory, remote=remote
+        )
         resolved_workspace_path = _normalize_path(
             workspace_path or directory or fallback_workspace_path or resolved_directory,
             remote=remote,
@@ -244,7 +255,9 @@ def ensure_session_record(
                     directory=resolved_directory or row.directory,
                     workspace_path=resolved_workspace_path or row.workspace_path,
                     workspace_server_id=resolved_server_id or row.workspace_server_id,
-                    title=_session_title(sid, title or row.title, resolved_directory or row.directory),
+                    title=_session_title(
+                        sid, title or row.title, resolved_directory or row.directory
+                    ),
                     slug=row.slug or sid,
                     mode=_clean_text(mode) or row.mode,
                     backend_id=resolved_backend_id,
@@ -256,10 +269,14 @@ def ensure_session_record(
             target_directory = resolved_directory or row.directory
             target_workspace_path = resolved_workspace_path or row.workspace_path
             target_workspace_server_id = resolved_server_id or row.workspace_server_id
-            target_title = _session_title(sid, title or row.title, resolved_directory or row.directory)
+            target_title = _session_title(
+                sid, title or row.title, resolved_directory or row.directory
+            )
             target_mode = _clean_text(mode) or row.mode
             target_backend_id = resolved_backend_id
-            target_permission = copy.deepcopy(permission) if permission is not None else row.permission_json
+            target_permission = (
+                copy.deepcopy(permission) if permission is not None else row.permission_json
+            )
             if (
                 row.project_id == project_id
                 and row.directory == target_directory
@@ -468,8 +485,7 @@ def _normalize_user_message_meta(meta: dict[str, Any] | None) -> dict[str, Any]:
     if mounted_paper_ids is not None:
         normalized["mountedPaperIDs"] = mounted_paper_ids
     mounted_primary_paper_id = _clean_text(
-        payload.get("mountedPrimaryPaperID")
-        or payload.get("mounted_primary_paper_id")
+        payload.get("mountedPrimaryPaperID") or payload.get("mounted_primary_paper_id")
     )
     if mounted_primary_paper_id:
         normalized["mountedPrimaryPaperID"] = mounted_primary_paper_id
@@ -607,7 +623,9 @@ def _part_storage_payload(part: dict[str, Any]) -> tuple[str, str, dict[str, Any
             }
         )
     elif part_type == "compaction":
-        data = copy.deepcopy({key: part.get(key) for key in ("auto", "overflow", "time") if key in part})
+        data = copy.deepcopy(
+            {key: part.get(key) for key in ("auto", "overflow", "time") if key in part}
+        )
     else:
         content = str(part.get("content") or part.get("text") or "")
         data = copy.deepcopy(part.get("data") or {})
@@ -735,7 +753,9 @@ def _message_info(row, parts: list[dict[str, Any]]) -> dict[str, Any]:  # noqa: 
         if variant:
             info["variant"] = variant
         completed = meta.get("completed")
-        if completed is None and (finish not in {"", "tool-calls", "unknown"} or isinstance(meta.get("error"), dict)):
+        if completed is None and (
+            finish not in {"", "tool-calls", "unknown"} or isinstance(meta.get("error"), dict)
+        ):
             completed = _to_ms(row.updated_at)
         if completed is not None:
             info["time"]["completed"] = int(completed)
@@ -787,7 +807,9 @@ def _serialize_message_row(row, parts: list[Any]) -> dict[str, Any]:
 
 def aggregate_message_content(parts: list[dict[str, Any]], *, role: str) -> str:
     del role
-    return "".join(str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text")
+    return "".join(
+        str(part.get("text") or "") for part in parts if str(part.get("type") or "") == "text"
+    )
 
 
 def _materialize_parts(
@@ -975,7 +997,9 @@ def update_message_parts(
         )
         updated = message_repo.update(
             message_id,
-            content=content if content is not None else aggregate_message_content(parts, role="assistant"),
+            content=content
+            if content is not None
+            else aggregate_message_content(parts, role="assistant"),
             meta=copy.deepcopy(meta) if meta is not ... else ...,
         )
         if updated is None:

@@ -242,9 +242,7 @@ class ResearchWikiService:
         existing = wiki_repo.get_node_by_key(project_id, f"idea:{idea_id}")
         existing_metadata = dict(existing.metadata_json or {}) if existing is not None else {}
         normalized_paper_ids = [
-            _clean_text(item)
-            for item in (paper_ids or [])
-            if _clean_text(item)
+            _clean_text(item) for item in (paper_ids or []) if _clean_text(item)
         ]
         if not normalized_paper_ids:
             normalized_paper_ids = [
@@ -255,9 +253,17 @@ class ResearchWikiService:
         resolved_source_run_id = _clean_text(source_run_id) or _clean_text(
             existing.source_run_id if existing is not None else None
         )
-        resolved_pilot_signal = _clean_text(pilot_signal) or _clean_text(existing_metadata.get("pilot_signal"))
-        resolved_ranking_reason = _clean_text(ranking_reason) or _clean_text(existing_metadata.get("ranking_reason"))
-        resolved_origin_skill = _clean_text(origin_skill) or _clean_text(existing_metadata.get("origin_skill")) or "project_ideas"
+        resolved_pilot_signal = _clean_text(pilot_signal) or _clean_text(
+            existing_metadata.get("pilot_signal")
+        )
+        resolved_ranking_reason = _clean_text(ranking_reason) or _clean_text(
+            existing_metadata.get("ranking_reason")
+        )
+        resolved_origin_skill = (
+            _clean_text(origin_skill)
+            or _clean_text(existing_metadata.get("origin_skill"))
+            or "project_ideas"
+        )
         node = wiki_repo.upsert_node(
             project_id=project_id,
             node_key=f"idea:{idea_id}",
@@ -331,7 +337,9 @@ class ResearchWikiService:
         ideas: list[dict[str, Any]],
         source_run_id: str | None = None,
     ) -> dict[str, Any]:
-        normalized_ideas = [dict(item) for item in (ideas or []) if _clean_text((item or {}).get("title"))]
+        normalized_ideas = [
+            dict(item) for item in (ideas or []) if _clean_text((item or {}).get("title"))
+        ]
         if not normalized_ideas:
             return {"project_id": project_id, "idea_nodes": [], "edge_count": 0}
 
@@ -346,7 +354,11 @@ class ResearchWikiService:
             )
             nodes: list[dict[str, Any]] = []
             for item in normalized_ideas:
-                idea_id = _clean_text(item.get("id")) or re.sub(r"[^a-z0-9]+", "-", _clean_text(item.get("title")).lower()).strip("-") or "idea"
+                idea_id = (
+                    _clean_text(item.get("id"))
+                    or re.sub(r"[^a-z0-9]+", "-", _clean_text(item.get("title")).lower()).strip("-")
+                    or "idea"
+                )
                 node = self._upsert_project_idea_node(
                     project_id=project_id,
                     wiki_repo=wiki_repo,
@@ -493,7 +505,9 @@ class ResearchWikiService:
             if matched_nodes:
                 sorted_nodes = matched_nodes
 
-        top_papers = [node for node in sorted_nodes if str(node.get("node_type") or "") == "paper"][:normalized_limit]
+        top_papers = [node for node in sorted_nodes if str(node.get("node_type") or "") == "paper"][
+            :normalized_limit
+        ]
         active_ideas = [
             node
             for node in sorted_nodes
@@ -525,7 +539,9 @@ class ResearchWikiService:
                 meta = dict(node.get("metadata") or {})
                 venue = _clean_text(meta.get("venue"))
                 suffix = f" | {venue}" if venue else ""
-                lines.append(f"- {node.get('title')}{suffix}: {_clip_text(node.get('summary'), 180)}")
+                lines.append(
+                    f"- {node.get('title')}{suffix}: {_clip_text(node.get('summary'), 180)}"
+                )
         else:
             lines.append("- 暂无论文节点。")
 
@@ -535,7 +551,9 @@ class ResearchWikiService:
                 meta = dict(node.get("metadata") or {})
                 signal = _clean_text(meta.get("pilot_signal"))
                 signal_suffix = f" | pilot={signal}" if signal else ""
-                lines.append(f"- {node.get('title')}{signal_suffix}: {_clip_text(node.get('summary'), 180)}")
+                lines.append(
+                    f"- {node.get('title')}{signal_suffix}: {_clip_text(node.get('summary'), 180)}"
+                )
         else:
             lines.append("- 暂无活跃想法。")
 
@@ -569,4 +587,3 @@ class ResearchWikiService:
             "node_count": len(node_payloads),
             "edge_count": len(edge_payloads),
         }
-

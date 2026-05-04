@@ -100,13 +100,17 @@ def test_run_topic_ingest_uses_persisted_external_filters(monkeypatch):
             raise AssertionError("hybrid source should not use arxiv-only ingest path")
 
     monkeypatch.setattr(daily_runner, "PaperPipelines", _FakePipelines)
-    monkeypatch.setattr(daily_runner, "_process_paper", lambda *args, **kwargs: {"success": True, "skim_score": None})
+    monkeypatch.setattr(
+        daily_runner,
+        "_process_paper",
+        lambda *args, **kwargs: {"success": True, "skim_score": None},
+    )
     monkeypatch.setattr(
         daily_runner.research_tool_runtime,
         "_search_literature",
         lambda query, **kwargs: (
-            captured.update({"search_query": query, "search_kwargs": kwargs}) or
-            SimpleNamespace(
+            captured.update({"search_query": query, "search_kwargs": kwargs})
+            or SimpleNamespace(
                 success=True,
                 summary="ok",
                 data={
@@ -231,7 +235,9 @@ def test_run_topic_ingest_updates_last_run_when_no_new_papers(monkeypatch):
 def test_fetch_status_prefers_latest_matching_task(monkeypatch):
     monkeypatch.setattr(TaskTracker, "_sync_task", lambda self, task: None)
     monkeypatch.setattr(TaskTracker, "_load_persisted_task", lambda self, task_id: None)
-    monkeypatch.setattr(TaskTracker, "_list_persisted_tasks", lambda self, task_type=None, limit=100: [])
+    monkeypatch.setattr(
+        TaskTracker, "_list_persisted_tasks", lambda self, task_type=None, limit=100: []
+    )
     tracker = TaskTracker()
     monkeypatch.setattr(topics_router, "global_tracker", tracker)
     client = TestClient(_build_app())

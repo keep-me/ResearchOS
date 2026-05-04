@@ -9,11 +9,14 @@ from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
-
 from packages.agent.tools.apply_patch_runtime import derive_new_contents_from_chunks, parse_patch
 from packages.agent.tools.tool_context import (
     context_workspace as _context_workspace,
+)
+from packages.agent.tools.tool_context import (
     context_workspace_server_id as _context_workspace_server_id,
+)
+from packages.agent.tools.tool_context import (
     resolve_remote_server_entry as _resolve_remote_server_entry,
 )
 from packages.agent.tools.tool_runtime import AgentToolContext, ToolResult
@@ -21,18 +24,18 @@ from packages.agent.workspace.workspace_executor import (
     WorkspaceAccessError,
     edit_path_file,
     ensure_workspace_operation_allowed,
-    glob_path_entries,
     get_task_status,
+    glob_path_entries,
     grep_path_contents,
     inspect_workspace,
     list_path_entries,
     read_path_file,
     read_workspace_file,
+    replace_workspace_text,
     resolve_path_input,
     resolve_workspace_file,
     run_local_shell_command,
     run_path_command,
-    replace_workspace_text,
     run_workspace_command,
     submit_workspace_command,
     write_path_file,
@@ -179,7 +182,9 @@ def _run_workspace_command(
         server_entry = _resolve_remote_server_entry(context)
         if server_entry is not None:
             if background:
-                return ToolResult(success=False, summary="远程工作区暂不支持后台命令，请改为前台执行")
+                return ToolResult(
+                    success=False, summary="远程工作区暂不支持后台命令，请改为前台执行"
+                )
             from packages.agent.workspace.workspace_remote import remote_terminal_result
 
             result = remote_terminal_result(
@@ -239,7 +244,10 @@ def _write_workspace_file(
         internal_patches: list[dict] = []
         server_entry = _resolve_remote_server_entry(context)
         if server_entry is not None:
-            from packages.agent.workspace.workspace_remote import remote_read_file, remote_write_file
+            from packages.agent.workspace.workspace_remote import (
+                remote_read_file,
+                remote_write_file,
+            )
 
             before = ""
             exists_before = False
@@ -277,9 +285,14 @@ def _write_workspace_file(
             )
         if bool(result.get("changed")):
             patch_path = (
-                _remote_absolute_path(str(result.get("workspace_path") or workspace_path), str(result.get("relative_path") or relative_path))
+                _remote_absolute_path(
+                    str(result.get("workspace_path") or workspace_path),
+                    str(result.get("relative_path") or relative_path),
+                )
                 if server_entry is not None
-                else str(result.get("path") or str(resolve_workspace_file(workspace_path, relative_path)))
+                else str(
+                    result.get("path") or str(resolve_workspace_file(workspace_path, relative_path))
+                )
             )
             internal_patches.append(
                 _build_patch_record(
@@ -322,7 +335,10 @@ def _replace_workspace_text(
         internal_patches: list[dict] = []
         server_entry = _resolve_remote_server_entry(context)
         if server_entry is not None:
-            from packages.agent.workspace.workspace_remote import remote_read_file, remote_write_file
+            from packages.agent.workspace.workspace_remote import (
+                remote_read_file,
+                remote_write_file,
+            )
 
             current = remote_read_file(
                 server_entry,
@@ -331,7 +347,9 @@ def _replace_workspace_text(
                 max_chars=400000,
             )
             if current.get("truncated"):
-                return ToolResult(success=False, summary="远程文件内容过长，请先缩小修改范围后再替换")
+                return ToolResult(
+                    success=False, summary="远程文件内容过长，请先缩小修改范围后再替换"
+                )
             original = str(current.get("content") or "")
             if not search_text:
                 raise WorkspaceAccessError("search_text 不能为空")
@@ -342,7 +360,11 @@ def _replace_workspace_text(
                 raise WorkspaceAccessError(
                     f"匹配到 {match_count} 处内容，替换存在歧义。请提供更精确的 search_text，或显式设置 replace_all=true"
                 )
-            updated = original.replace(search_text, replace_text) if replace_all else original.replace(search_text, replace_text, 1)
+            updated = (
+                original.replace(search_text, replace_text)
+                if replace_all
+                else original.replace(search_text, replace_text, 1)
+            )
             result = remote_write_file(
                 server_entry,
                 path=workspace_path,
@@ -362,12 +384,21 @@ def _replace_workspace_text(
                 replace_text,
                 replace_all=replace_all,
             )
-            updated = original.replace(search_text, replace_text) if replace_all else original.replace(search_text, replace_text, 1)
+            updated = (
+                original.replace(search_text, replace_text)
+                if replace_all
+                else original.replace(search_text, replace_text, 1)
+            )
         if bool(result.get("changed")):
             patch_path = (
-                _remote_absolute_path(str(result.get("workspace_path") or workspace_path), str(result.get("relative_path") or relative_path))
+                _remote_absolute_path(
+                    str(result.get("workspace_path") or workspace_path),
+                    str(result.get("relative_path") or relative_path),
+                )
                 if server_entry is not None
-                else str(result.get("path") or str(resolve_workspace_file(workspace_path, relative_path)))
+                else str(
+                    result.get("path") or str(resolve_workspace_file(workspace_path, relative_path))
+                )
             )
             internal_patches.append(
                 _build_patch_record(
@@ -408,7 +439,9 @@ def _list_path_entries(
             max_depth=max(1, min(max_depth, 8)),
             max_entries=max(20, min(max_entries, 400)),
         )
-        return ToolResult(success=True, data=result, summary=f"已列出 {result.get('total_entries', 0)} 个目录条目")
+        return ToolResult(
+            success=True, data=result, summary=f"已列出 {result.get('total_entries', 0)} 个目录条目"
+        )
     except WorkspaceAccessError as exc:
         return ToolResult(success=False, summary=str(exc))
 
@@ -542,7 +575,9 @@ def _edit_path(
         exists_before = target_path.exists()
         if exists_before and not target_path.is_file():
             raise WorkspaceAccessError(f"不是文件: {target_path}")
-        original = target_path.read_text(encoding="utf-8", errors="replace") if exists_before else ""
+        original = (
+            target_path.read_text(encoding="utf-8", errors="replace") if exists_before else ""
+        )
         result = edit_path_file(
             file_path,
             old_string,
@@ -551,7 +586,9 @@ def _edit_path(
             replace_all=replace_all,
         )
         target = result.get("relative_path") or result.get("path") or file_path
-        updated = Path(str(result.get("path") or target_path)).read_text(encoding="utf-8", errors="replace")
+        updated = Path(str(result.get("path") or target_path)).read_text(
+            encoding="utf-8", errors="replace"
+        )
         internal_patches = []
         if bool(result.get("changed")):
             internal_patches.append(
@@ -596,7 +633,9 @@ def _multiedit_path(
             target_path = str(edit.get("file_path") or file_path or "").strip()
             if not target_path:
                 raise WorkspaceAccessError(f"第 {index} 条 edit 缺少 file_path")
-            resolved_before = resolve_path_input(target_path, workspace_path=workspace_path, expect_dir=False)
+            resolved_before = resolve_path_input(
+                target_path, workspace_path=workspace_path, expect_dir=False
+            )
             resolved_key = str(resolved_before)
             if resolved_key not in originals:
                 existed_before = resolved_before.exists()
@@ -604,7 +643,9 @@ def _multiedit_path(
                     raise WorkspaceAccessError(f"不是文件: {resolved_before}")
                 originals[resolved_key] = (
                     str(edit.get("file_path") or target_path),
-                    resolved_before.read_text(encoding="utf-8", errors="replace") if existed_before else "",
+                    resolved_before.read_text(encoding="utf-8", errors="replace")
+                    if existed_before
+                    else "",
                 )
             result = edit_path_file(
                 target_path,
@@ -681,7 +722,9 @@ def _apply_patch_text(
             source_ref = str(hunk.get("path") or "").strip()
             if not source_ref:
                 raise WorkspaceAccessError("patch 缺少文件路径")
-            source_path = resolve_path_input(source_ref, workspace_path=workspace_path, expect_dir=False)
+            source_path = resolve_path_input(
+                source_ref, workspace_path=workspace_path, expect_dir=False
+            )
             if str(hunk.get("type") or "") == "add":
                 if source_path.exists():
                     raise WorkspaceAccessError(f"文件已存在: {source_path}")
@@ -714,7 +757,9 @@ def _apply_patch_text(
 
             if not source_path.exists() or not source_path.is_file():
                 raise WorkspaceAccessError(f"Failed to read file to update: {source_path}")
-            update = derive_new_contents_from_chunks(str(source_path), list(hunk.get("chunks") or []))
+            update = derive_new_contents_from_chunks(
+                str(source_path), list(hunk.get("chunks") or [])
+            )
             move_ref = str(hunk.get("move_path") or "").strip() or None
             target_path = (
                 resolve_path_input(move_ref, workspace_path=workspace_path, expect_dir=False)
@@ -806,7 +851,9 @@ def _apply_patch_text(
                 source_display = _display(source_path)
                 target_display = _display(target_path)
                 summary_lines.append(f"M {target_display}")
-                touched_files.extend([item for item in (source_display, target_display) if item not in touched_files])
+                touched_files.extend(
+                    [item for item in (source_display, target_display) if item not in touched_files]
+                )
                 internal_patches.append(
                     _build_patch_record(
                         file_label=source_display,
@@ -874,7 +921,9 @@ def _local_shell_command(
 
     action_type = str(action.get("type") or "").strip().lower()
     if action_type != "exec":
-        return ToolResult(success=False, summary=f"暂不支持的 local_shell action: {action_type or '[empty]'}")
+        return ToolResult(
+            success=False, summary=f"暂不支持的 local_shell action: {action_type or '[empty]'}"
+        )
 
     command_parts = action.get("command")
     if not isinstance(command_parts, list) or not command_parts:
@@ -884,7 +933,9 @@ def _local_shell_command(
     if user:
         return ToolResult(success=False, summary="当前 runtime 暂不支持 local_shell 指定 user 执行")
 
-    working_directory = str(action.get("workingDirectory") or action.get("working_directory") or "").strip() or None
+    working_directory = (
+        str(action.get("workingDirectory") or action.get("working_directory") or "").strip() or None
+    )
     timeout_ms = action.get("timeoutMs")
     if timeout_ms is None:
         timeout_ms = action.get("timeout_ms")
@@ -901,7 +952,10 @@ def _local_shell_command(
             timeout_sec=timeout_sec,
             env=action.get("env") if isinstance(action.get("env"), dict) else None,
         )
-        output_parts = [str(result.get("stdout") or "").strip(), str(result.get("stderr") or "").strip()]
+        output_parts = [
+            str(result.get("stdout") or "").strip(),
+            str(result.get("stderr") or "").strip(),
+        ]
         output = "\n".join(part for part in output_parts if part)
         exit_code = result.get("exit_code")
         if exit_code not in (None, 0):
@@ -938,7 +992,9 @@ def _bash_command(
             background=background,
         )
         if background:
-            return ToolResult(success=True, data=result, summary=f"后台任务已提交：{result.get('task_id')}")
+            return ToolResult(
+                success=True, data=result, summary=f"后台任务已提交：{result.get('task_id')}"
+            )
         success = bool(result.get("success"))
         if not success and str(result.get("error_code") or "") == "POWERSHELL_WRAPPER_PARSE":
             return ToolResult(
@@ -955,7 +1011,3 @@ def _bash_command(
         return ToolResult(success=False, summary=str(exc))
     except subprocess.TimeoutExpired:
         return ToolResult(success=False, summary="命令执行超时")
-
-
-
-

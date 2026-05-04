@@ -64,33 +64,19 @@ MAX_READ_LINE_LENGTH = 2000
 MAX_READ_LINE_SUFFIX = f"... (line truncated to {MAX_READ_LINE_LENGTH} chars)"
 
 DEFAULT_COMMAND_ALLOWLIST = [
-    "python",
-    "python -m",
-    "py",
-    "pip",
-    "pytest",
-    "uv",
-    "uv run",
-    "node",
-    "npm",
-    "pnpm",
-    "yarn",
     "git status",
     "git diff",
     "git log",
     "git rev-parse",
     "git branch",
-    "git checkout",
-    "git switch",
-    "git add",
-    "git commit",
-    "git fetch",
-    "git pull",
-    "git push",
+    "pwd",
+    "ls",
     "Get-Location",
     "Get-ChildItem",
     "dir",
 ]
+SHELL_CONTROL_TOKENS = {";", "&&", "||", "|", "`"}
+SHELL_CONTROL_SUBSTRINGS = ("$(`", "$()", "$(")
 
 WORKSPACE_READ_TOOLS = {"inspect_workspace", "read_workspace_file"}
 WORKSPACE_MUTATION_TOOLS = {
@@ -434,15 +420,40 @@ def should_confirm_workspace_action(tool_name: str) -> bool:
     return tool_name in (WORKSPACE_MUTATION_TOOLS | PATH_MUTATION_TOOLS)
 
 
+def _command_tokens(value: str) -> list[str] | None:
+    try:
+        return shlex.split(value, posix=os.name != "nt")
+    except ValueError:
+        return None
+
+
+def _has_shell_control_operator(command: str) -> bool:
+    normalized = command or ""
+    if any(item in normalized for item in SHELL_CONTROL_SUBSTRINGS):
+        return True
+    tokens = _command_tokens(normalized)
+    if tokens is None:
+        return True
+    return any(token in SHELL_CONTROL_TOKENS for token in tokens)
+
+
 def _command_matches_allowlist(command: str, prefixes: list[str]) -> bool:
-    normalized_command = " ".join((command or "").strip().split()).lower()
-    if not normalized_command:
+    normalized_command = " ".join((command or "").strip().split())
+    if not normalized_command or _has_shell_control_operator(normalized_command):
         return False
+    command_tokens = _command_tokens(normalized_command)
+    if not command_tokens:
+        return False
+    command_tokens_lower = [token.lower() for token in command_tokens]
     for prefix in prefixes:
-        normalized_prefix = " ".join(prefix.strip().split()).lower()
+        normalized_prefix = " ".join(prefix.strip().split())
         if not normalized_prefix:
             continue
-        if normalized_command == normalized_prefix or normalized_command.startswith(f"{normalized_prefix} "):
+        prefix_tokens = _command_tokens(normalized_prefix)
+        if not prefix_tokens or len(prefix_tokens) > len(command_tokens_lower):
+            continue
+        prefix_tokens_lower = [token.lower() for token in prefix_tokens]
+        if command_tokens_lower[: len(prefix_tokens_lower)] == prefix_tokens_lower:
             return True
     return False
 
@@ -454,7 +465,10 @@ def ensure_workspace_operation_allowed(
 ) -> dict:
     policy = get_assistant_exec_policy()
     normalized_tool = str(tool_name or "").strip()
-    if normalized_tool in {"run_workspace_command", "bash", "local_shell"} and not (command or "").strip():
+    if (
+        normalized_tool in {"run_workspace_command", "bash", "local_shell"}
+        and not (command or "").strip()
+    ):
         raise WorkspaceAccessError("命令为空")
 
     workspace_access = str(policy.get("workspace_access") or "none")
@@ -474,7 +488,9 @@ def ensure_workspace_operation_allowed(
     if normalized_tool in {"run_workspace_command", "bash", "local_shell"}:
         if command_execution == "deny":
             raise WorkspaceAccessError("当前权限禁止执行命令")
-        if command_execution == "allowlist" and not _command_matches_allowlist(command or "", allowed_prefixes):
+        if command_execution == "allowlist" and not _command_matches_allowlist(
+            command or "", allowed_prefixes
+        ):
             raise WorkspaceAccessError("该命令不在允许列表中")
 
     return policy
@@ -483,7 +499,7 @@ def ensure_workspace_operation_allowed(
 def allowed_roots() -> list[Path]:
     roots: list[Path] = []
     seen: set[str] = set()
-    for root in _configured_roots():
+    for root in [*_configured_roots(), default_projects_root()]:
         key = str(root).lower()
         if key in seen:
             continue
@@ -500,6 +516,15 @@ def allowed_roots() -> list[Path]:
         seen.add(key)
         roots.append(resolved)
     return roots
+
+
+def _ensure_path_within_allowed_roots(path: Path) -> Path:
+    resolved = path.expanduser().resolve()
+    for root in allowed_roots():
+        if _is_relative_to(resolved, root):
+            return resolved
+    allowed = ", ".join(str(root) for root in allowed_roots()) or "未配置"
+    raise WorkspaceAccessError(f"路径不在允许的工作区根目录内: {resolved}；允许根目录: {allowed}")
 
 
 def list_workspace_roots() -> list[dict]:
@@ -654,7 +679,9 @@ def update_workspace_root(root_path: str, title: str) -> dict:
 
 
 def resolve_workspace_dir(workspace_path: str, *, create: bool = True) -> Path:
-    resolved = _normalize_root_path(workspace_path, require_exists=False)
+    resolved = _ensure_path_within_allowed_roots(
+        _normalize_root_path(workspace_path, require_exists=False)
+    )
     if resolved.exists() and not resolved.is_dir():
         raise WorkspaceAccessError(f"不是目录: {resolved}")
     if create and not resolved.exists():
@@ -689,7 +716,7 @@ def resolve_path_input(
     if raw:
         candidate = Path(raw).expanduser()
         if candidate.is_absolute():
-            resolved = candidate.resolve()
+            resolved = _ensure_path_within_allowed_roots(candidate)
         else:
             if not (workspace_path or "").strip():
                 raise WorkspaceAccessError("相对路径需要结合 workspace_path 使用")
@@ -697,6 +724,7 @@ def resolve_path_input(
             resolved = (base / raw).resolve()
             if not _is_relative_to(resolved, base):
                 raise WorkspaceAccessError("文件路径越界")
+            resolved = _ensure_path_within_allowed_roots(resolved)
     elif (workspace_path or "").strip():
         resolved = resolve_workspace_dir(workspace_path)
     else:
@@ -748,7 +776,11 @@ def _search_path_priority(root: Path, target: Path) -> tuple[int, int, str]:
             penalty += 100 + index * 5
 
     file_name = str(parts[-1] if parts else target.name).lower()
-    if file_name.startswith("test_") or file_name.endswith("_test.py") or file_name.endswith(".spec.ts"):
+    if (
+        file_name.startswith("test_")
+        or file_name.endswith("_test.py")
+        or file_name.endswith(".spec.ts")
+    ):
         penalty += 80
 
     return penalty, len(parts), str(target).lower()
@@ -949,7 +981,9 @@ def _iter_searchable_files(root: Path) -> list[Path]:
     while stack:
         current = stack.pop()
         try:
-            children = sorted(current.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+            children = sorted(
+                current.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())
+            )
         except OSError:
             continue
         for child in children:
@@ -990,7 +1024,9 @@ def list_path_entries(
         if recursive and depth > max_depth:
             return
         try:
-            children = sorted(current.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+            children = sorted(
+                current.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())
+            )
         except OSError:
             return
         for child in children:
@@ -1006,7 +1042,9 @@ def list_path_entries(
                 "size_bytes": None if child.is_dir() else child.stat().st_size,
             }
             items.append(entry)
-            tree_lines.append(f"{prefix}{child.name}/" if child.is_dir() else f"{prefix}{child.name}")
+            tree_lines.append(
+                f"{prefix}{child.name}/" if child.is_dir() else f"{prefix}{child.name}"
+            )
             if recursive and child.is_dir():
                 walk(child, depth + 1)
 
@@ -1046,7 +1084,10 @@ def glob_path_entries(
     excluded_segments = _search_excluded_segments_for_root(root)
 
     for current_root in ordered_roots:
-        for target in sorted(current_root.glob(normalized_pattern), key=lambda item: _search_path_priority(root, item)):
+        for target in sorted(
+            current_root.glob(normalized_pattern),
+            key=lambda item: _search_path_priority(root, item),
+        ):
             if len(matches) >= max_hits:
                 break
             if target.name in DEFAULT_IGNORES:
@@ -1120,9 +1161,13 @@ def grep_path_contents(
         if current_matches is None:
             current_matches = []
             for file_path in _iter_searchable_files(current_root):
-                if include and not fnmatch.fnmatch(file_path.name, include) and not fnmatch.fnmatch(
-                    file_path.relative_to(current_root).as_posix(),
-                    include,
+                if (
+                    include
+                    and not fnmatch.fnmatch(file_path.name, include)
+                    and not fnmatch.fnmatch(
+                        file_path.relative_to(current_root).as_posix(),
+                        include,
+                    )
                 ):
                     continue
                 try:
@@ -1230,7 +1275,9 @@ def read_path_file(
             )
             for line_number, text in enumerate(sliced_lines, start=normalized_offset)
         ]
-        line_end = normalized_offset + len(sliced_lines) - 1 if sliced_lines else normalized_offset - 1
+        line_end = (
+            normalized_offset + len(sliced_lines) - 1 if sliced_lines else normalized_offset - 1
+        )
         truncated = start_index + len(sliced_lines) < total_lines
         return {
             **_path_display(target, workspace_path),
@@ -1344,7 +1391,11 @@ def edit_path_file(
             f"匹配到 {match_count} 处内容，替换存在歧义。请提供更精确的 old_string，或显式设置 replace_all=true"
         )
 
-    updated = original.replace(old_string, new_string) if replace_all else original.replace(old_string, new_string, 1)
+    updated = (
+        original.replace(old_string, new_string)
+        if replace_all
+        else original.replace(old_string, new_string, 1)
+    )
     _atomic_write_text(target, updated)
     return {
         **_path_display(target, workspace_path),
@@ -1694,7 +1745,8 @@ def run_workspace_command(
     if (
         os.name == "nt"
         and completed.returncode != 0
-        and "scriptblock should only be specified as a value of the command parameter" in stderr.lower()
+        and "scriptblock should only be specified as a value of the command parameter"
+        in stderr.lower()
     ):
         result["error_code"] = "POWERSHELL_WRAPPER_PARSE"
         result["error_hint"] = (
@@ -1768,17 +1820,19 @@ def _extract_terminal_cwd(text: str) -> tuple[str, str | None]:
         line = lines[idx].strip()
         if line.startswith(TERMINAL_CWD_MARKER):
             marker_index = idx
-            cwd_value = line[len(TERMINAL_CWD_MARKER):].strip() or None
+            cwd_value = line[len(TERMINAL_CWD_MARKER) :].strip() or None
             break
 
     if marker_index < 0:
         return raw, None
 
-    cleaned = lines[:marker_index] + lines[marker_index + 1:]
+    cleaned = lines[:marker_index] + lines[marker_index + 1 :]
     return "\n".join(cleaned), cwd_value
 
 
-def _build_diff_preview(before: str, after: str, *, max_lines: int = 220, max_chars: int = 6000) -> str:
+def _build_diff_preview(
+    before: str, after: str, *, max_lines: int = 220, max_chars: int = 6000
+) -> str:
     diff_lines = list(
         unified_diff(
             (before or "").splitlines(),
@@ -1946,7 +2000,9 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 def _atomic_write_text(target: Path, content: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp_fd, tmp_name = tempfile.mkstemp(prefix=".research-os-", suffix=".tmp", dir=str(target.parent))
+    tmp_fd, tmp_name = tempfile.mkstemp(
+        prefix=".research-os-", suffix=".tmp", dir=str(target.parent)
+    )
     try:
         with os.fdopen(tmp_fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(content)

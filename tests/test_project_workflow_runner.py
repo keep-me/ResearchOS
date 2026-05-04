@@ -7,8 +7,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from packages.ai.project.checkpoint_service import apply_checkpoint_response
+from packages.agent.session.session_runtime import list_session_messages
 from packages.ai.project.amadeus_compat import build_run_directory, build_run_log_path
+from packages.ai.project.checkpoint_service import apply_checkpoint_response
 from packages.ai.project.gpu_lease_service import list_active_gpu_leases
 from packages.ai.project.workflow_runner import (
     _build_literature_context_blocks,
@@ -20,13 +21,16 @@ from packages.ai.project.workflow_runner import (
     submit_project_run,
 )
 from packages.domain.enums import ProjectRunStatus, ProjectWorkflowType
-from packages.domain.task_tracker import TaskPausedError
 from packages.domain.schemas import PaperCreate
+from packages.domain.task_tracker import TaskPausedError
 from packages.integrations.llm_client import LLMResult
 from packages.storage import db
 from packages.storage.db import Base
-from packages.storage.repositories import PaperRepository, ProjectRepository, ProjectResearchWikiRepository
-from packages.agent.session.session_runtime import list_session_messages
+from packages.storage.repositories import (
+    PaperRepository,
+    ProjectRepository,
+    ProjectResearchWikiRepository,
+)
 
 
 def _configure_test_db(monkeypatch):
@@ -98,9 +102,12 @@ def _seed_project_with_run(
         return project.id, run.id
 
 
-def test_literature_review_workflow_persists_report(monkeypatch):
+def test_literature_review_workflow_persists_report(monkeypatch, tmp_path):
     _configure_test_db(monkeypatch)
-    project_id, run_id = _seed_project_with_run(ProjectWorkflowType.literature_review)
+    project_id, run_id = _seed_project_with_run(
+        ProjectWorkflowType.literature_review,
+        workdir=str(tmp_path / "workflow"),
+    )
 
     def _fake_summarize(
         self,
@@ -155,9 +162,12 @@ def test_literature_review_workflow_persists_report(monkeypatch):
         assert reports[0][0].title == "Workflow Runner Test 文献综述"
 
 
-def test_literature_review_stage_checkpoint_resumes_without_regenerating_review(monkeypatch):
+def test_literature_review_stage_checkpoint_resumes_without_regenerating_review(monkeypatch, tmp_path):
     _configure_test_db(monkeypatch)
-    _, run_id = _seed_project_with_run(ProjectWorkflowType.literature_review)
+    _, run_id = _seed_project_with_run(
+        ProjectWorkflowType.literature_review,
+        workdir=str(tmp_path / "workflow"),
+    )
 
     with db.session_scope() as session:
         repo = ProjectRepository(session)
@@ -188,7 +198,9 @@ def test_literature_review_stage_checkpoint_resumes_without_regenerating_review(
             )
         )
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
 
     with pytest.raises(TaskPausedError):
         run_project_workflow(run_id)
@@ -200,7 +212,9 @@ def test_literature_review_stage_checkpoint_resumes_without_regenerating_review(
         metadata = dict(run.metadata_json or {})
         assert run.status == ProjectRunStatus.paused
         assert metadata["pending_checkpoint"]["resume_stage_id"] == "deliver_review"
-        assert metadata["stage_outputs"]["synthesize_evidence"]["content"].startswith("# Workflow Runner Test 文献综述")
+        assert metadata["stage_outputs"]["synthesize_evidence"]["content"].startswith(
+            "# Workflow Runner Test 文献综述"
+        )
 
     apply_checkpoint_response(run_id, action="approve", comment="deliver review")
     result = run_project_workflow(run_id)
@@ -332,18 +346,12 @@ def test_paper_writing_materializes_standard_workspace_artifacts(monkeypatch, tm
     ):
         if stage == "project_paper_writing_plan":
             return LLMResult(
-                content=(
-                    "# PAPER_PLAN\n\n"
-                    "## Claims-Evidence Matrix\n"
-                    "- Claim 1 -> Experiment A\n"
-                )
+                content=("# PAPER_PLAN\n\n## Claims-Evidence Matrix\n- Claim 1 -> Experiment A\n")
             )
         if stage == "project_paper_writing_figure":
             return LLMResult(
                 content=(
-                    "# FIGURE_PLAN\n\n"
-                    "- Fig 1: Main comparison table\n"
-                    "- Fig 2: Ablation plot\n"
+                    "# FIGURE_PLAN\n\n- Fig 1: Main comparison table\n- Fig 2: Ablation plot\n"
                 )
             )
         if stage == "project_paper_writing_write":
@@ -366,9 +374,7 @@ def test_paper_writing_materializes_standard_workspace_artifacts(monkeypatch, tm
         if stage.startswith("project_paper_writing_improve_review_"):
             return LLMResult(
                 content=(
-                    "# Review\n\n"
-                    "Score: 7.2\n\n"
-                    "- Clarify contribution and experiment details.\n"
+                    "# Review\n\nScore: 7.2\n\n- Clarify contribution and experiment details.\n"
                 )
             )
         if stage.startswith("project_paper_writing_improve_revise_"):
@@ -428,18 +434,13 @@ def test_paper_writing_improvement_requires_explicit_scores(monkeypatch, tmp_pat
         if stage == "project_paper_writing_improve_review_1":
             return LLMResult(
                 content=(
-                    "# Review\n\n"
-                    "Verdict: READY\n\n"
-                    "Weaknesses:\n"
-                    "1. Tighten the abstract argument.\n"
+                    "# Review\n\nVerdict: READY\n\nWeaknesses:\n1. Tighten the abstract argument.\n"
                 )
             )
         if stage == "project_paper_writing_improve_review_2":
             return LLMResult(
                 content=(
-                    "# Review\n\n"
-                    "Minor revisions only.\n\n"
-                    "1. Fix cross-reference formatting.\n"
+                    "# Review\n\nMinor revisions only.\n\n1. Fix cross-reference formatting.\n"
                 )
             )
         if stage.startswith("project_paper_writing_improve_revise_"):
@@ -459,7 +460,9 @@ def test_paper_writing_improvement_requires_explicit_scores(monkeypatch, tmp_pat
 
     run_root = Path(tmp_path) / ".auto-researcher" / "aris-runs" / run_id
     progression = (run_root / "reports" / "paper-score-progression.md").read_text(encoding="utf-8")
-    metadata_payload = json.loads((run_root / "paper" / "improvement-metadata.json").read_text(encoding="utf-8"))
+    metadata_payload = json.loads(
+        (run_root / "paper" / "improvement-metadata.json").read_text(encoding="utf-8")
+    )
 
     assert "| 1 | 内容评审 | N/A | ready |" in progression
     assert "| 2 | 修订后复审 | N/A | almost |" in progression
@@ -510,7 +513,9 @@ def test_full_pipeline_stage_checkpoint_resumes_without_repeating_review(monkeyp
     ):
         llm_stages.append(stage)
         if stage == "project_full_pipeline_gate":
-            return LLMResult(content="# IDEA_REPORT\n\n## Recommended Idea\n\nA structured top idea.")
+            return LLMResult(
+                content="# IDEA_REPORT\n\n## Recommended Idea\n\nA structured top idea."
+            )
         if stage == "project_full_pipeline_auto_review":
             return LLMResult(content="# AUTO_REVIEW\n\n- score: 6/10\n- verdict: almost")
         if stage == "project_full_pipeline_handoff":
@@ -664,7 +669,9 @@ def test_paper_writing_stage_checkpoints_resume_without_regenerating_draft(monke
         assert run is not None
         metadata = dict(run.metadata_json or {})
         assert metadata["pending_checkpoint"]["resume_stage_id"] == "polish_manuscript"
-        assert metadata["stage_outputs"]["compile_manuscript"]["content"].startswith("# PAPER_COMPILE")
+        assert metadata["stage_outputs"]["compile_manuscript"]["content"].startswith(
+            "# PAPER_COMPILE"
+        )
 
     apply_checkpoint_response(run_id, action="approve", comment="polish it")
     result = run_project_workflow(run_id)
@@ -688,7 +695,9 @@ def test_paper_writing_stage_checkpoints_resume_without_regenerating_draft(monke
         assert "# Final Draft" in run.metadata_json["workflow_output_markdown"]
 
 
-def test_idea_discovery_stage_checkpoints_resume_without_repeating_previous_phases(monkeypatch, tmp_path):
+def test_idea_discovery_stage_checkpoints_resume_without_repeating_previous_phases(
+    monkeypatch, tmp_path
+):
     _configure_test_db(monkeypatch)
     _, run_id = _seed_project_with_run(
         ProjectWorkflowType.idea_discovery,
@@ -743,8 +752,12 @@ def test_idea_discovery_stage_checkpoints_resume_without_repeating_previous_phas
         }
         return LLMResult(content=json.dumps(payload, ensure_ascii=False), parsed_json=payload)
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json
+    )
 
     with pytest.raises(TaskPausedError):
         run_project_workflow(run_id)
@@ -820,7 +833,9 @@ def test_novelty_check_stage_checkpoint_resumes_without_repeating_compare(monkey
             return LLMResult(content="# Novelty Report\n\n- Novelty risk is manageable.")
         raise AssertionError(f"unexpected stage: {stage}")
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
 
     with pytest.raises(TaskPausedError):
         run_project_workflow(run_id)
@@ -883,7 +898,9 @@ def test_research_review_stage_checkpoint_resumes_without_repeating_review(monke
             return LLMResult(content="# Verdict\n\n- Recommendation: weak accept with revisions.")
         raise AssertionError(f"unexpected stage: {stage}")
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
 
     with pytest.raises(TaskPausedError):
         run_project_workflow(run_id)
@@ -938,7 +955,7 @@ def test_research_review_reviewer_uses_workspace_agent(monkeypatch, tmp_path):
         return iter(
             [
                 'event: assistant_message_id\ndata: {"message_id":"message_agent"}\n\n',
-                f'event: text_delta\ndata: {json.dumps({"content": content}, ensure_ascii=False)}\n\n',
+                f"event: text_delta\ndata: {json.dumps({'content': content}, ensure_ascii=False)}\n\n",
                 "event: done\ndata: {}\n\n",
             ]
         )
@@ -955,8 +972,12 @@ def test_research_review_reviewer_uses_workspace_agent(monkeypatch, tmp_path):
         raise AssertionError(f"reviewer stage should not fall back to summarize_text: {stage}")
 
     monkeypatch.setattr("packages.ai.project.workflow_runner.stream_chat", _fake_stream_chat)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.delete_session", lambda _session_id: True)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _unexpected_summarize)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.delete_session", lambda _session_id: True
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _unexpected_summarize
+    )
 
     result = run_project_workflow(run_id)
 
@@ -1008,13 +1029,15 @@ def test_reviewer_workspace_agent_heartbeats_without_total_timeout(monkeypatch, 
             yield 'event: assistant_message_id\ndata: {"message_id":"message_agent"}\n\n'
             for part in ("# Review\n\n", "- chunk one\n", "- chunk two\n"):
                 time.sleep(0.03)
-                yield f'event: text_delta\ndata: {json.dumps({"content": part}, ensure_ascii=False)}\n\n'
+                yield f"event: text_delta\ndata: {json.dumps({'content': part}, ensure_ascii=False)}\n\n"
             yield "event: done\ndata: {}\n\n"
 
         return _iter()
 
     monkeypatch.setattr("packages.ai.project.workflow_runner.stream_chat", _fake_stream_chat)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.delete_session", lambda _session_id: True)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.delete_session", lambda _session_id: True
+    )
     monkeypatch.setattr("packages.ai.project.workflow_runner.global_tracker.update", _fake_update)
 
     context = _load_context(run_id)
@@ -1194,7 +1217,7 @@ def test_auto_review_loop_review_cycle_uses_reviewer_workspace_agent(monkeypatch
         return iter(
             [
                 'event: assistant_message_id\ndata: {"message_id":"message_agent"}\n\n',
-                f'event: text_delta\ndata: {json.dumps({"content": json.dumps(payload, ensure_ascii=False)}, ensure_ascii=False)}\n\n',
+                f"event: text_delta\ndata: {json.dumps({'content': json.dumps(payload, ensure_ascii=False)}, ensure_ascii=False)}\n\n",
                 "event: done\ndata: {}\n\n",
             ]
         )
@@ -1227,9 +1250,15 @@ def test_auto_review_loop_review_cycle_uses_reviewer_workspace_agent(monkeypatch
         raise AssertionError(f"review cycle should not fall back to complete_json: {stage}")
 
     monkeypatch.setattr("packages.ai.project.workflow_runner.stream_chat", _fake_stream_chat)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.delete_session", lambda _session_id: False)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _unexpected_complete_json)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.delete_session", lambda _session_id: False
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _unexpected_complete_json
+    )
 
     result = run_project_workflow(run_id)
 
@@ -1246,7 +1275,9 @@ def test_auto_review_loop_review_cycle_uses_reviewer_workspace_agent(monkeypatch
         assert run is not None
         assert run.status == ProjectRunStatus.succeeded
         assert run.metadata_json["stage_outputs"]["review_cycle"]["model_role"] == "reviewer"
-        assert run.metadata_json["stage_outputs"]["review_cycle"]["role_template_id"] == "claude_code"
+        assert (
+            run.metadata_json["stage_outputs"]["review_cycle"]["role_template_id"] == "claude_code"
+        )
 
 
 def test_auto_review_loop_persists_aris_state_files(monkeypatch, tmp_path):
@@ -1295,8 +1326,12 @@ def test_auto_review_loop_persists_aris_state_files(monkeypatch, tmp_path):
         }
         return LLMResult(content=json.dumps(payload, ensure_ascii=False), parsed_json=payload)
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json
+    )
 
     result = run_project_workflow(run_id)
 
@@ -1307,8 +1342,14 @@ def test_auto_review_loop_persists_aris_state_files(monkeypatch, tmp_path):
     assert (run_root / "REVIEW_STATE.json").exists()
     assert "Full reviewer raw response" in (run_root / "AUTO_REVIEW.md").read_text(encoding="utf-8")
     assert '"status": "completed"' in (run_root / "REVIEW_STATE.json").read_text(encoding="utf-8")
-    assert '"threadId": "auto-review-' in (run_root / "REVIEW_STATE.json").read_text(encoding="utf-8")
-    assert (run_root / "reports" / "auto-review-loop.md").read_text(encoding="utf-8").startswith("# 自动评审循环报告")
+    assert '"threadId": "auto-review-' in (run_root / "REVIEW_STATE.json").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        (run_root / "reports" / "auto-review-loop.md")
+        .read_text(encoding="utf-8")
+        .startswith("# 自动评审循环报告")
+    )
 
 
 def test_literature_review_prompt_includes_library_and_workspace_pdf_matches(monkeypatch, tmp_path):
@@ -1354,8 +1395,8 @@ def test_literature_review_prompt_includes_library_and_workspace_pdf_matches(mon
 
     monkeypatch.setattr(
         "packages.integrations.llm_client.LLMClient.summarize_text",
-        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: LLMResult(
-            content="# 文献综述\n\n- 已整合多源文献上下文。"
+        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: (
+            LLMResult(content="# 文献综述\n\n- 已整合多源文献上下文。")
         ),
     )
 
@@ -1390,7 +1431,9 @@ def test_paper_writing_auto_detects_compile_command_and_writes_round_pdfs(monkey
         if stage.startswith("project_paper_writing_improve_review_"):
             return LLMResult(content="# Review\n\nScore: 7.8\n\n- Improve framing.")
         if stage.startswith("project_paper_writing_improve_revise_"):
-            return LLMResult(content="# Final Draft\n\n## Method\nRevised body.\n\n## Conclusion\nReady.")
+            return LLMResult(
+                content="# Final Draft\n\n## Method\nRevised body.\n\n## Conclusion\nReady."
+            )
         raise AssertionError(f"unexpected stage: {stage}")
 
     def _fake_run_workspace_command(context, command, *, timeout_sec, workspace_path_override=None):
@@ -1411,7 +1454,15 @@ def test_paper_writing_auto_detects_compile_command_and_writes_round_pdfs(monkey
                 "stderr": "not needed",
             }
         if "latexmk -pdf" in command:
-            pdf_path = tmp_path / ".auto-researcher" / "aris-runs" / run_id / "paper" / "build" / "main.pdf"
+            pdf_path = (
+                tmp_path
+                / ".auto-researcher"
+                / "aris-runs"
+                / run_id
+                / "paper"
+                / "build"
+                / "main.pdf"
+            )
             pdf_path.parent.mkdir(parents=True, exist_ok=True)
             pdf_path.write_bytes(b"%PDF-1.4 test")
             return {
@@ -1423,7 +1474,9 @@ def test_paper_writing_auto_detects_compile_command_and_writes_round_pdfs(monkey
             }
         raise AssertionError(f"unexpected workspace command: {command}")
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner._run_workspace_command_for_context",
         _fake_run_workspace_command,
@@ -1437,7 +1490,9 @@ def test_paper_writing_auto_detects_compile_command_and_writes_round_pdfs(monkey
     assert (run_root / "paper" / "main_round0_original.pdf").exists()
     assert (run_root / "paper" / "main_round1.pdf").exists()
     assert (run_root / "paper" / "main_round2.pdf").exists()
-    assert (run_root / "reports" / "PAPER_COMPILE.md").read_text(encoding="utf-8").find("latexmk -pdf") >= 0
+    assert (run_root / "reports" / "PAPER_COMPILE.md").read_text(encoding="utf-8").find(
+        "latexmk -pdf"
+    ) >= 0
     assert (run_root / "reports" / "PAPER_COMPILE_round1.md").exists()
     assert (run_root / "reports" / "PAPER_COMPILE_round2.md").exists()
     assert '"threadId": "paper-improvement-' in state_text
@@ -1509,8 +1564,12 @@ def test_auto_review_loop_almost_verdict_pauses_and_resumes_next_round(monkeypat
             }
         return LLMResult(content=json.dumps(payload, ensure_ascii=False), parsed_json=payload)
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json
+    )
 
     with pytest.raises(TaskPausedError):
         run_project_workflow(run_id)
@@ -1560,7 +1619,9 @@ def test_auto_review_loop_almost_verdict_pauses_and_resumes_next_round(monkeypat
         assert metadata["iterations"][1]["review"]["verdict"] == "ready"
 
 
-def test_run_experiment_stage_checkpoint_resumes_without_reinspecting_workspace(monkeypatch, tmp_path):
+def test_run_experiment_stage_checkpoint_resumes_without_reinspecting_workspace(
+    monkeypatch, tmp_path
+):
     _configure_test_db(monkeypatch)
     _, run_id = _seed_project_with_run(
         ProjectWorkflowType.run_experiment,
@@ -1613,9 +1674,17 @@ def test_run_experiment_stage_checkpoint_resumes_without_reinspecting_workspace(
         assert stage == "project_run_experiment_summary"
         return LLMResult(content="# 实验总结\n\n- 实验执行成功。")
 
-    monkeypatch.setattr("packages.ai.project.workflow_runner._inspect_workspace_payload", _fake_inspect_workspace_payload)
-    monkeypatch.setattr("packages.ai.project.workflow_runner._run_workspace_command_for_context", _fake_run_workspace_command)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner._inspect_workspace_payload",
+        _fake_inspect_workspace_payload,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner._run_workspace_command_for_context",
+        _fake_run_workspace_command,
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
 
     with pytest.raises(TaskPausedError):
         run_project_workflow(run_id)
@@ -1627,7 +1696,9 @@ def test_run_experiment_stage_checkpoint_resumes_without_reinspecting_workspace(
         metadata = dict(run.metadata_json or {})
         assert run.status == ProjectRunStatus.paused
         assert metadata["pending_checkpoint"]["resume_stage_id"] == "execute_experiment"
-        assert metadata["stage_outputs"]["inspect_workspace"]["inspection"]["workspace_path"] == str(tmp_path)
+        assert metadata["stage_outputs"]["inspect_workspace"]["inspection"][
+            "workspace_path"
+        ] == str(tmp_path)
 
     assert inspect_calls == 1
     assert execute_calls == 0
@@ -1659,9 +1730,7 @@ def test_run_experiment_local_wraps_command_with_claude_runtime_environment(monk
     code_dir = tmp_path / "src" / "exp"
     code_dir.mkdir(parents=True, exist_ok=True)
     (tmp_path / "CLAUDE.md").write_text(
-        "## Local Environment\n"
-        "- Activate: `conda activate anchorcot`\n"
-        "- Code dir: `src/exp`\n",
+        "## Local Environment\n- Activate: `conda activate anchorcot`\n- Code dir: `src/exp`\n",
         encoding="utf-8",
     )
 
@@ -1677,8 +1746,8 @@ def test_run_experiment_local_wraps_command_with_claude_runtime_environment(monk
 
     monkeypatch.setattr(
         "packages.integrations.llm_client.LLMClient.summarize_text",
-        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: LLMResult(
-            content="# 实验总结\n\n- 本地实验已启动并完成。"
+        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: (
+            LLMResult(content="# 实验总结\n\n- 本地实验已启动并完成。")
         ),
     )
     monkeypatch.setattr(
@@ -1718,7 +1787,10 @@ def test_run_experiment_local_wraps_command_with_claude_runtime_environment(monk
         assert run is not None
         metadata = dict(run.metadata_json or {})
         assert metadata["execution_command"] == "python train.py --epochs 1"
-        assert metadata["effective_execution_command"] == "conda activate anchorcot && python train.py --epochs 1"
+        assert (
+            metadata["effective_execution_command"]
+            == "conda activate anchorcot && python train.py --epochs 1"
+        )
         assert metadata["execution_workspace"] == str(code_dir)
         assert metadata["runtime_environment"]["code_dir"] == "src/exp"
         assert metadata["runtime_environment"]["command_workspace_path"] == str(code_dir)
@@ -1738,7 +1810,8 @@ def test_experiment_audit_workflow_persists_audit_artifacts(monkeypatch, tmp_pat
         encoding="utf-8",
     )
     (workspace / "results" / "metrics.json").write_text(
-        json.dumps({"accuracy": 0.91, "normalized_score": 0.97}, ensure_ascii=False, indent=2) + "\n",
+        json.dumps({"accuracy": 0.91, "normalized_score": 0.97}, ensure_ascii=False, indent=2)
+        + "\n",
         encoding="utf-8",
     )
     (workspace / "EXPERIMENT_TRACKER.md").write_text(
@@ -1819,7 +1892,9 @@ def test_experiment_audit_workflow_persists_audit_artifacts(monkeypatch, tmp_pat
         }
         return LLMResult(content=json.dumps(payload, ensure_ascii=False), parsed_json=payload)
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json
+    )
 
     result = run_project_workflow(run_id)
 
@@ -1841,9 +1916,22 @@ def test_experiment_audit_workflow_persists_audit_artifacts(monkeypatch, tmp_pat
         assert metadata["integrity_status"] == "warn"
         assert metadata["evaluation_type"] == "mixed"
         assert "result_files" in metadata["audit_inventory"]
-        assert any(str(item.get("relative_path") or "").replace("\\", "/").endswith("EXPERIMENT_AUDIT.md") for item in artifact_refs)
-        assert any(str(item.get("relative_path") or "").replace("\\", "/").endswith("EXPERIMENT_AUDIT.json") for item in artifact_refs)
-        assert any(str(item.get("relative_path") or "").replace("\\", "/").endswith("reports/experiment-audit.md") for item in artifact_refs)
+        assert any(
+            str(item.get("relative_path") or "").replace("\\", "/").endswith("EXPERIMENT_AUDIT.md")
+            for item in artifact_refs
+        )
+        assert any(
+            str(item.get("relative_path") or "")
+            .replace("\\", "/")
+            .endswith("EXPERIMENT_AUDIT.json")
+            for item in artifact_refs
+        )
+        assert any(
+            str(item.get("relative_path") or "")
+            .replace("\\", "/")
+            .endswith("reports/experiment-audit.md")
+            for item in artifact_refs
+        )
 
 
 def test_auto_review_loop_wraps_command_with_claude_runtime_environment(monkeypatch, tmp_path):
@@ -1856,9 +1944,7 @@ def test_auto_review_loop_wraps_command_with_claude_runtime_environment(monkeypa
     code_dir = tmp_path / "iterations"
     code_dir.mkdir(parents=True, exist_ok=True)
     (tmp_path / "CLAUDE.md").write_text(
-        "## Local Environment\n"
-        "- Activate: `conda activate review-env`\n"
-        "- Code dir: `iterations`\n",
+        "## Local Environment\n- Activate: `conda activate review-env`\n- Code dir: `iterations`\n",
         encoding="utf-8",
     )
 
@@ -1918,8 +2004,12 @@ def test_auto_review_loop_wraps_command_with_claude_runtime_environment(monkeypa
             "stderr": "",
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.complete_json", _fake_complete_json
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner._run_workspace_command_for_context",
         _fake_run_workspace_command,
@@ -1936,9 +2026,15 @@ def test_auto_review_loop_wraps_command_with_claude_runtime_environment(monkeypa
         run = repo.get_run(run_id)
         assert run is not None
         metadata = dict(run.metadata_json or {})
-        assert metadata["effective_execution_command"] == "conda activate review-env && python loop.py --round 1"
+        assert (
+            metadata["effective_execution_command"]
+            == "conda activate review-env && python loop.py --round 1"
+        )
         assert metadata["execution_workspace"] == str(code_dir)
-        assert metadata["iterations"][0]["execution"]["effective_command"] == "conda activate review-env && python loop.py --round 1"
+        assert (
+            metadata["iterations"][0]["execution"]["effective_command"]
+            == "conda activate review-env && python loop.py --round 1"
+        )
         assert metadata["iterations"][0]["execution"]["command_workspace_path"] == str(code_dir)
 
 
@@ -1978,7 +2074,9 @@ def test_full_pipeline_wraps_command_with_claude_runtime_environment(monkeypatch
         request_timeout=None,
     ):
         if stage == "project_full_pipeline_gate":
-            return LLMResult(content="# IDEA_REPORT\n\n## Recommended Idea\n\nA structured top idea.")
+            return LLMResult(
+                content="# IDEA_REPORT\n\n## Recommended Idea\n\nA structured top idea."
+            )
         if stage == "project_full_pipeline_auto_review":
             return LLMResult(content="# AUTO_REVIEW\n\n- score: 7/10\n- verdict: ready")
         if stage == "project_full_pipeline_handoff":
@@ -1996,7 +2094,9 @@ def test_full_pipeline_wraps_command_with_claude_runtime_environment(monkeypatch
             "stderr": "",
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner._inspect_workspace_payload",
         lambda context, workspace_path_override=None: {
@@ -2021,7 +2121,10 @@ def test_full_pipeline_wraps_command_with_claude_runtime_environment(monkeypatch
         run = repo.get_run(run_id)
         assert run is not None
         metadata = dict(run.metadata_json or {})
-        assert metadata["effective_execution_command"] == "conda activate pipeline-env && python train.py --epochs 1"
+        assert (
+            metadata["effective_execution_command"]
+            == "conda activate pipeline-env && python train.py --epochs 1"
+        )
         assert metadata["execution_workspace"] == str(code_dir)
         assert metadata["runtime_environment"]["code_dir"] == "pipeline-src"
 
@@ -2066,8 +2169,8 @@ def test_run_experiment_remote_wraps_command_with_claude_runtime_environment(mon
 
     monkeypatch.setattr(
         "packages.integrations.llm_client.LLMClient.summarize_text",
-        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: LLMResult(
-            content="# 远程实验启动摘要\n\n- 实验已在后台启动。"
+        lambda self, prompt, stage, model_override=None, variant_override=None, max_tokens=None, request_timeout=None: (
+            LLMResult(content="# 远程实验启动摘要\n\n- 实验已在后台启动。")
         ),
     )
     monkeypatch.setattr(
@@ -2084,7 +2187,7 @@ def test_run_experiment_remote_wraps_command_with_claude_runtime_environment(mon
         "packages.ai.project.workflow_runner._read_workspace_text_file",
         lambda context, relative_path, max_chars=20000: (
             "## Remote Server\n"
-            "- Activate: `eval \"$(/opt/conda/bin/conda shell.bash hook)\" && conda activate anchorcot`\n"
+            '- Activate: `eval "$(/opt/conda/bin/conda shell.bash hook)" && conda activate anchorcot`\n'
             "- Code dir: `experiments/core`\n"
         ),
     )
@@ -2204,9 +2307,7 @@ def test_run_experiment_remote_wraps_command_with_claude_runtime_environment(mon
 
     result = run_project_workflow(run_id)
 
-    expected_command = (
-        'eval "$(/opt/conda/bin/conda shell.bash hook)" && conda activate anchorcot && python train.py --epochs 1'
-    )
+    expected_command = 'eval "$(/opt/conda/bin/conda shell.bash hook)" && conda activate anchorcot && python train.py --epochs 1'
     assert result["workflow_type"] == ProjectWorkflowType.run_experiment.value
     assert captured["command"] == expected_command
     assert str(captured["path"]).endswith("/workspace/experiments/core")
@@ -2219,9 +2320,9 @@ def test_run_experiment_remote_wraps_command_with_claude_runtime_environment(mon
         assert metadata["effective_execution_command"] == expected_command
         assert metadata["execution_workspace"].endswith("/workspace/experiments/core")
         assert metadata["runtime_environment"]["code_dir"] == "experiments/core"
-        assert metadata["execution_result"]["runtime_environment"]["command_workspace_path"].endswith(
-            "/workspace/experiments/core"
-        )
+        assert metadata["execution_result"]["runtime_environment"][
+            "command_workspace_path"
+        ].endswith("/workspace/experiments/core")
 
 
 def test_run_experiment_remote_launches_screen_session(monkeypatch):
@@ -2476,7 +2577,8 @@ def test_run_experiment_remote_launches_screen_session(monkeypatch):
         assert metadata["execution_result"]["mode"] == "remote_screen_launch"
         assert any(
             str(item.get("relative_path") or "").endswith("/reports/remote-launch.json")
-            or str(item.get("relative_path") or "") == ".auto-researcher/aris-runs/{}/reports/remote-launch.json".format(run_id)
+            or str(item.get("relative_path") or "")
+            == f".auto-researcher/aris-runs/{run_id}/reports/remote-launch.json"
             for item in (metadata.get("artifact_refs") or [])
         )
 
@@ -2584,8 +2686,20 @@ def test_run_experiment_remote_avoids_gpu_leases_between_runs(monkeypatch):
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 200, "memory_total_mb": 81920, "utilization_gpu_pct": 9},
-                {"index": 1, "name": "A100", "memory_used_mb": 120, "memory_total_mb": 81920, "utilization_gpu_pct": 3},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 200,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 9,
+                },
+                {
+                    "index": 1,
+                    "name": "A100",
+                    "memory_used_mb": 120,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 3,
+                },
             ],
             "reason": None,
         }
@@ -2620,7 +2734,9 @@ def test_run_experiment_remote_avoids_gpu_leases_between_runs(monkeypatch):
             "success": True,
             "stdout": "",
             "stderr": "",
-            "sessions": [{"pid": 5000 + len(active_sessions), "name": session_name, "state": "Detached"}],
+            "sessions": [
+                {"pid": 5000 + len(active_sessions), "name": session_name, "state": "Detached"}
+            ],
             "screen_list_stdout": "",
             "screen_list_stderr": "",
         }
@@ -2654,7 +2770,9 @@ def test_run_experiment_remote_avoids_gpu_leases_between_runs(monkeypatch):
             "success": True,
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner.get_workspace_server_entry",
         lambda server_id: {
@@ -2665,19 +2783,34 @@ def test_run_experiment_remote_avoids_gpu_leases_between_runs(monkeypatch):
             "enabled": True,
         },
     )
-    monkeypatch.setattr("packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_prepare_run_environment", _fake_prepare_run_environment)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_prepare_run_environment",
+        _fake_prepare_run_environment,
+    )
     monkeypatch.setattr("packages.ai.project.workflow_runner.remote_probe_gpus", _fake_probe_gpus)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_launch_screen_job", _fake_launch_screen_job)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_list_screen_sessions", _fake_list_screen_sessions)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_capture_screen_session", _fake_capture_screen_session)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_launch_screen_job", _fake_launch_screen_job
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_list_screen_sessions",
+        _fake_list_screen_sessions,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_capture_screen_session",
+        _fake_capture_screen_session,
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner.remote_write_file",
         lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
             "workspace_path": path,
             "relative_path": relative_path,
-            "size_bytes": len(content.encode('utf-8')),
+            "size_bytes": len(content.encode("utf-8")),
         },
     )
 
@@ -2805,8 +2938,20 @@ def test_run_experiment_remote_batch_launches_multiple_sessions(monkeypatch):
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 220, "memory_total_mb": 81920, "utilization_gpu_pct": 9},
-                {"index": 1, "name": "A100", "memory_used_mb": 120, "memory_total_mb": 81920, "utilization_gpu_pct": 3},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 220,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 9,
+                },
+                {
+                    "index": 1,
+                    "name": "A100",
+                    "memory_used_mb": 120,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 3,
+                },
             ],
             "reason": None,
         }
@@ -2843,7 +2988,9 @@ def test_run_experiment_remote_batch_launches_multiple_sessions(monkeypatch):
             "success": True,
             "stdout": "",
             "stderr": "",
-            "sessions": [{"pid": 7000 + len(active_sessions), "name": session_name, "state": "Detached"}],
+            "sessions": [
+                {"pid": 7000 + len(active_sessions), "name": session_name, "state": "Detached"}
+            ],
             "screen_list_stdout": "",
             "screen_list_stderr": "",
         }
@@ -2877,7 +3024,9 @@ def test_run_experiment_remote_batch_launches_multiple_sessions(monkeypatch):
             "success": True,
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner.get_workspace_server_entry",
         lambda server_id: {
@@ -2888,13 +3037,28 @@ def test_run_experiment_remote_batch_launches_multiple_sessions(monkeypatch):
             "enabled": True,
         },
     )
-    monkeypatch.setattr("packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_prepare_run_environment", _fake_prepare_run_environment)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_prepare_run_environment",
+        _fake_prepare_run_environment,
+    )
     monkeypatch.setattr("packages.ai.project.workflow_runner.remote_probe_gpus", _fake_probe_gpus)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_launch_screen_job", _fake_launch_screen_job)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_list_screen_sessions", _fake_list_screen_sessions)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_capture_screen_session", _fake_capture_screen_session)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_launch_screen_job", _fake_launch_screen_job
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_list_screen_sessions",
+        _fake_list_screen_sessions,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_capture_screen_session",
+        _fake_capture_screen_session,
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner.remote_write_file",
         lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {
@@ -3033,8 +3197,20 @@ def test_run_experiment_remote_batch_releases_failed_gpu_lease(monkeypatch):
             "available": True,
             "success": True,
             "gpus": [
-                {"index": 0, "name": "A100", "memory_used_mb": 200, "memory_total_mb": 81920, "utilization_gpu_pct": 9},
-                {"index": 1, "name": "A100", "memory_used_mb": 120, "memory_total_mb": 81920, "utilization_gpu_pct": 3},
+                {
+                    "index": 0,
+                    "name": "A100",
+                    "memory_used_mb": 200,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 9,
+                },
+                {
+                    "index": 1,
+                    "name": "A100",
+                    "memory_used_mb": 120,
+                    "memory_total_mb": 81920,
+                    "utilization_gpu_pct": 3,
+                },
             ],
             "reason": None,
         }
@@ -3113,7 +3289,9 @@ def test_run_experiment_remote_batch_releases_failed_gpu_lease(monkeypatch):
             "success": True,
         }
 
-    monkeypatch.setattr("packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize)
+    monkeypatch.setattr(
+        "packages.integrations.llm_client.LLMClient.summarize_text", _fake_summarize
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner.get_workspace_server_entry",
         lambda server_id: {
@@ -3124,13 +3302,28 @@ def test_run_experiment_remote_batch_releases_failed_gpu_lease(monkeypatch):
             "enabled": True,
         },
     )
-    monkeypatch.setattr("packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_prepare_run_environment", _fake_prepare_run_environment)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.build_remote_overview", _fake_build_remote_overview
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_terminal_result", _fake_remote_terminal_result
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_prepare_run_environment",
+        _fake_prepare_run_environment,
+    )
     monkeypatch.setattr("packages.ai.project.workflow_runner.remote_probe_gpus", _fake_probe_gpus)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_launch_screen_job", _fake_launch_screen_job)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_list_screen_sessions", _fake_list_screen_sessions)
-    monkeypatch.setattr("packages.ai.project.workflow_runner.remote_capture_screen_session", _fake_capture_screen_session)
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_launch_screen_job", _fake_launch_screen_job
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_list_screen_sessions",
+        _fake_list_screen_sessions,
+    )
+    monkeypatch.setattr(
+        "packages.ai.project.workflow_runner.remote_capture_screen_session",
+        _fake_capture_screen_session,
+    )
     monkeypatch.setattr(
         "packages.ai.project.workflow_runner.remote_write_file",
         lambda server_entry, *, path, relative_path, content, create_dirs=True, overwrite=True: {

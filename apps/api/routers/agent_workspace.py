@@ -9,9 +9,32 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from pydantic import BaseModel, Field
 
+from packages.agent.workspace.terminal_service import get_terminal_service
+from packages.agent.workspace.workspace_executor import (
+    WorkspaceAccessError,
+    ensure_workspace_operation_allowed,
+    get_assistant_exec_policy,
+    inspect_workspace,
+    read_workspace_file,
+    resolve_workspace_dir,
+    resolve_workspace_file,
+    run_workspace_command,
+    write_workspace_file,
+)
 from packages.agent.workspace.workspace_remote import (
     DEFAULT_SSH_PORT,
     build_remote_overview,
@@ -19,8 +42,8 @@ from packages.agent.workspace.workspace_remote import (
     probe_ssh,
     remote_git_branch,
     remote_git_commit,
-    remote_git_discard,
     remote_git_diff,
+    remote_git_discard,
     remote_git_init,
     remote_git_stage,
     remote_git_sync,
@@ -36,29 +59,27 @@ from packages.agent.workspace.workspace_server_registry import (
     WorkspaceServerConflictError,
     WorkspaceServerNotFoundError,
     WorkspaceServerValidationError,
+)
+from packages.agent.workspace.workspace_server_registry import (
     create_workspace_server as _create_workspace_server_entry,
+)
+from packages.agent.workspace.workspace_server_registry import (
     delete_workspace_server as _delete_workspace_server_entry,
+)
+from packages.agent.workspace.workspace_server_registry import (
     get_workspace_server_entry as _get_workspace_server_entry,
+)
+from packages.agent.workspace.workspace_server_registry import (
     list_workspace_servers as _list_workspace_server_items,
+)
+from packages.agent.workspace.workspace_server_registry import (
     update_workspace_server as _update_workspace_server_entry,
 )
-from packages.agent.workspace.terminal_service import get_terminal_service
 from packages.ai.project.output_sanitizer import (
     sanitize_project_artifact_preview_content,
     sanitize_project_run_metadata,
 )
 from packages.ai.project.report_formatter import build_workflow_report_markdown
-from packages.agent.workspace.workspace_executor import (
-    WorkspaceAccessError,
-    ensure_workspace_operation_allowed,
-    get_assistant_exec_policy,
-    inspect_workspace,
-    read_workspace_file,
-    resolve_workspace_dir,
-    resolve_workspace_file,
-    run_workspace_command,
-    write_workspace_file,
-)
 from packages.auth import auth_enabled, decode_request_token, extract_request_token_with_source
 from packages.storage.db import session_scope
 from packages.storage.repositories import ProjectRepository
@@ -82,6 +103,7 @@ class WorkspaceServerPayload(BaseModel):
     private_key: str | None = None
     passphrase: str | None = None
     workspace_root: str | None = None
+    host_key_fingerprint: str | None = None
     enabled: bool = True
     base_url: str | None = None
     api_token: str | None = None
@@ -281,29 +303,31 @@ def _git_overview(workspace: Path) -> dict:
         }
 
     branch = _run_git(["branch", "--show-current"], workspace).stdout.strip() or None
-    remotes = [line.strip() for line in _run_git(["remote"], workspace).stdout.splitlines() if line.strip()]
+    remotes = [
+        line.strip() for line in _run_git(["remote"], workspace).stdout.splitlines() if line.strip()
+    ]
     entries: list[dict] = []
     changed_count = 0
     untracked_count = 0
     for line in _run_git(["status", "--porcelain=v1"], workspace).stdout.splitlines():
-      if len(line) < 3:
-          continue
-      code = line[:2]
-      path = line[3:].strip()
-      if " -> " in path:
-          path = path.split(" -> ", 1)[1].strip()
-      entries.append(
-          {
-              "path": path,
-              "code": code,
-              "index_status": code[0],
-              "worktree_status": code[1],
-          }
-      )
-      if code == "??":
-          untracked_count += 1
-      elif code.strip():
-          changed_count += 1
+        if len(line) < 3:
+            continue
+        code = line[:2]
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1].strip()
+        entries.append(
+            {
+                "path": path,
+                "code": code,
+                "index_status": code[0],
+                "worktree_status": code[1],
+            }
+        )
+        if code == "??":
+            untracked_count += 1
+        elif code.strip():
+            changed_count += 1
 
     return {
         "available": True,
@@ -356,7 +380,9 @@ def _build_git_response(
     file_path: str | None = None,
 ) -> dict:
     if result.returncode != 0:
-        raise WorkspaceAccessError(result.stderr.strip() or result.stdout.strip() or f"Git {action} 失败")
+        raise WorkspaceAccessError(
+            result.stderr.strip() or result.stdout.strip() or f"Git {action} 失败"
+        )
     return {
         "ok": True,
         "workspace_path": str(workspace),
@@ -367,13 +393,19 @@ def _build_git_response(
     }
 
 
-def _run_git_unstage(workspace: Path, file_path: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run_git_unstage(
+    workspace: Path, file_path: str | None = None
+) -> subprocess.CompletedProcess[str]:
     target = file_path or "."
     result = _run_git(["restore", "--staged", "--", target], workspace)
     if result.returncode == 0:
         return result
     stderr = result.stderr.lower()
-    if "could not resolve head" in stderr or "unknown revision" in stderr or "did not match any file" in stderr:
+    if (
+        "could not resolve head" in stderr
+        or "unknown revision" in stderr
+        or "did not match any file" in stderr
+    ):
         fallback = _run_git(["rm", "--cached", "-r", "--", target], workspace)
         if fallback.returncode == 0:
             return fallback
@@ -501,9 +533,9 @@ def _resolve_workspace_preview_content(
     content: str | None,
 ) -> str:
     sanitized = sanitize_project_artifact_preview_content(relative_path, content)
-    match = RUN_PATH_PATTERN.search(_normalize_preview_path(relative_path)) or RUN_PATH_PATTERN.search(
-        _normalize_preview_path(path)
-    )
+    match = RUN_PATH_PATTERN.search(
+        _normalize_preview_path(relative_path)
+    ) or RUN_PATH_PATTERN.search(_normalize_preview_path(path))
     if match is None:
         return sanitized
 
@@ -565,6 +597,7 @@ def probe_workspace_ssh(payload: WorkspaceSshProbePayload) -> dict:
             "private_key": clean_text(payload.private_key),
             "passphrase": clean_text(payload.passphrase),
             "workspace_root": clean_text(payload.workspace_root),
+            "host_key_fingerprint": clean_text(payload.host_key_fingerprint),
         }
     )
 
@@ -603,7 +636,11 @@ def init_workspace_git(payload: WorkspacePathPayload) -> dict:
             return {
                 "ok": True,
                 "workspace_path": str(workspace),
-                "result": {"stdout": result.stdout.strip(), "stderr": result.stderr.strip(), "exit_code": result.returncode},
+                "result": {
+                    "stdout": result.stdout.strip(),
+                    "stderr": result.stderr.strip(),
+                    "exit_code": result.returncode,
+                },
                 "git": _git_overview(workspace),
             }
         server_entry = _find_server_entry(payload.server_id)
@@ -618,17 +655,27 @@ def create_workspace_git_branch(payload: WorkspaceGitBranchPayload) -> dict:
     if not branch_name:
         raise HTTPException(status_code=400, detail="分支名不能为空")
     try:
-        ensure_workspace_operation_allowed("run_workspace_command", command=f"git checkout -b {branch_name}")
+        ensure_workspace_operation_allowed(
+            "run_workspace_command", command=f"git checkout -b {branch_name}"
+        )
         if (payload.server_id or LOCAL_SERVER_ID).strip() == LOCAL_SERVER_ID:
             workspace = resolve_workspace_dir(payload.path)
             if not _git_overview(workspace)["is_repo"]:
                 raise WorkspaceAccessError("当前目录尚未初始化 Git 仓库")
-            exists_result = _run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], workspace)
+            exists_result = _run_git(
+                ["show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], workspace
+            )
             created = exists_result.returncode != 0
             if created:
-                command = ["checkout", "-b", branch_name] if payload.checkout else ["branch", branch_name]
+                command = (
+                    ["checkout", "-b", branch_name] if payload.checkout else ["branch", branch_name]
+                )
             else:
-                command = ["checkout", branch_name] if payload.checkout else ["branch", "--list", branch_name]
+                command = (
+                    ["checkout", branch_name]
+                    if payload.checkout
+                    else ["branch", "--list", branch_name]
+                )
             result = _run_git(command, workspace)
             if result.returncode != 0:
                 raise WorkspaceAccessError(result.stderr.strip() or "分支创建失败")
@@ -638,11 +685,17 @@ def create_workspace_git_branch(payload: WorkspaceGitBranchPayload) -> dict:
                 "branch": branch_name,
                 "created": created,
                 "checked_out": payload.checkout,
-                "result": {"stdout": result.stdout.strip(), "stderr": result.stderr.strip(), "exit_code": result.returncode},
+                "result": {
+                    "stdout": result.stdout.strip(),
+                    "stderr": result.stderr.strip(),
+                    "exit_code": result.returncode,
+                },
                 "git": _git_overview(workspace),
             }
         server_entry = _find_server_entry(payload.server_id)
-        return remote_git_branch(server_entry, path=payload.path, branch_name=branch_name, checkout=payload.checkout)
+        return remote_git_branch(
+            server_entry, path=payload.path, branch_name=branch_name, checkout=payload.checkout
+        )
     except Exception as error:
         raise _translate_workspace_error(error) from error
 
@@ -659,9 +712,23 @@ def get_workspace_git_diff(
             workspace = resolve_workspace_dir(path, create=False)
             git = _git_overview(workspace)
             if not git["available"]:
-                return {"workspace_path": str(workspace), "file_path": file_path, "diff": "", "truncated": False, "git": git, "message": git.get("message")}
+                return {
+                    "workspace_path": str(workspace),
+                    "file_path": file_path,
+                    "diff": "",
+                    "truncated": False,
+                    "git": git,
+                    "message": git.get("message"),
+                }
             if not git["is_repo"]:
-                return {"workspace_path": str(workspace), "file_path": file_path, "diff": "", "truncated": False, "git": git, "message": git.get("message")}
+                return {
+                    "workspace_path": str(workspace),
+                    "file_path": file_path,
+                    "diff": "",
+                    "truncated": False,
+                    "git": git,
+                    "message": git.get("message"),
+                }
             args = ["diff", "--no-ext-diff"]
             if file_path:
                 args.extend(["--", file_path])
@@ -676,7 +743,9 @@ def get_workspace_git_diff(
                 "message": result.stderr.strip() or None,
             }
         server_entry = _find_server_entry(server_id)
-        return remote_git_diff(server_entry, path=path, file_path=file_path, max_chars=MAX_DIFF_CHARS)
+        return remote_git_diff(
+            server_entry, path=path, file_path=file_path, max_chars=MAX_DIFF_CHARS
+        )
     except Exception as error:
         raise _translate_workspace_error(error) from error
 
@@ -689,9 +758,13 @@ def stage_workspace_git(payload: WorkspaceGitFilePayload) -> dict:
             workspace = resolve_workspace_dir(payload.path, create=False)
             _ensure_git_repo(workspace)
             normalized_file_path = _normalize_git_file_path(workspace, payload.file_path)
-            command = ["add", "-A"] if not normalized_file_path else ["add", "--", normalized_file_path]
+            command = (
+                ["add", "-A"] if not normalized_file_path else ["add", "--", normalized_file_path]
+            )
             result = _run_git(command, workspace)
-            return _build_git_response(workspace, action="stage", result=result, file_path=normalized_file_path)
+            return _build_git_response(
+                workspace, action="stage", result=result, file_path=normalized_file_path
+            )
         server_entry = _find_server_entry(payload.server_id)
         return remote_git_stage(server_entry, path=payload.path, file_path=payload.file_path)
     except Exception as error:
@@ -707,7 +780,9 @@ def unstage_workspace_git(payload: WorkspaceGitFilePayload) -> dict:
             _ensure_git_repo(workspace)
             normalized_file_path = _normalize_git_file_path(workspace, payload.file_path)
             result = _run_git_unstage(workspace, normalized_file_path)
-            return _build_git_response(workspace, action="unstage", result=result, file_path=normalized_file_path)
+            return _build_git_response(
+                workspace, action="unstage", result=result, file_path=normalized_file_path
+            )
         server_entry = _find_server_entry(payload.server_id)
         return remote_git_unstage(server_entry, path=payload.path, file_path=payload.file_path)
     except Exception as error:
@@ -717,14 +792,18 @@ def unstage_workspace_git(payload: WorkspaceGitFilePayload) -> dict:
 @router.post("/agent/workspace/git/discard")
 def discard_workspace_git(payload: WorkspaceGitFilePayload) -> dict:
     try:
-        ensure_workspace_operation_allowed("run_workspace_command", command="git restore --worktree")
+        ensure_workspace_operation_allowed(
+            "run_workspace_command", command="git restore --worktree"
+        )
         if (payload.server_id or LOCAL_SERVER_ID).strip() == LOCAL_SERVER_ID:
             workspace = resolve_workspace_dir(payload.path, create=False)
             normalized_file_path = _normalize_git_file_path(workspace, payload.file_path)
             if not normalized_file_path:
                 raise WorkspaceAccessError("请先选择要丢弃的文件")
             result = _run_git_discard(workspace, normalized_file_path)
-            return _build_git_response(workspace, action="discard", result=result, file_path=normalized_file_path)
+            return _build_git_response(
+                workspace, action="discard", result=result, file_path=normalized_file_path
+            )
         server_entry = _find_server_entry(payload.server_id)
         return remote_git_discard(server_entry, path=payload.path, file_path=payload.file_path)
     except Exception as error:
@@ -771,9 +850,16 @@ def run_workspace_terminal(payload: WorkspaceTerminalPayload) -> dict:
     try:
         ensure_workspace_operation_allowed("run_workspace_command", command=payload.command)
         if (payload.server_id or LOCAL_SERVER_ID).strip() == LOCAL_SERVER_ID:
-            return run_workspace_command(payload.path, payload.command, timeout_sec=max(1, payload.timeout_sec))
+            return run_workspace_command(
+                payload.path, payload.command, timeout_sec=max(1, payload.timeout_sec)
+            )
         server_entry = _find_server_entry(payload.server_id)
-        return remote_terminal_result(server_entry, path=payload.path, command=payload.command, timeout_sec=payload.timeout_sec)
+        return remote_terminal_result(
+            server_entry,
+            path=payload.path,
+            command=payload.command,
+            timeout_sec=payload.timeout_sec,
+        )
     except Exception as error:
         raise _translate_workspace_error(error) from error
 
@@ -816,7 +902,9 @@ async def workspace_terminal_session_ws(websocket: WebSocket, session_id: str) -
         _authenticate_terminal_websocket(websocket)
         session = get_terminal_service().get_session(session_id)
         subscriber_id, snapshot = session.subscribe()
-        await websocket.send_json({"type": "ready", "session": _serialize_terminal_session_snapshot(snapshot)})
+        await websocket.send_json(
+            {"type": "ready", "session": _serialize_terminal_session_snapshot(snapshot)}
+        )
         history = str(snapshot.get("history") or "")
         if history:
             await websocket.send_json({"type": "output", "data": history})
@@ -828,7 +916,9 @@ async def workspace_terminal_session_ws(websocket: WebSocket, session_id: str) -
             return
 
         receive_task = asyncio.create_task(websocket.receive_text())
-        event_task = asyncio.create_task(asyncio.to_thread(session.wait_for_event, subscriber_id, 0.25))
+        event_task = asyncio.create_task(
+            asyncio.to_thread(session.wait_for_event, subscriber_id, 0.25)
+        )
         while True:
             pending = {task for task in (receive_task, event_task) if task is not None}
             done, _pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
@@ -856,7 +946,9 @@ async def workspace_terminal_session_ws(websocket: WebSocket, session_id: str) -
 
             if event_task in done:
                 event = event_task.result()
-                event_task = asyncio.create_task(asyncio.to_thread(session.wait_for_event, subscriber_id, 0.25))
+                event_task = asyncio.create_task(
+                    asyncio.to_thread(session.wait_for_event, subscriber_id, 0.25)
+                )
                 if event is not None:
                     await websocket.send_json(event)
                     if event.get("type") == "exit":
@@ -892,11 +984,15 @@ def read_workspace_file_route(
         ensure_workspace_operation_allowed("read_workspace_file")
         if (server_id or LOCAL_SERVER_ID).strip() == LOCAL_SERVER_ID:
             payload = read_workspace_file(path, relative_path, max_chars=max_chars)
-            payload["content"] = _resolve_workspace_preview_content(path, relative_path, payload.get("content"))
+            payload["content"] = _resolve_workspace_preview_content(
+                path, relative_path, payload.get("content")
+            )
             return payload
         server_entry = _find_server_entry(server_id)
         payload = remote_read_file(server_entry, path, relative_path, max_chars=max_chars)
-        payload["content"] = _resolve_workspace_preview_content(path, relative_path, payload.get("content"))
+        payload["content"] = _resolve_workspace_preview_content(
+            path, relative_path, payload.get("content")
+        )
         return payload
     except Exception as error:
         raise _translate_workspace_error(error) from error

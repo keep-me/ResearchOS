@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import threading
 from typing import Any
 from uuid import UUID
 
@@ -230,7 +230,9 @@ def load_prepared_paper_evidence(
                     str(paper_id),
                     _pdf_identity(pdf_path),
                     str(getattr(ocr_bundle, "pdf_sha256", "") or "").strip(),
-                    str(manifest.get("updated_at") or "").strip() if isinstance(manifest, dict) else "",
+                    str(manifest.get("updated_at") or "").strip()
+                    if isinstance(manifest, dict)
+                    else "",
                 ]
             )
             cached = _cache_get(ocr_cache_key)
@@ -271,14 +273,18 @@ def load_prepared_paper_evidence(
 
             round_context_builder = None
             if hasattr(ocr_bundle, "build_round_context"):
-                round_context_builder = lambda round_name, max_chars: ocr_bundle.build_round_context(  # noqa: E731
-                    round_name,
-                    max_chars=max_chars,
+                round_context_builder = lambda round_name, max_chars: (
+                    ocr_bundle.build_round_context(  # noqa: E731
+                        round_name,
+                        max_chars=max_chars,
+                    )
                 )
 
             targeted_context_builder = None
             if hasattr(ocr_bundle, "build_targeted_context"):
-                targeted_context_builder = lambda **kwargs: ocr_bundle.build_targeted_context(**kwargs)  # noqa: E731
+                targeted_context_builder = lambda **kwargs: ocr_bundle.build_targeted_context(
+                    **kwargs
+                )  # noqa: E731
 
             source = getattr(document_context, "source", None) or source
             return _cache_put(
