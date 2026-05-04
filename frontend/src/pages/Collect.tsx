@@ -172,11 +172,20 @@ function relativeTime(iso: string) {
 }
 
 function splitArxivIds(value: string) {
+  const normalize = (raw: string) => raw
+    .trim()
+    .replace(/^arxiv\s*[:：]\s*/i, "")
+    .replace(/^https?:\/\/arxiv\.org\/abs\//i, "")
+    .replace(/^https?:\/\/arxiv\.org\/pdf\//i, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\.pdf$/i, "")
+    .replace(/[)\]}>.,;:：；，。、]+$/g, "")
+    .trim();
   return Array.from(
     new Set(
       value
         .split(/[\s,;，；]+/)
-        .map((item) => item.trim())
+        .map(normalize)
         .filter(Boolean),
     ),
   );
@@ -575,7 +584,19 @@ export default function Collect() {
       const result = await ingestApi.arxivIds(ids, arxivIdFolderId || undefined, arxivIdDownloadPdf);
       setArxivIdResult(result);
       setArxivIdText("");
-      toast("success", `已处理 ${result.ingested || 0} 篇论文`);
+      const ingested = Number(result.ingested || 0);
+      const duplicates = Number(result.duplicates || 0);
+      const missingCount = Array.isArray(result.missing_ids) ? result.missing_ids.length : 0;
+      if (ingested > 0) {
+        toast("success", `已入库 ${ingested} 篇论文`);
+      } else if (duplicates > 0 || missingCount > 0) {
+        const parts = [];
+        if (duplicates > 0) parts.push(`重复 ${duplicates} 篇`);
+        if (missingCount > 0) parts.push(`未命中 ${missingCount} 个 ID`);
+        toast("info", `没有新增论文，${parts.join("，")}`);
+      } else {
+        toast("info", "没有新增论文");
+      }
       await loadTopics();
     } catch (err) {
       setError(err instanceof Error ? err.message : "按 arXiv ID 导入失败");

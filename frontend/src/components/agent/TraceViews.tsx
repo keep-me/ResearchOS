@@ -263,23 +263,26 @@ export function CanvasPanel({
 /* ========== 消息块 ========== */
 
 export const ChatBlock = memo(function ChatBlock({
-  item, mountedPrimaryPaperId, isPending, isConfirming, onConfirm, onReject, onQuestionSubmit, onOpenArtifact, onRetry,
+  item, mountedPrimaryPaperId, isPending, isConfirming, onConfirm, onReject, onQuestionSubmit, onOpenArtifact, onRetry, onUndo, retrying, undoing,
 }: {
   item: ChatItem; mountedPrimaryPaperId?: string | null; isPending: boolean; isConfirming: boolean;
   onConfirm: (id: string) => void; onReject: (id: string) => void;
   onQuestionSubmit: (id: string, answers: string[][]) => void;
   onOpenArtifact: (title: string, content: string, isHtml?: boolean) => void;
   onRetry?: () => void;
+  onUndo?: () => void;
+  retrying?: boolean;
+  undoing?: boolean;
 }) {
   switch (item.type) {
-    case "user": return <UserMessage content={item.content} />;
+    case "user": return <UserMessage content={item.content} onUndo={onUndo} undoing={!!undoing} />;
     case "assistant": return <AssistantMessage content={item.content} streaming={!!item.streaming} mode={item.messageMode} mountedPrimaryPaperId={mountedPrimaryPaperId} />;
     case "reasoning": return <ReasoningMessage content={item.content} />;
     case "step_group": return <StepGroupCard steps={item.steps || []} />;
     case "action_confirm": return <ActionConfirmCard actionId={item.actionId || ""} description={item.actionDescription || ""} tool={item.actionTool || ""} args={item.toolArgs} isPending={isPending} isConfirming={isConfirming} onConfirm={onConfirm} onReject={onReject} />;
     case "question": return <QuestionCard actionId={item.actionId || ""} description={item.actionDescription || ""} questions={item.questionItems || []} isPending={isPending} isConfirming={isConfirming} onSubmit={onQuestionSubmit} onReject={onReject} />;
     case "artifact": return <ArtifactCard title={item.artifactTitle || ""} content={item.artifactContent || ""} isHtml={item.artifactIsHtml} onOpen={() => onOpenArtifact(item.artifactTitle || "", item.artifactContent || "", item.artifactIsHtml)} />;
-    case "error": return <ErrorCard content={item.content} onRetry={onRetry} />;
+    case "error": return <ErrorCard content={item.content} onRetry={onRetry} retrying={!!retrying} />;
     default: return null;
   }
 });
@@ -287,12 +290,33 @@ export const ChatBlock = memo(function ChatBlock({
 /**
  * 用户消息 - Claude 风格：无头像，右对齐浅色气泡
  */
-export const UserMessage = memo(function UserMessage({ content }: { content: string }) {
+export const UserMessage = memo(function UserMessage({
+  content,
+  onUndo,
+  undoing,
+}: {
+  content: string;
+  onUndo?: () => void;
+  undoing?: boolean;
+}) {
   return (
     <div className="flex justify-end py-3">
       <div className="max-w-[82%] rounded-xl border border-border bg-white px-4 py-3.5 text-sm leading-7 text-ink">
-        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/85">
-          You
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/85">
+            You
+          </div>
+          {onUndo ? (
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={undoing}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-ink-tertiary transition-colors hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {undoing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              撤回本轮
+            </button>
+          ) : null}
         </div>
         <div className="whitespace-pre-wrap">{content}</div>
       </div>
@@ -2545,7 +2569,15 @@ export const ActionConfirmCard = memo(function ActionConfirmCard({
   );
 });
 
-export const ErrorCard = memo(function ErrorCard({ content, onRetry }: { content: string; onRetry?: () => void }) {
+export const ErrorCard = memo(function ErrorCard({
+  content,
+  onRetry,
+  retrying,
+}: {
+  content: string;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
   return (
     <div className="py-2">
       <div className="flex items-start gap-2 rounded-xl border border-error/30 bg-error-light px-3.5 py-2.5">
@@ -2553,11 +2585,13 @@ export const ErrorCard = memo(function ErrorCard({ content, onRetry }: { content
         <p className="flex-1 text-sm text-error">{content}</p>
         {onRetry && (
           <button
+            type="button"
             onClick={onRetry}
-            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-error transition-colors hover:bg-error/10"
+            disabled={retrying}
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <RotateCcw className="h-3 w-3" />
-            重试
+            {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+            重试本轮
           </button>
         )}
       </div>

@@ -68,6 +68,7 @@ def normalize_manual_paper_id(raw: str | None) -> str:
     value = str(raw or "").strip()
     if not value:
         return ""
+    value = re.sub(r"^arxiv\s*[:：]\s*", "", value, flags=re.IGNORECASE)
     for prefix in (
         "https://arxiv.org/abs/",
         "http://arxiv.org/abs/",
@@ -77,8 +78,10 @@ def normalize_manual_paper_id(raw: str | None) -> str:
         if value.startswith(prefix):
             value = value[len(prefix):]
             break
+    value = value.split("?", 1)[0].split("#", 1)[0].strip()
     if value.endswith(".pdf"):
         value = value[:-4]
+    value = re.sub(r"[)\]}>.,;:：；，。、]+$", "", value).strip()
     return re.sub(r"v\d+$", "", value).strip()
 
 

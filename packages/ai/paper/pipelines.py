@@ -26,6 +26,7 @@ from packages.ai.paper.paper_evidence import (
     load_prepared_paper_evidence,
     normalize_paper_evidence_mode,
 )
+from packages.ai.paper.paper_ops_service import normalize_manual_paper_id
 from packages.ai.paper.pdf_parser import PdfTextExtractor
 from packages.ai.paper.prompts import (
     build_deep_focus_prompt,
@@ -108,21 +109,7 @@ class PaperPipelines:
 
     @staticmethod
     def _normalize_arxiv_id(raw: str) -> str:
-        value = str(raw or "").strip()
-        if not value:
-            return ""
-        for prefix in (
-            "https://arxiv.org/abs/",
-            "http://arxiv.org/abs/",
-            "https://arxiv.org/pdf/",
-            "http://arxiv.org/pdf/",
-        ):
-            if value.startswith(prefix):
-                value = value[len(prefix):]
-                break
-        if value.endswith(".pdf"):
-            value = value[:-4]
-        return value.strip()
+        return normalize_manual_paper_id(raw)
 
     def _save_paper(self, repo, paper, topic_id=None, download_pdf=False):
         """鍏ュ簱 + 涓嬭浇 PDF 鐨勫叕鍏遍€昏緫

@@ -191,6 +191,7 @@ function assistantMessageItems(
   messageId: string,
   timestamp: Date,
   parts: Array<Record<string, unknown>>,
+  parentMessageId: string | null,
   messageMode?: string,
 ): ChatItem[] {
   const items: ChatItem[] = [];
@@ -210,6 +211,8 @@ function assistantMessageItems(
       content: text,
       timestamp,
       messageMode,
+      messageId,
+      parentMessageId: parentMessageId || undefined,
     });
   };
 
@@ -237,6 +240,8 @@ function assistantMessageItems(
         steps: [backendToolStepItem(part)],
         timestamp,
         messageMode,
+        messageId,
+        parentMessageId: parentMessageId || undefined,
       });
       const artifact = buildArtifactFromData(
         (part.data && typeof part.data === "object" ? part.data : undefined) as Record<string, unknown> | undefined,
@@ -248,6 +253,8 @@ function assistantMessageItems(
           id: `artifact_${messageId}_${String(part.id || sequence++)}`,
           timestamp,
           messageMode,
+          messageId,
+          parentMessageId: parentMessageId || undefined,
         });
       }
       continue;
@@ -268,6 +275,8 @@ function assistantMessageItems(
           content,
           timestamp,
           messageMode,
+          messageId,
+          parentMessageId: parentMessageId || undefined,
         });
       }
     }
@@ -298,13 +307,19 @@ export function sessionMessagesToChatItems(
       : [];
     const timestamp = backendTimestamp((info.time && typeof info.time === "object" ? (info.time as Record<string, unknown>).created : undefined));
     if (role === "user") {
-      const text = userDisplayText(info, backendText(parts) || String(message.content || ""));
+      const requestText = backendText(parts) || String(message.content || "");
+      const text = userDisplayText(info, requestText);
+      const messageId = String(info.id || `user_${timestamp.getTime()}`);
+      const parentMessageId = String(info.parentID || info.parentId || "").trim() || undefined;
       if (text.trim()) {
         messageItems.push({
-          id: String(info.id || `user_${timestamp.getTime()}`),
+          id: messageId,
           type: "user",
           content: text,
           timestamp,
+          messageId,
+          parentMessageId,
+          requestText: requestText || text,
         });
       }
       messageItemsCache.set(message, messageItems);
@@ -316,8 +331,9 @@ export function sessionMessagesToChatItems(
       continue;
     }
     const messageId = String(info.id || `assistant_${timestamp.getTime()}`);
+    const parentMessageId = String(info.parentID || info.parentId || "").trim() || null;
     const messageMode = backendMessageMode(info);
-    messageItems.push(...assistantMessageItems(messageId, timestamp, parts, messageMode));
+    messageItems.push(...assistantMessageItems(messageId, timestamp, parts, parentMessageId, messageMode));
 
     const errorInfo = (info.error && typeof info.error === "object" ? info.error : {}) as Record<string, unknown>;
     const errorMessage = String(errorInfo.message || "").trim();
@@ -328,6 +344,8 @@ export function sessionMessagesToChatItems(
         content: errorMessage,
         timestamp,
         messageMode,
+        messageId,
+        parentMessageId: parentMessageId || undefined,
       });
     }
     messageItemsCache.set(message, messageItems);

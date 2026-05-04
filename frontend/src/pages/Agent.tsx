@@ -88,6 +88,90 @@ const WORKFLOW_ARTIFACT_TEXT_EXTENSIONS = new Set([
   ".htm",
 ]);
 
+type SessionTurnRestartPlan = {
+  userMessageId: string;
+  deleteMessageIds: string[];
+};
+
+function asSessionRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? value as Record<string, unknown> : null;
+}
+
+function sessionMessageInfo(message: Record<string, unknown>): Record<string, unknown> {
+  return asSessionRecord(message.info) || {};
+}
+
+function sessionMessageId(message: Record<string, unknown>): string {
+  return String(sessionMessageInfo(message).id || "").trim();
+}
+
+function sessionMessageRole(message: Record<string, unknown>): string {
+  return String(sessionMessageInfo(message).role || "").trim().toLowerCase();
+}
+
+function sessionMessageParentId(message: Record<string, unknown>): string | null {
+  const info = sessionMessageInfo(message);
+  return String(info.parentID || info.parentId || "").trim() || null;
+}
+
+function buildSessionTurnRestartPlan(
+  messages: Array<Record<string, unknown>>,
+  options?: {
+    assistantMessageId?: string | null;
+    userMessageId?: string | null;
+  },
+): SessionTurnRestartPlan | null {
+  const normalizedMessages = messages.filter((message): message is Record<string, unknown> => Boolean(message && typeof message === "object"));
+  if (normalizedMessages.length === 0) return null;
+
+  const lastUserIndex = (() => {
+    for (let index = normalizedMessages.length - 1; index >= 0; index -= 1) {
+      if (sessionMessageRole(normalizedMessages[index]) === "user") {
+        return index;
+      }
+    }
+    return -1;
+  })();
+  if (lastUserIndex < 0) return null;
+
+  let targetUserId = String(options?.userMessageId || "").trim();
+  const assistantMessageId = String(options?.assistantMessageId || "").trim();
+  if (!targetUserId && assistantMessageId) {
+    const assistantIndex = normalizedMessages.findIndex((message) => sessionMessageId(message) === assistantMessageId);
+    if (assistantIndex >= 0) {
+      targetUserId = sessionMessageParentId(normalizedMessages[assistantIndex]) || "";
+      if (!targetUserId) {
+        for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+          if (sessionMessageRole(normalizedMessages[index]) === "user") {
+            targetUserId = sessionMessageId(normalizedMessages[index]);
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (!targetUserId) {
+    targetUserId = sessionMessageId(normalizedMessages[lastUserIndex]);
+  }
+  if (!targetUserId) return null;
+
+  const targetUserIndex = normalizedMessages.findIndex((message) => sessionMessageId(message) === targetUserId);
+  if (targetUserIndex < 0 || targetUserIndex !== lastUserIndex) {
+    return null;
+  }
+
+  const deleteMessageIds = normalizedMessages
+    .slice(targetUserIndex)
+    .map((message) => sessionMessageId(message))
+    .filter(Boolean);
+  if (deleteMessageIds.length === 0) return null;
+
+  return {
+    userMessageId: targetUserId,
+    deleteMessageIds,
+  };
+}
+
 function normalizeArtifactPath(value: string | null | undefined): string {
   return String(value || "").trim().replace(/\\/g, "/");
 }
@@ -367,6 +451,14 @@ export default function Agent() {
   } = useAssistantInstance();
   const activeId = activeConversationId;
   const isEmpty = items.length === 0;
+  const latestUserItemId = useMemo(() => {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      if (items[index].type === "user") {
+        return items[index].id;
+      }
+    }
+    return null;
+  }, [items]);
   const preferredWorkspaceServerId = String(activeWorkspace?.serverId || "").trim() || "local";
   const runtimeControls = useAgentRuntimeControls(permissionPreset);
   const mountedPaperItems = useMountedPapers({ mountedPaperIds, mountedPaperTitleMap, mountedPrimaryPaperId });
@@ -382,6 +474,7 @@ export default function Agent() {
       || sessionStorage.getItem(LEGACY_AGENT_DRAFT_PROMPT_KEY)
       || "";
   });
+  const [turnActionKey, setTurnActionKey] = useState<string | null>(null);
   const [policySyncState, setPolicySyncState] = useState<"idle" | "saving" | "error">("idle");
   const [showImportModal, setShowImportModal] = useState(false);
   const [paperQuery, setPaperQuery] = useState("");
@@ -490,6 +583,7 @@ export default function Agent() {
   const slashMenuRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const autoFollowRef = useRef(true);
+  const startConversationLockRef = useRef(false);
   const workspaceOverviewRequestSeqRef = useRef(0);
   const gitDiffRequestSeqRef = useRef(0);
   const terminalSessionRequestSeqRef = useRef(0);
@@ -2678,10 +2772,79 @@ export default function Agent() {
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [executeSlashAction]);
 
+  const restartConversationTurn = useCallback(async (
+    userItem: ChatItem,
+    options?: {
+      assistantMessageId?: string | null;
+      mode?: "retry" | "undo";
+      actionKey?: string;
+    },
+  ) => {
+    if (turnActionKey) return;
+    if (!activeSessionId) {
+      toast("warning", "当前会话还没有可回退的记录");
+      return;
+    }
+    if (activeStatus.type !== "idle") {
+      toast("warning", "请等待当前会话空闲后再操作");
+      return;
+    }
+    const displayText = String(userItem.content || "").trim();
+    const requestText = String(userItem.requestText || userItem.content || "").trim();
+    if (!displayText || !requestText) {
+      toast("warning", "当前轮次缺少可重发的原始消息");
+      return;
+    }
+    const mode = options?.mode || "retry";
+    const actionKey = String(options?.actionKey || `${mode}:${userItem.id}`).trim() || `${mode}:${userItem.id}`;
+    setTurnActionKey(actionKey);
+    try {
+      const state = await sessionApi.state(activeSessionId);
+      const plan = buildSessionTurnRestartPlan(state.messages, {
+        assistantMessageId: options?.assistantMessageId,
+        userMessageId: userItem.messageId || userItem.id,
+      });
+      if (!plan) {
+        throw new Error(mode === "undo" ? "暂只支持撤回最近一轮对话" : "暂只支持重试最近一轮对话");
+      }
+      for (const messageId of [...plan.deleteMessageIds].reverse()) {
+        await sessionApi.deleteMessage(activeSessionId, messageId);
+      }
+      if (mode === "undo") {
+        await loadSessionReview({ silent: true });
+        toast("success", "已撤回最近一轮对话");
+        return;
+      }
+      isAtBottomRef.current = true;
+      autoFollowRef.current = true;
+      await sendMessage({
+        displayText,
+        requestText,
+      });
+      toast("success", "已重新开始最近一轮对话");
+    } catch (error) {
+      toast("error", error instanceof Error ? error.message : (mode === "undo" ? "撤回对话失败" : "重试对话失败"));
+    } finally {
+      setTurnActionKey(null);
+    }
+  }, [activeSessionId, activeStatus.type, loadSessionReview, sendMessage, toast, turnActionKey]);
+
+  useEffect(() => {
+    startConversationLockRef.current = false;
+  }, [activeId, isEmpty]);
+
   const handleStartConversation = useCallback(() => {
+    if (activeId && isEmpty) {
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+    if (startConversationLockRef.current) {
+      return;
+    }
+    startConversationLockRef.current = true;
     const conversationId = createConversationWithRuntime();
     navigate(`/assistant/${conversationId}`);
-  }, [createConversationWithRuntime, navigate]);
+  }, [activeId, createConversationWithRuntime, isEmpty, navigate]);
 
   const buildImportedWorkflowArtifactContext = useCallback(async (): Promise<string> => {
     if (importedWorkflowArtifacts.length === 0) return "";
@@ -3150,14 +3313,30 @@ export default function Agent() {
               isMobileViewport ? "px-3 pb-8 pt-4" : "px-4 pb-14 pt-8",
             )}>
               {items.map((item, idx) => {
+                const retryKey = `retry:${item.id}`;
+                const undoKey = `undo:${item.id}`;
                 const retryFn = item.type === "error" ? (() => {
                   for (let i = idx - 1; i >= 0; i--) {
                     if (items[i].type === "user") {
-                      handleSend(items[i].content);
+                      void restartConversationTurn(items[i], {
+                        assistantMessageId: item.messageId || null,
+                        mode: "retry",
+                        actionKey: retryKey,
+                      });
                       return;
                     }
                   }
                 }) : undefined;
+                const undoFn = item.type === "user"
+                  && item.id === latestUserItemId
+                  && activeStatus.type === "idle"
+                  ? (() => {
+                      void restartConversationTurn(item, {
+                        mode: "undo",
+                        actionKey: undoKey,
+                      });
+                    })
+                  : undefined;
                 return (
                   <ChatBlock
                     key={item.id}
@@ -3170,6 +3349,9 @@ export default function Agent() {
                     onQuestionSubmit={handleQuestionSubmit}
                     onOpenArtifact={handleOpenArtifact}
                     onRetry={retryFn}
+                    onUndo={undoFn}
+                    retrying={turnActionKey === retryKey}
+                    undoing={turnActionKey === undoKey}
                   />
                 );
               })}

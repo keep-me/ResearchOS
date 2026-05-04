@@ -26,6 +26,9 @@ export interface ChatItem {
   content: string;
   streaming?: boolean;
   messageMode?: string;
+  messageId?: string;
+  parentMessageId?: string;
+  requestText?: string;
   steps?: StepItem[];
   actionId?: string;
   actionDescription?: string;

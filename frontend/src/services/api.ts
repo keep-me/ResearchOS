@@ -1717,6 +1717,8 @@ export const sessionApi = {
     get<Array<Record<string, unknown>>>(`/session/${encodeURIComponent(sessionId)}/message?limit=${limit}`),
   permissions: (sessionId: string) =>
     get<Array<Record<string, unknown>>>(`/session/${encodeURIComponent(sessionId)}/permissions`),
+  deleteMessage: (sessionId: string, messageId: string) =>
+    del<boolean>(`/session/${encodeURIComponent(sessionId)}/message/${encodeURIComponent(messageId)}`),
   revert: (sessionId: string, messageId: string) =>
     post<Record<string, unknown>>(
       `/session/${encodeURIComponent(sessionId)}/revert`,
