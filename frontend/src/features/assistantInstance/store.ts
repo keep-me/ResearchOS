@@ -1223,7 +1223,12 @@ export function createAssistantInstanceStore(initialContext: AssistantInstanceSt
       if (currentRuntime.detachedSyncGeneration !== currentGeneration) return;
       const status = busState.sessionStatus[sessionId] || IDLE_STATUS;
       const permissions = busState.permissions[sessionId] || [];
-      if (permissions.length > 0 || status.type === "idle") {
+      const messages = busState.messages[sessionId] || [];
+      const hasAssistantMessage = messages.some((message) => {
+        const info = (message.info && typeof message.info === "object" ? message.info : {}) as Record<string, unknown>;
+        return String(info.role || "").trim() === "assistant";
+      });
+      if (permissions.length > 0 || (status.type === "idle" && hasAssistantMessage)) {
         currentRuntime.requesting = false;
         currentRuntime.detachedSyncTimer = null;
         notify();
