@@ -2552,14 +2552,17 @@ def _extract_paper_figures_payload(
     *,
     extract_mode: str | None = None,
     progress_callback: Callable[[str, int, int], None] | None = None,
+    force: bool = False,
 ) -> dict:
-    _invalidate_paper_figures_cache(paper_id)
+    if force:
+        _invalidate_paper_figures_cache(paper_id)
     try:
         payload = _extract_paper_figures_payload_impl(
             paper_id=paper_id,
             max_figures=max_figures,
             extract_mode=extract_mode,
             progress_callback=progress_callback,
+            force=force,
         )
     except PaperPdfUnavailableError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2595,10 +2598,16 @@ def extract_paper_figures(
         default=None,
         description="图表提取模式: arxiv_source / mineru",
     ),
+    force: bool = Query(default=False, description="是否忽略已有候选并强制重新提取"),
 ) -> dict:
     """Extract all figures/tables from a paper PDF (synchronous)."""
     try:
-        return _extract_paper_figures_payload(paper_id, max_figures, extract_mode=extract_mode)
+        return _extract_paper_figures_payload(
+            paper_id,
+            max_figures,
+            extract_mode=extract_mode,
+            force=force,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FileNotFoundError as exc:
@@ -2621,9 +2630,11 @@ def extract_paper_figures_async(
         default=None,
         description="图表提取模式: arxiv_source / mineru",
     ),
+    force: bool = Query(default=False, description="是否忽略已有候选并强制重新提取"),
 ) -> dict:
     """Start figure/table extraction in background and return task id."""
-    _invalidate_paper_figures_cache(paper_id)
+    if force:
+        _invalidate_paper_figures_cache(paper_id)
 
     with session_scope() as session:
         repo = _paper_data(session).papers
@@ -2643,6 +2654,7 @@ def extract_paper_figures_async(
                 max_figures=max_figures,
                 extract_mode=extract_mode,
                 progress_callback=progress_callback,
+                force=force,
             )
         except HTTPException as exc:
             raise RuntimeError(str(exc.detail or exc)) from exc

@@ -354,9 +354,9 @@ class MinerUOcrRuntime:
         value = str(
             os.environ.get("MINERU_API_MODEL_VERSION")
             or getattr(settings, "mineru_api_model_version", "")
-            or "vlm"
+            or "pipeline"
         ).strip()
-        return value or "vlm"
+        return value or "pipeline"
 
     @classmethod
     def _mineru_api_poll_interval_seconds(cls) -> float:

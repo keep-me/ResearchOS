@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.routers import topics as topics_router
 from packages.ai.paper import pipelines as pipelines_module
+from packages.domain.schemas import PaperCreate
 from packages.storage import db
 from packages.storage.db import Base, session_scope
 from packages.storage.repositories import PaperRepository
@@ -141,3 +142,89 @@ def test_search_external_literature_route_filters_dates_and_sorts(monkeypatch: p
         "Older but Influential",
         "Newer Candidate",
     ]
+
+
+def test_ingest_arxiv_ids_short_circuits_existing_base_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    monkeypatch.setattr(pipelines_module, "_bg_auto_link", lambda paper_ids: None)
+    monkeypatch.setattr(pipelines_module, "LLMClient", lambda: object())
+    monkeypatch.setattr(pipelines_module, "VisionPdfReader", lambda: object())
+    monkeypatch.setattr(pipelines_module, "PdfTextExtractor", lambda: object())
+
+    with session_scope() as session:
+        PaperRepository(session).upsert_paper(
+            PaperCreate(
+                arxiv_id="2411.11904v3",
+                title="Existing versioned paper",
+                abstract="cached",
+                metadata={},
+            )
+        )
+
+    pipeline = pipelines_module.PaperPipelines()
+    fetch_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.arxiv,
+        "fetch_by_ids",
+        lambda arxiv_ids: fetch_calls.append(list(arxiv_ids)) or [],
+    )
+
+    result = pipeline.ingest_arxiv_ids(["2411.11904"])
+
+    assert result == {
+        "requested": 1,
+        "found": 1,
+        "ingested": 0,
+        "duplicates": 1,
+        "missing_ids": [],
+        "papers": [],
+    }
+    assert fetch_calls == []
+
+
+def test_ingest_arxiv_ids_async_starts_background_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_test_db(monkeypatch)
+    app = FastAPI()
+    app.include_router(topics_router.router)
+    client = TestClient(app)
+
+    submit_calls: list[dict] = []
+
+    def _fake_submit(task_type, title, fn, *args, **kwargs):
+        submit_calls.append(
+            {
+                "task_type": task_type,
+                "title": title,
+                "fn": fn,
+                "args": args,
+                "kwargs": kwargs,
+            }
+        )
+        return "task-ingest-arxiv-ids"
+
+    monkeypatch.setattr(topics_router.global_tracker, "submit", _fake_submit)
+
+    response = client.post(
+        "/ingest/arxiv-ids-async",
+        json={
+            "arxiv_ids": ["2411.11904", "2504.02647"],
+            "topic_id": "folder-1",
+            "download_pdf": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "task_id": "task-ingest-arxiv-ids",
+        "status": "running",
+        "message": "arXiv ID 导入任务已启动",
+    }
+    assert len(submit_calls) == 1
+    assert submit_calls[0]["task_type"] == "ingest_arxiv_ids"
+    assert submit_calls[0]["kwargs"]["total"] == 100
+    assert submit_calls[0]["kwargs"]["metadata"] == {
+        "source": "ingest",
+        "topic_id": "folder-1",
+        "download_pdf": True,
+    }
+    assert "2411.11904" in submit_calls[0]["title"]

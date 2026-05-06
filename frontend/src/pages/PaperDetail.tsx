@@ -80,6 +80,8 @@ type SavedDeepReport = {
   key_insights: Record<string, unknown>;
 };
 
+const FIGURE_EXTRACT_LIMIT = 40;
+
 function getEmbeddingStatusMeta(metadata?: Record<string, unknown>): EmbeddingStatusMeta | null {
   const raw = metadata?.embedding_status;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -1424,14 +1426,14 @@ export default function PaperDetail() {
     const runSyncFallback = async () => {
       setFigureTaskMessage("直接提取图表候选...");
       setFigureTaskProgress(null);
-      const direct = await paperApi.extractFigures(id, 80);
+      const direct = await paperApi.extractFigures(id, FIGURE_EXTRACT_LIMIT);
       return Array.isArray(direct.items) ? direct.items : [];
     };
 
     try {
       setFigureTaskMessage("创建图表提取任务...");
       setFigureTaskProgress(1);
-      const kickoff = await paperApi.extractFiguresAsync(id, 80);
+      const kickoff = await paperApi.extractFiguresAsync(id, FIGURE_EXTRACT_LIMIT);
       if (!kickoff.task_id) {
         throw new Error("图表提取任务启动失败");
       }

@@ -49,7 +49,7 @@ def test_mineru_runtime_requires_api_token(monkeypatch):
         lambda: SimpleNamespace(
             mineru_api_token=None,
             mineru_api_base_url="https://mineru.net",
-            mineru_api_model_version="vlm",
+            mineru_api_model_version="pipeline",
             mineru_api_poll_interval_seconds=3.0,
             mineru_api_timeout_seconds=300,
             mineru_api_upload_timeout_seconds=600,
@@ -126,7 +126,7 @@ def test_mineru_runtime_force_bypasses_cached_success_bundle(monkeypatch, tmp_pa
         return {
             "backend": "api",
             "mineru_api_batch_id": "batch-force",
-            "mineru_api_model_version": "vlm",
+            "mineru_api_model_version": "pipeline",
         }
 
     monkeypatch.setattr(MinerUOcrRuntime, "_run_remote_api_mineru", classmethod(_fake_remote_run))
@@ -156,7 +156,7 @@ def test_mineru_runtime_runs_remote_api_and_persists_manifest(monkeypatch, tmp_p
         return {
             "backend": "api",
             "mineru_api_batch_id": "batch-123",
-            "mineru_api_model_version": "vlm",
+            "mineru_api_model_version": "pipeline",
             "mineru_api_result_url": "https://cdn.example.com/result.zip",
         }
 

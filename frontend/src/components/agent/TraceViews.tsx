@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useAssistantInstance, type ChatItem, type StepItem } from "@/contexts/AssistantInstanceContext";
 import { useToast } from "@/contexts/ToastContext";
 import { normalizeReasoningDisplay } from "@/features/assistantInstance/reasoningText";
-import { ingestApi, paperApi } from "@/services/api";
+import { ingestApi, paperApi, waitForTaskResult } from "@/services/api";
 import { deriveProjectName, getToolMeta, type WorkspaceFileTreeNode } from "./agentPageShared";
 import {
   AlertTriangle,
@@ -914,7 +914,13 @@ export function ArxivCandidateSelector({ candidates, query }: {
     if (selected.size === 0 || submitted) return;
     setSubmitted(true);
     try {
-      const result = await ingestApi.arxivIds(Array.from(selected));
+      const kickoff = await ingestApi.arxivIdsAsync(Array.from(selected));
+      if (!kickoff.task_id) {
+        throw new Error("arXiv ID 导入任务启动失败");
+      }
+      const result = await waitForTaskResult<{ papers?: Array<{ id: string; title: string }> }>(kickoff.task_id, {
+        timeoutMessage: "arXiv ID 导入超时，请到任务后台继续查看进度",
+      });
       const importedPapers = result.papers || [];
       if (importedPapers.length > 0) {
         void ensureConversation();

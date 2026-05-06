@@ -4,6 +4,7 @@
 import logging
 import uuid as _uuid
 from datetime import date, datetime, timedelta
+from typing import Callable
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -569,6 +570,20 @@ def ingest_arxiv(
 
 @router.post("/ingest/arxiv-ids")
 def ingest_arxiv_ids(body: ArxivIdIngestReq) -> dict:
+    return _ingest_arxiv_ids_result(body)
+
+
+def _ingest_arxiv_ids_result(
+    body: ArxivIdIngestReq,
+    *,
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> dict:
+    def _progress(message: str, current: int, total: int = 100) -> None:
+        if progress_callback is not None:
+            progress_callback(message, current, total)
+
+    _progress("准备 arXiv ID 导入...", 5, 100)
+    _progress("正在查询 arXiv 元数据并检查重复...", 20, 100)
     result = pipelines.ingest_arxiv_ids(
         arxiv_ids=body.arxiv_ids,
         topic_id=body.topic_id,
@@ -580,6 +595,7 @@ def ingest_arxiv_ids(body: ArxivIdIngestReq) -> dict:
     inserted_ids = [str(paper.get("id")) for paper in result.get("papers", []) if paper.get("id")]
     if inserted_ids and not body.topic_id:
         try:
+            _progress("正在自动归类新导入论文...", 80, 100)
             from packages.ai.paper.classification_service import PaperClassificationService
 
             classify_result = PaperClassificationService().auto_classify(
@@ -596,9 +612,34 @@ def ingest_arxiv_ids(body: ArxivIdIngestReq) -> dict:
         except Exception as exc:
             logger.warning("Auto classify after arXiv ID ingest failed: %s", exc)
 
+    _progress("整理导入结果...", 95, 100)
     return {
         **result,
         "classified": auto_classified,
+    }
+
+
+@router.post("/ingest/arxiv-ids-async")
+def ingest_arxiv_ids_async(body: ArxivIdIngestReq) -> dict:
+    preview_ids = [str(arxiv_id or "").strip() for arxiv_id in body.arxiv_ids if str(arxiv_id or "").strip()]
+    preview = ", ".join(preview_ids[:3])
+    if len(preview_ids) > 3:
+        preview += "..."
+    title_suffix = preview or "未命名导入"
+    task_id = global_tracker.submit(
+        task_type="ingest_arxiv_ids",
+        title=f"按 arXiv ID 导入: {title_suffix[:48]}",
+        fn=lambda progress_callback=None: _ingest_arxiv_ids_result(
+            body,
+            progress_callback=progress_callback,
+        ),
+        total=100,
+        metadata={"source": "ingest", "topic_id": body.topic_id or "", "download_pdf": bool(body.download_pdf)},
+    )
+    return {
+        "task_id": task_id,
+        "status": "running",
+        "message": "arXiv ID 导入任务已启动",
     }
 
 

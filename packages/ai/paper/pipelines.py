@@ -197,11 +197,12 @@ class PaperPipelines:
                         break  # 娌℃湁鏇村璁烘枃浜?
 
                     # 鎻愬墠妫€鏌ュ摢浜涜鏂囧凡瀛樺湪
-                    existing_arxiv_ids = repo.list_existing_arxiv_ids([p.arxiv_id for p in papers])
+                    existing_base_arxiv_ids = repo.list_existing_arxiv_base_ids([p.arxiv_id for p in papers])
 
                     # 鍙鐞嗘柊璁烘枃
                     for paper in papers:
-                        is_new = paper.arxiv_id not in existing_arxiv_ids
+                        paper_base_id = paper.arxiv_id.split("v")[0] if "v" in paper.arxiv_id else paper.arxiv_id
+                        is_new = paper_base_id not in existing_base_arxiv_ids
                         if is_new:
                             saved = self._save_paper(repo, paper, topic_id)
                             new_papers_count += 1
@@ -212,7 +213,12 @@ class PaperPipelines:
                                 break
 
                     # 閺冦儱绻?
-                    new_in_batch = len(papers) - len(existing_arxiv_ids)
+                    new_in_batch = sum(
+                        1
+                        for paper in papers
+                        if (paper.arxiv_id.split("v")[0] if "v" in paper.arxiv_id else paper.arxiv_id)
+                        not in existing_base_arxiv_ids
+                    )
                     logger.info(
                         "ArXiv batch %d: fetched %d, new %d (progress %d/%d)",
                         page + 1,
@@ -321,16 +327,21 @@ class PaperPipelines:
             )
 
             try:
-                papers = self.arxiv.fetch_by_ids(normalized_ids)
+                existing_base_ids = repo.list_existing_arxiv_base_ids(normalized_ids)
+                duplicates = len(existing_base_ids)
+                pending_ids = [paper_id for paper_id in normalized_ids if paper_id not in existing_base_ids]
+
+                papers = self.arxiv.fetch_by_ids(pending_ids) if pending_ids else []
                 found_base_ids = {
                     (paper.arxiv_id.split("v")[0] if "v" in paper.arxiv_id else paper.arxiv_id)
                     for paper in papers
                 }
-                missing_ids = [paper_id for paper_id in normalized_ids if paper_id not in found_base_ids]
+                missing_ids = [paper_id for paper_id in pending_ids if paper_id not in found_base_ids]
 
-                existing_arxiv_ids = repo.list_existing_arxiv_ids([paper.arxiv_id for paper in papers])
+                existing_fetched_base_ids = repo.list_existing_arxiv_base_ids([paper.arxiv_id for paper in papers])
                 for paper in papers:
-                    if paper.arxiv_id in existing_arxiv_ids:
+                    paper_base_id = paper.arxiv_id.split("v")[0] if "v" in paper.arxiv_id else paper.arxiv_id
+                    if paper_base_id in existing_fetched_base_ids:
                         duplicates += 1
                         continue
                     saved = self._save_paper(repo, paper, topic_id, download_pdf=download_pdf)

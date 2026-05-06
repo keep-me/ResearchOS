@@ -31,6 +31,13 @@ class PaperRepository:
         self.session = session
 
     @staticmethod
+    def _base_arxiv_id(arxiv_id: str | None) -> str:
+        value = str(arxiv_id or "").strip()
+        if not value:
+            return ""
+        return re.sub(r"v\d+$", "", value, flags=re.IGNORECASE).strip()
+
+    @staticmethod
     def _normalize_keywords(keywords: list[str] | None) -> list[str]:
         if not keywords:
             return []
@@ -180,6 +187,27 @@ class PaperRepository:
             return set()
         q = select(Paper.arxiv_id).where(Paper.arxiv_id.in_(arxiv_ids))
         return set(self.session.execute(q).scalars())
+
+    def list_existing_arxiv_base_ids(self, arxiv_ids: list[str]) -> set[str]:
+        """按 arXiv base id（忽略版本号）检查哪些论文已存在。"""
+        normalized_ids = [self._base_arxiv_id(arxiv_id) for arxiv_id in arxiv_ids]
+        base_ids = [arxiv_id for arxiv_id in normalized_ids if arxiv_id]
+        if not base_ids:
+            return set()
+
+        clauses = [
+            or_(
+                Paper.arxiv_id == base_id,
+                Paper.arxiv_id.like(f"{base_id}v%"),
+            )
+            for base_id in dict.fromkeys(base_ids)
+        ]
+        q = select(Paper.arxiv_id).where(or_(*clauses))
+        return {
+            normalized
+            for normalized in (self._base_arxiv_id(value) for value in self.session.execute(q).scalars())
+            if normalized
+        }
 
     def get_by_arxiv_id(self, arxiv_id: str) -> Paper | None:
         q = select(Paper).where(Paper.arxiv_id == arxiv_id)

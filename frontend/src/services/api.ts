@@ -466,18 +466,20 @@ export const paperApi = {
     post<{ task_id: string; status: string; message?: string }>(
       `/papers/${id}/ocr/process-async?force=${force ? "true" : "false"}`,
     ),
-  extractFigures: (id: string, maxFigures = 80, extractMode?: FigureExtractMode) => {
+  extractFigures: (id: string, maxFigures = 40, extractMode?: FigureExtractMode, force = false) => {
     const params = new URLSearchParams();
     params.set("max_figures", String(maxFigures));
     if (extractMode) params.set("extract_mode", extractMode);
+    if (force) params.set("force", "true");
     return post<{ paper_id: string; count: number; items: FigureAnalysisItem[] }>(
       `/papers/${id}/figures/extract?${params}`,
     );
   },
-  extractFiguresAsync: (id: string, maxFigures = 80, extractMode?: FigureExtractMode) => {
+  extractFiguresAsync: (id: string, maxFigures = 40, extractMode?: FigureExtractMode, force = false) => {
     const params = new URLSearchParams();
     params.set("max_figures", String(maxFigures));
     if (extractMode) params.set("extract_mode", extractMode);
+    if (force) params.set("force", "true");
     return post<{ task_id: string; status: string; message?: string }>(
       `/papers/${id}/figures/extract-async?${params}`,
     );
@@ -1066,6 +1068,12 @@ export const ingestApi = {
   },
   arxivIds: (arxivIds: string[], topicId?: string, downloadPdf = false) =>
     post<IngestResult>("/ingest/arxiv-ids", {
+      arxiv_ids: arxivIds,
+      topic_id: topicId,
+      download_pdf: downloadPdf,
+    }),
+  arxivIdsAsync: (arxivIds: string[], topicId?: string, downloadPdf = false) =>
+    post<{ task_id: string; status: string; message?: string }>("/ingest/arxiv-ids-async", {
       arxiv_ids: arxivIds,
       topic_id: topicId,
       download_pdf: downloadPdf,
@@ -2019,6 +2027,60 @@ export const tasksApi = {
   track: (body: { action: string; task_id: string; task_type?: string; title?: string; total?: number; current?: number; message?: string; success?: boolean; error?: string; metadata?: Record<string, unknown> }) =>
     post<{ ok: boolean }>("/tasks/track", body),
 };
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function waitForTaskResult<T = Record<string, unknown>>(
+  taskId: string,
+  options?: {
+    timeoutMs?: number;
+    intervalMs?: number;
+    timeoutMessage?: string;
+    onStatus?: (status: TaskStatus) => void;
+    fallbackResult?: () => Promise<T>;
+  },
+): Promise<T> {
+  const timeoutAt = Date.now() + (options?.timeoutMs ?? 15 * 60 * 1000);
+  const intervalMs = Math.max(600, options?.intervalMs ?? 1200);
+  let transientErrors = 0;
+
+  while (true) {
+    try {
+      const status = await tasksApi.getStatus(taskId);
+      transientErrors = 0;
+      options?.onStatus?.(status);
+      if (status.finished) {
+        if (!status.success || status.status === "failed" || status.status === "cancelled") {
+          throw new Error(status.error || status.message || "任务失败");
+        }
+        try {
+          const result = await tasksApi.getResult(taskId) as T;
+          if (result && (typeof result !== "object" || Object.keys(result as object).length > 0)) {
+            return result;
+          }
+        } catch {
+          // Fall through to fallback result.
+        }
+        if (options?.fallbackResult) {
+          return options.fallbackResult();
+        }
+        return {} as T;
+      }
+    } catch (error) {
+      transientErrors += 1;
+      if (transientErrors >= 5) {
+        throw error;
+      }
+    }
+
+    if (Date.now() > timeoutAt) {
+      throw new Error(options?.timeoutMessage || "任务超时，请到任务后台查看进度");
+    }
+    await sleep(intervalMs);
+  }
+}
 
 export interface ActiveTaskInfo {
   task_id: string;

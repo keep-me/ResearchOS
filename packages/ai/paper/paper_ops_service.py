@@ -622,6 +622,7 @@ def extract_paper_figures_payload(
     *,
     extract_mode: str | None = None,
     progress_callback: Callable[[str, int, int], None] | None = None,
+    force: bool = False,
 ) -> dict:
     try:
         from packages.ai.paper.figure_service import FigureService
@@ -631,6 +632,12 @@ def extract_paper_figures_payload(
     def _progress(message: str, current: int, total: int = 100) -> None:
         if progress_callback:
             progress_callback(message, current, total)
+
+    if not force:
+        cached_items = FigureService.get_paper_analyses(paper_id)[:max_figures]
+        if cached_items:
+            _progress("复用已有图表候选...", 100, 100)
+            return {"paper_id": str(paper_id), "count": len(cached_items), "items": cached_items}
 
     def _start_pulse(message: str, *, start: int = 20, end: int = 85, step: int = 2, interval: float = 1.8):
         if not progress_callback:

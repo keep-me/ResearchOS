@@ -4,7 +4,7 @@ import { Button, Empty, Spinner } from "@/components/ui";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import AIPromptHelper from "@/components/AIPromptHelper";
 import { useToast } from "@/contexts/ToastContext";
-import { ingestApi, paperApi, topicApi, type FolderStats } from "@/services/api";
+import { ingestApi, paperApi, topicApi, waitForTaskResult, type FolderStats } from "@/services/api";
 import type {
   ArxivSortBy,
   ExternalLiteraturePaper,
@@ -321,6 +321,7 @@ export default function Collect() {
   const [arxivIdDownloadPdf, setArxivIdDownloadPdf] = useState(false);
   const [importingArxivIds, setImportingArxivIds] = useState(false);
   const [arxivIdResult, setArxivIdResult] = useState<IngestResult | null>(null);
+  const [arxivIdTaskMessage, setArxivIdTaskMessage] = useState("");
 
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadTopicId, setUploadTopicId] = useState("");
@@ -580,10 +581,23 @@ export default function Collect() {
       return;
     }
     setImportingArxivIds(true);
+    setArxivIdTaskMessage("创建 arXiv ID 导入任务...");
+    let completed = false;
     try {
-      const result = await ingestApi.arxivIds(ids, arxivIdFolderId || undefined, arxivIdDownloadPdf);
+      const kickoff = await ingestApi.arxivIdsAsync(ids, arxivIdFolderId || undefined, arxivIdDownloadPdf);
+      if (!kickoff.task_id) {
+        throw new Error("arXiv ID 导入任务启动失败");
+      }
+      const result = await waitForTaskResult<IngestResult>(kickoff.task_id, {
+        timeoutMessage: "arXiv ID 导入超时，请到任务后台继续查看进度",
+        onStatus: (status) => {
+          setArxivIdTaskMessage(status.message || `正在导入 arXiv ID（${status.progress_pct}%）...`);
+        },
+      });
       setArxivIdResult(result);
       setArxivIdText("");
+      setArxivIdTaskMessage("arXiv ID 导入完成");
+      completed = true;
       const ingested = Number(result.ingested || 0);
       const duplicates = Number(result.duplicates || 0);
       const missingCount = Array.isArray(result.missing_ids) ? result.missing_ids.length : 0;
@@ -602,6 +616,9 @@ export default function Collect() {
       setError(err instanceof Error ? err.message : "按 arXiv ID 导入失败");
     } finally {
       setImportingArxivIds(false);
+      if (!completed) {
+        setArxivIdTaskMessage("");
+      }
     }
   }, [arxivIdDownloadPdf, arxivIdFolderId, arxivIdText, loadTopics, toast]);
 
@@ -1149,6 +1166,9 @@ export default function Collect() {
               <Button icon={importingArxivIds ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} onClick={() => void handleImportArxivIds()} disabled={importingArxivIds}>
                 批量导入
               </Button>
+              {importingArxivIds && arxivIdTaskMessage && (
+                <p className="text-sm text-ink-secondary">{arxivIdTaskMessage}</p>
+              )}
               {arxivIdResult && <ImportSummaryCard title="arXiv ID 导入结果" result={arxivIdResult} onNavigate={(paperId) => navigate(`/papers/${paperId}`)} />}
             </div>
           </section>
